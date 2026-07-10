@@ -1,0 +1,22 @@
+# Dependencies
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+env/
+
+# Upload temp files
+uploads/
+tmp/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Output
+*.log
