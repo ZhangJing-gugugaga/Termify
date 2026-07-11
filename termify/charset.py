@@ -61,27 +61,41 @@ def _render_ascii(img, width: int, height: int) -> list[str]:
 
 
 def _render_blocks(img, width: int, height: int) -> list[str]:
-    """Upper-half block `▀` with TrueColor fg (top pixel) + bg (bottom pixel)."""
+    """Half-block `▀` with TrueColor fg (top pixel) + bg (bottom pixel).
+
+    The source image must be scaled to (width, 2 * terminal_height) so each
+    output row samples a distinct top/bottom pair -- twice the vertical
+    resolution (the approach the reference SalaryCat renderer uses).
+
+    Colour delta encoding: an escape sequence is emitted only when the fg or
+    bg colour actually changes from the previous cell, exactly like the
+    reference renderer. This roughly halves output size and makes in-terminal
+    playback noticeably smoother.
+    """
     px = img.load()
     src_w, src_h = img.size
+    DEFAULT_BG = "[49m"
     out_lines = []
-    for row_idx in range(height):
-        y_top = int(row_idx * src_h / height)
-        y_bot = int((row_idx + 0.5) * src_h / height)
-        if y_bot >= src_h:
-            y_bot = src_h - 1
-        row = []
-        for col_idx in range(width):
-            x = int(col_idx * src_w / width)
-            if x >= src_w:
-                x = src_w - 1
+    for y_top in range(0, src_h, 2):
+        y_bot = y_top + 1 if y_top + 1 < src_h else y_top
+        parts = []
+        last_fg = None
+        last_bg = None
+        for x in range(src_w):
             rt, gt, bt = px[x, y_top][:3]
             rb, gb, bb = px[x, y_bot][:3]
-            row.append(f"\x1b[38;2;{rt};{gt};{bt}m\x1b[48;2;{rb};{gb};{bb}m▀")
-        row.append("\x1b[0m")
-        out_lines.append("".join(row))
+            fg = (rt, gt, bt)
+            bg = (rb, gb, bb)
+            if fg != last_fg:
+                parts.append(f"[38;2;{rt};{gt};{bt}m")
+                last_fg = fg
+            if bg != last_bg:
+                parts.append(f"[48;2;{rb};{gb};{bb}m")
+                last_bg = bg
+            parts.append("▀")
+        parts.append(f"{DEFAULT_BG}[0m")
+        out_lines.append("".join(parts))
     return out_lines
-
 
 def _render_braille(img, width: int, height: int) -> list[str]:
     """2x4 pixel block -> one Braille codepoint (U+2800 + bit mask)."""
@@ -161,8 +175,8 @@ def render_frame(img, charset_name: str, width: int, height: int) -> list[str]:
         raise ValueError(
             f"Unknown charset: {charset_name!r} (expected one of {sorted(CHARSETS)})"
         )
-    if img.size != (width, height):
+    if img.size[0] != width:
         raise ValueError(
-            f"Image size {img.size} != target ({width}, {height}) — scale first"
+            f"Image width {img.size[0]} != target {width} -- scale first"
         )
     return _RENDERERS[charset_name](img, width, height)

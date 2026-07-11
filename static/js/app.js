@@ -17,6 +17,36 @@
   function byId(id){ return document.getElementById(id); }
   function qa(s){ return document.querySelectorAll(s); }
   var toastTimer = null;
+
+  function ansiToHtml(text) {
+    var fg = null, bg = null, out = "";
+    var toks = text.split(/(\x1b\[[0-9;]*m)/);
+    for (var i = 0; i < toks.length; i++) {
+      var t = toks[i]; if (!t) continue;
+      if (/^\x1b\[[0-9;]*m$/.test(t)) {
+        var inner = t.slice(2, -1);
+        if (inner === "0") { fg = null; bg = null; }
+        else if (inner === "39") { fg = "#c9d1d9"; }
+        else if (inner === "49") { bg = "#0a0e14"; }
+        else if (inner.indexOf("38;2;") === 0) { var p = inner.split(";"); fg = "rgb(" + p[2] + "," + p[3] + "," + p[4] + ")"; }
+        else if (inner.indexOf("48;2;") === 0) { var p = inner.split(";"); bg = "rgb(" + p[2] + "," + p[3] + "," + p[4] + ")"; }
+        continue;
+      }
+      var esc = t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      var ch = esc.charAt(0);
+      if (ch === "▀" && (fg || bg)) {
+        var top = fg || "#000", bot = bg || "#000";
+        var st = "background:linear-gradient(to bottom," + top + " 50%," + bot + " 50%);"
+               + "-webkit-background-clip:text;background-clip:text;color:transparent;"
+               + "-webkit-text-fill-color:transparent;background-repeat:no-repeat;";
+        out += "<span style=\"" + st + "\">" + esc + "</span>";
+      } else if (fg || bg) {
+        var st = []; if (fg) st.push("color:" + fg); if (bg) st.push("background-color:" + bg);
+        out += "<span style=\"" + st.join(";") + "\">" + esc + "</span>";
+      } else { out += esc; }
+    }
+    return out;
+  }
   function toast(msg) {
     var el = byId("toast"); if (!el) return;
     el.textContent = msg; el.classList.add("show");
@@ -29,7 +59,7 @@
   function renderFrame(idx) {
     if (!preview || !S.frames.length) return;
     if (idx < 0) idx = 0; if (idx >= S.frames.length) idx = S.frames.length - 1;
-    preview.textContent = S.frames[idx].join("\n");
+    preview.innerHTML = S.frames[idx].map(ansiToHtml).join("\n");
     currentFrame = idx;
     var n = S.frames.length;
     if (progressFill) progressFill.style.width = ((idx + 1) / n) * 100 + "%";

@@ -43,8 +43,13 @@ def convert(path: str, charset: str, width: int = 80, height: int = 24) -> Frame
         )
 
     frames = extract_frames(path)
-    scaled = [scale_frame(f, width, height) for f, _ in frames]
-    lines_per_frame = [render_frame(s, charset, width, height) for s in scaled]
+    # Half-block charsets (blocks) sample paired rows, so they need 2x the
+    # vertical resolution to produce `height` terminal rows. Everything else
+    # scales straight to (width, height).
+    needs_double_height = (charset == "blocks")
+    scale_h = height * 2 if needs_double_height else height
+    scaled = [scale_frame(f, width, scale_h) for f, _ in frames]
+    lines_per_frame = [render_frame(s, charset, width, scale_h) for s in scaled]
 
     interval = frames[0][1] if frames and frames[0][1] > 0 else 0.1
     return FrameSequence(

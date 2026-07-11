@@ -6,6 +6,7 @@ import html
 import json
 
 from termify.engine import FrameSequence
+from termify.ansi_to_html import ansi_to_html
 
 
 _PLAYER_TEMPLATE = """<!DOCTYPE html>
@@ -36,7 +37,7 @@ _PLAYER_TEMPLATE = """<!DOCTYPE html>
     var idx = 0;
     var el = document.getElementById('screen');
     function tick() {{
-      el.textContent = FRAMES[idx].join('\n');
+      el.innerHTML = FRAMES[idx].join('\n');
       idx = (idx + 1) % FRAMES.length;
     }}
     tick();
@@ -49,7 +50,11 @@ _PLAYER_TEMPLATE = """<!DOCTYPE html>
 
 def render(sequence: FrameSequence) -> str:
     """Generate a self-contained .html player page as a string."""
-    frames_json = json.dumps(sequence.lines_per_frame, ensure_ascii=False, indent=2)
+    html_frames = [
+        [ansi_to_html(line) for line in frame]
+        for frame in sequence.lines_per_frame
+    ]
+    frames_json = json.dumps(html_frames, ensure_ascii=False, indent=2)
     return _PLAYER_TEMPLATE.format(
         charset=html.escape(sequence.charset),
         w=sequence.width,
