@@ -1,8 +1,8 @@
 (function () {
   "use strict";
-  var S = { taskId: null, frames: [], interval: 0.1, charset: "ascii", totalFrames: 0, width: 80, height: 24 };
+  var S = { taskId: null, frames: [], htmlFrames: [], interval: 0.1, charset: "ascii", totalFrames: 0, width: 80, height: 24, wasPlaying: false };
   var latestReq = 0;
-  var currentFrame = 0, playing = false, tickHandle = null;
+  var currentFrame = 0, playing = false, rafId = null, lastFrameTime = 0;
   var FO = ".form" + "at-option";
   var FB = ".mcu-form" + "at-btn";
   var preview = document.getElementById("animPreview");
@@ -34,15 +34,15 @@
       }
       var esc = t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       var ch = esc.charAt(0);
-      if (ch === "▀" && (fg || bg)) {
+      if (ch === "\u2580" && (fg || bg)) {
         var top = fg || "#000", bot = bg || "#000";
-        var st = "background:linear-gradient(to bottom," + top + " 50%," + bot + " 50%);"
-               + "-webkit-background-clip:text;background-clip:text;color:transparent;"
-               + "-webkit-text-fill-color:transparent;background-repeat:no-repeat;";
-        out += "<span style=\"" + st + "\">" + esc + "</span>";
+        var st = "background:linear-gradient(to bottom," + top + " 50%," + bot + " 50%);";
+        for (var j = 0; j < esc.length; j++) {
+          out += '<span class="hb" style="' + st + '"></span>';
+        }
       } else if (fg || bg) {
-        var st = []; if (fg) st.push("color:" + fg); if (bg) st.push("background-color:" + bg);
-        out += "<span style=\"" + st.join(";") + "\">" + esc + "</span>";
+        var st2 = []; if (fg) st2.push("color:" + fg); if (bg) st2.push("background-color:" + bg);
+        out += '<span style="' + st2.join(";") + '">' + esc + "</span>";
       } else { out += esc; }
     }
     return out;
@@ -59,7 +59,7 @@
   function renderFrame(idx) {
     if (!preview || !S.frames.length) return;
     if (idx < 0) idx = 0; if (idx >= S.frames.length) idx = S.frames.length - 1;
-    preview.innerHTML = S.frames[idx].map(ansiToHtml).join("\n");
+    preview.innerHTML = S.htmlFrames[idx] || S.frames[idx].map(ansiToHtml).join("\n");
     currentFrame = idx;
     var n = S.frames.length;
     if (progressFill) progressFill.style.width = ((idx + 1) / n) * 100 + "%";
@@ -67,24 +67,40 @@
     setTitleMeta();
   }
   function tick() { if (!S.frames.length) return; renderFrame((currentFrame + 1) % S.frames.length); }
+  function rafLoop(ts) {
+    if (!playing) return;
+    if (!lastFrameTime) {
+      lastFrameTime = ts;
+    } else if (ts - lastFrameTime >= S.interval * 1000) {
+      lastFrameTime = ts;
+      tick();
+    }
+    rafId = requestAnimationFrame(rafLoop);
+  }
   function startPlayer() {
-    if (tickHandle !== null || S.frames.length < 2) return;
+    if (playing || S.frames.length < 2) return;
     playing = true;
     if (playBtn) playBtn.classList.add("active");
     if (pauseBtn) pauseBtn.classList.remove("active");
-    tickHandle = setInterval(tick, S.interval * 1000);
+    lastFrameTime = 0;
+    rafId = requestAnimationFrame(rafLoop);
   }
   function pausePlayer() {
     playing = false;
     if (playBtn) playBtn.classList.remove("active");
     if (pauseBtn) pauseBtn.classList.add("active");
-    if (tickHandle !== null) { clearInterval(tickHandle); tickHandle = null; }
+    if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
   }
   function applyPreview(d) {
     S.frames = d.frames || [];
     S.interval = d.interval || 0.1;
     S.totalFrames = d.frame_count || S.frames.length;
+    S.htmlFrames = [];
+    for (var i = 0; i < S.frames.length; i++) {
+      S.htmlFrames.push(S.frames[i].map(ansiToHtml).join("\n"));
+    }
     setTitleMeta(); renderFrame(0);
+    if (S.wasPlaying) { S.wasPlaying = false; startPlayer(); }
   }
   function requestPreview(charset) {
     if (!S.taskId) { toast("请先上传文件"); return; }
@@ -93,8 +109,9 @@
     fetch(url).then(function (r) { return r.json(); }).then(function (d) {
       if (myId !== latestReq) return;
       if (d.error) { toast(d.error); return; }
+      S.wasPlaying = playing;
+      if (playing) { if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; } playing = false; }
       S.charset = charset; applyPreview(d);
-      if (playing) { if (tickHandle !== null) { clearInterval(tickHandle); tickHandle = null; } startPlayer(); }
     }).catch(function () { if (myId !== latestReq) return; toast("preview failed"); });
   }
   function handleFile(file) {
@@ -108,7 +125,9 @@
         if (d.error) { toast(d.error); return; }
         S.taskId = d.task_id; S.totalFrames = d.frames_count;
         markSelected(".style-card", '[data-style="ascii"]');
-        S.width = 80; S.height = 24; requestPreview("ascii");
+        S.width = 80; S.height = 24; S.wasPlaying = true; requestPreview("ascii");
+        var previewSection = document.getElementById("preview");
+        if (previewSection) previewSection.scrollIntoView({ behavior: "smooth", block: "start" });
       })
       .catch(function (e) { if (uploadZone) uploadZone.classList.remove("uploading"); toast("upload failed: " + e); });
   }
@@ -169,7 +188,7 @@
       btn.classList.add("selected");
       var m = (btn.textContent || "").match(/(\d+)\s*[x×]\s*(\d+)/);
       if (m) { S.width = parseInt(m[1], 10); S.height = parseInt(m[2], 10); }
-      if (S.taskId) { if (tickHandle !== null) { clearInterval(tickHandle); tickHandle = null; } requestPreview(S.charset); }
+      if (S.taskId) { requestPreview(S.charset); }
       else toast("切换尺寸将在上传后应用");
     });
   });
@@ -186,7 +205,7 @@
   if (progressBar) progressBar.addEventListener("click", function (e) {
     var r = progressBar.getBoundingClientRect();
     var x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-    if (tickHandle !== null) { clearInterval(tickHandle); tickHandle = null; }
+    if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; } playing = false;
     renderFrame(Math.round(x * (S.frames.length - 1)));
   });
   if (downloadBtn) downloadBtn.addEventListener("click", doDownload);

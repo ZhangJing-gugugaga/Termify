@@ -2,16 +2,17 @@
 """End-to-end smoke demo: convert a sample image in every charset and emit both output files.
 
 Usage:
-    python demo.py [image_path] [--charset NAME] [--width N] [--height N] [--out DIR]
+    python demo.py <image_path> [--charset NAME] [--width N] [--height N] [--out DIR]
 
-Defaults to the bundled SalaryCat sample when no image is given.
+Pass your own GIF/PNG/JPG as the first argument.  Or place a file named
+sample.gif in the project root to use as the default.
 """
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-DEFAULT_SAMPLE = Path(r"E:\Desktop\工作\SalaryCat\cat.GIF")
+DEFAULT_SAMPLE = Path("sample.gif")  # place your own GIF here or pass path as arg
 
 
 def main() -> None:
