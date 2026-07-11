@@ -1,0 +1,54 @@
+:root {
+  --bg-deep: #060a10;
+              --bg-base: #0a0e14;
+              --bg-surface: #111620;
+              --bg-elevated: #1a1e24;
+              --bg-hover: #222830;
+  
+              --border-dim: #1e2530;
+              --border-subtle: #2a3040;
+              --border-active: #3a4555;
+  
+              --green: #00ff41;
+              --green-dim: #00cc33;
+              --green-glow: rgba(0, 255, 65, 0.15);
+              --green-text: #00ff41;
+  
+              --amber: #ffb000;
+              --amber-dim: #cc8d00;
+              --amber-glow: rgba(255, 176, 0, 0.12);
+  
+              --cyan: #00d4ff;
+              --cyan-dim: #00a8cc;
+  
+              --red: #ff3b30;
+              --red-dim: #cc2f26;
+  
+              --text-primary: #e0e6ed;
+              --text-secondary: #8899aa;
+              --text-dim: #556677;
+              --text-inverse: #0a0e14;
+  
+              --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+              --font-sans: 'Space Grotesk', system-ui, sans-serif;
+  
+              --radius-sm: 2px;
+              --radius-md: 4px;
+              --radius-lg: 8px;
+  
+              --space-1: 4px;
+              --space-2: 8px;
+              --space-3: 12px;
+              --space-4: 16px;
+              --space-5: 20px;
+              --space-6: 24px;
+              --space-8: 32px;
+              --space-10: 40px;
+              --space-12: 48px;
+              --space-16: 64px;
+              --space-20: 80px;
+  
+              --transition-fast: 120ms ease-out;
+              --transition-base: 200ms ease-out;
+              --transition-slow: 350ms ease-out;
+}

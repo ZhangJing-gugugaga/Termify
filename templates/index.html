@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Termify — 万物皆可终端</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+<div id="toast"></div>
+
+
+    <!-- ═══════════ NAVIGATION ═══════════ -->
+    <nav>
+        <div class="container">
+            <a href="#" class="logo">
+                <div class="logo-icon">T</div>
+                <div class="logo-text">Termi<span>fy</span></div>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#upload">上传</a></li>
+                <li><a href="#styles">风格</a></li>
+                <li><a href="#preview">预览</a></li>
+            </ul>
+            <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                GitHub
+            </a>
+        </div>
+    </nav>
+
+    <!-- ═══════════ HERO ═══════════ -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-badge">Open Source</div>
+            <h1>万物皆可<span class="highlight">终端</span></h1>
+            <p class="hero-subtitle">
+                上传任何 GIF、图片或视频，选择渲染风格，下载能在任何终端播放的动画文件。
+            </p>
+            <div class="hero-terminal">
+                <div class="terminal">
+                    <div class="terminal-header">
+                        <div class="terminal-dot red"></div>
+                        <div class="terminal-dot amber"></div>
+                        <div class="terminal-dot green"></div>
+                        <div class="terminal-title">~/termify</div>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line">
+                            <span class="terminal-prompt">$</span>
+                            <span class="terminal-cmd">termify convert cat.gif --style blocks --output python</span>
+                        </div>
+                        <div class="terminal-output">
+                            ✓ 24 frames extracted<br>
+                            ✓ Resized to 80×48 (terminal units)<br>
+                            ✓ Rendered with Unicode blocks + TrueColor<br>
+                            ✓ Output: cat_termify.py (12.4 KB)<br>
+                        </div>
+                        <div class="terminal-line" style="margin-top: 4px;">
+                            <span class="terminal-prompt">$</span>
+                            <span class="terminal-cmd">python cat_termify.py</span>
+                            <span class="terminal-cursor"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ UPLOAD ═══════════ -->
+    <section class="upload-section" id="upload">
+        <div class="container">
+            <div class="section-label">Step 01</div>
+            <h2 class="section-title">上传你的素材</h2>
+            <div class="upload-zone" id="uploadZone">
+                <div class="upload-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                </div>
+                <div class="upload-text">
+                    <h3>拖拽文件到这里，或 <span class="browse-link">点击选择</span></h3>
+                    <p>支持 GIF、PNG、JPG，最大 20MB</p>
+                </div>
+                <div class="upload-formats">
+                    <span class="format-tag">.GIF</span>
+                    <span class="format-tag">.PNG</span>
+                    <span class="format-tag">.JPG</span>
+                    <span class="format-tag">.MP4 即将支持</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ STYLE SELECTION ═══════════ -->
+    <section class="preview-section" id="styles">
+        <div class="container">
+            <div class="section-label">Step 02</div>
+            <h2 class="section-title">选择渲染风格</h2>
+            <div class="style-grid">
+
+                <!-- ASCII -->
+                <div class="style-card selected" data-style="ascii">
+                    <div class="style-preview ascii">@@@####@@@@
+@@##%%**##@@
+@#%*++=*#%@
+@#%+  +*#%@
+@##*    *##@
+@#%*    *#%@
+@#%*++=*#%@
+@@##%%**##@@
+@@@####@@@@</div>
+                    <div class="style-info">
+                        <div class="style-name">经典ASCII灰度</div>
+                        <div class="style-desc">最复古，任何终端可显示</div>
+                    </div>
+                </div>
+
+                <!-- Blocks -->
+                <div class="style-card" data-style="blocks">
+                    <div class="style-preview blocks">████████████
+████▓▓▓▓████
+██▓▓▒▒▒▒▓▓██
+██▓▒░░░░▒▓██
+██▓▒    ▒▓██
+██▓▒░░░░▒▓██
+██▓▓▒▒▒▒▓▓██
+████▓▓▓▓████
+████████████</div>
+                    <div class="style-info">
+                        <div class="style-name">Unicode色块</div>
+                        <div class="style-desc">视觉冲击力最强</div>
+                    </div>
+                </div>
+
+                <!-- Braille -->
+                <div class="style-card" data-style="braille">
+                    <div class="style-preview braille">⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣶⣶⣶⣶⣿⣿⣿
+⣿⣶⣤⣤⣤⣤⣶⣿⣿
+⣿⣶⣤⣀⣀⣤⣶⣿⣿
+⣿⣶⣤⣀⣀⣤⣶⣿⣿
+⣿⣶⣤⣤⣤⣤⣶⣿⣿
+⣿⣿⣶⣶⣶⣶⣿⣿⣿
+⣿⣿⣿⣿⣿⣿⣿⣿⣿</div>
+                    <div class="style-info">
+                        <div class="style-name">Braille点阵</div>
+                        <div class="style-desc">高分辨率，科技感</div>
+                    </div>
+                </div>
+
+                <!-- Geometric -->
+                <div class="style-card" data-style="geometric">
+                    <div class="style-preview geometric">■■■■■■■■■■
+■■◆◆◆◆■■■■
+■◆◇◇◇◇◆■■
+■◆◇  ◇◆■■
+■◆◇  ◇◆■■
+■◆◇◇◇◇◆■■
+■■◆◆◆◆■■■■
+■■■■■■■■■■</div>
+                    <div class="style-info">
+                        <div class="style-name">几何图形</div>
+                        <div class="style-desc">现代设计感</div>
+                    </div>
+                </div>
+
+                <!-- Binary -->
+                <div class="style-card" data-style="binary">
+                    <div class="style-preview binary">██████████████
+████      ████
+██      █████
+██  ████  ███
+██  ████  ███
+██      █████
+████      ████
+██████████████</div>
+                    <div class="style-info">
+                        <div class="style-name">极简二值</div>
+                        <div class="style-desc">纯黑白，复古印刷</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ ANIMATION PREVIEW ═══════════ -->
+    <section class="animation-section" id="preview">
+        <div class="container">
+            <div class="section-label">Step 03</div>
+            <h2 class="section-title">预览 & 下载</h2>
+            <div class="animation-layout">
+
+                <!-- Left: Large terminal preview -->
+                <div class="animation-terminal">
+                    <div class="terminal">
+                        <div class="terminal-header">
+                            <div class="terminal-dot red"></div>
+                            <div class="terminal-dot amber"></div>
+                            <div class="terminal-dot green"></div>
+                            <div class="terminal-title">animation preview — blocks style</div>
+                        </div>
+                        <div class="terminal-body" id="animPreview">
+          ████████████████████████████████
+        ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░██
+      ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░██
+    ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░██
+  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░██
+  ██░░░░░░░░██████████████████████░░░░░░░░░░░░░░██
+  ██░░░░░░██▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓██░░░░░░░░░░░░██
+  ██░░░░██▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓██░░░░░░░░░░██
+  ██░░░░██▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓██░░░░░░░░░░██
+  ██░░░░██▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓██░░░░░░░░░░██
+  ██░░░░██▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓██░░░░░░░░░░██
+  ██░░░░░░██▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓██░░░░░░░░░░░░██
+  ██░░░░░░░░██████████████████████░░░░░░░░░░░░░░██
+  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░██
+    ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░██
+      ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░██
+        ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░██
+          ████████████████████████████████
+                        </div>
+                        <div class="animation-controls">
+                            <button class="control-btn active" title="Play">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            </button>
+                            <button class="control-btn" title="Pause">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                            </button>
+                            <div class="progress-bar">
+                                <div class="progress-fill"></div>
+                            </div>
+                            <span class="frame-counter">8 / 24</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Output panel -->
+                <div class="output-panel">
+                    <div class="output-card">
+                        <div class="output-card-title">输出格式</div>
+                        <div class="format-options">
+                            <div class="format-option selected">
+                                <div class="format-radio"></div>
+                                <div class="format-label">
+                                    <div class="format-label-name">Python 脚本</div>
+                                    <div class="format-label-desc">python play.py 直接运行</div>
+                                </div>
+                                <div class="format-icon">.py</div>
+                            </div>
+                            <div class="format-option">
+                                <div class="format-radio"></div>
+                                <div class="format-label">
+                                    <div class="format-label-name">HTML 页面</div>
+                                    <div class="format-label-desc">浏览器打开即播放</div>
+                                </div>
+                                <div class="format-icon">.html</div>
+                            </div>
+                            <div class="format-option" data-format="mcu">
+                                <div class="format-radio"></div>
+                                <div class="format-label">
+                                    <div class="format-label-name">嵌入式设备 <span class="badge-v2">v2 即将支持</span></div>
+                                    <div class="format-label-desc">Arduino / ESP32 / 单片机液晶屏</div>
+                                </div>
+                                <div class="format-icon" style="color: var(--amber); border-color: rgba(255,176,0,0.3);">.ino</div>
+                            </div>
+                        </div>
+
+                        <!-- MCU sub-panel (shown when embedded device is selected) -->
+                        <div class="mcu-panel" id="mcuPanel">
+                            <div class="mcu-chip-badge">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+                                MCU Output
+                            </div>
+
+                            <div>
+                                <div class="mcu-label">屏幕分辨率</div>
+                                <div class="mcu-resolution-grid" style="margin-top: var(--space-2);">
+                                    <button class="mcu-res-btn selected" data-res="128x64">
+                                        <span class="res-label">128 × 64</span>
+                                        <span class="res-device">SSD1306 OLED</span>
+                                    </button>
+                                    <button class="mcu-res-btn" data-res="160x128">
+                                        <span class="res-label">160 × 128</span>
+                                        <span class="res-device">ST7735 TFT</span>
+                                    </button>
+                                    <button class="mcu-res-btn" data-res="128x128">
+                                        <span class="res-label">128 × 128</span>
+                                        <span class="res-device">GC9106 TFT</span>
+                                    </button>
+                                    <button class="mcu-res-btn" data-res="240x240">
+                                        <span class="res-label">240 × 240</span>
+                                        <span class="res-device">ST7789 TFT</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="mcu-label">自定义分辨率</div>
+                                <div class="mcu-custom-row" style="margin-top: var(--space-2);">
+                                    <input class="mcu-custom-input" type="text" placeholder="宽" style="max-width: 70px;">
+                                    <span style="color: var(--text-dim);">×</span>
+                                    <input class="mcu-custom-input" type="text" placeholder="高" style="max-width: 70px;">
+                                    <span style="color: var(--text-dim); font-size: 11px; font-family: var(--font-mono);">px</span>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="mcu-label">输出格式</div>
+                                <div class="mcu-format-toggle" style="margin-top: var(--space-2);">
+                                    <button class="mcu-format-btn selected" data-mcu-fmt="ino">Arduino .ino</button>
+                                    <button class="mcu-format-btn" data-mcu-fmt="header">C 头文件 .h</button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="mcu-label">代码预览</div>
+                                <div class="mcu-code-preview" style="margin-top: var(--space-2);"><span class="comment">// frame_001 — 128×64 bitmap</span>
+<span class="kw">const</span> <span class="type">uint8_t</span> frame_001[] <span class="kw">PROGMEM</span> = {
+  <span class="type">0xFF</span>, <span class="type">0xFF</span>, <span class="type">0x80</span>, <span class="type">0x01</span>, <span class="type">0x7F</span>, <span class="type">0xFE</span>,
+  <span class="type">0xC0</span>, <span class="type">0x03</span>, <span class="type">0x3F</span>, <span class="type">0xFC</span>, <span class="type">0x1F</span>, <span class="type">0xF8</span>,
+  <span class="comment">/* ... 1024 bytes total ... */</span>
+};
+
+<span class="kw">void</span> <span class="type">loop</span>() {
+  display.clearDisplay();
+  display.drawBitmap(<span class="type">0</span>, <span class="type">0</span>,
+    frame_001, <span class="type">128</span>, <span class="type">64</span>, <span class="type">1</span>);
+  display.display();
+}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="output-card" id="terminalSizeCard">
+                        <div class="output-card-title">终端尺寸</div>
+                        <div class="size-options">
+                            <button class="size-btn">40×20</button>
+                            <button class="size-btn selected">80×24</button>
+                            <button class="size-btn">120×36</button>
+                        </div>
+                    </div>
+
+                    <button class="download-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        下载动画文件
+                    </button>
+
+                    <div class="share-link">
+                        <input type="text" value="termify.dev/s/a3x9Kq" readonly>
+                        <button>复制</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ FEATURES ═══════════ -->
+    <section class="features-section">
+        <div class="container">
+            <div class="section-label">Why Termify</div>
+            <h2 class="section-title">为什么选择 Termify</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon-box">5</div>
+                    <h3 class="feature-title">5种渲染风格</h3>
+                    <p class="feature-desc">从经典ASCII到Unicode色块，从Braille点阵到极简二值。总有一款适合你的终端。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon-box">⚡</div>
+                    <h3 class="feature-title">即下即玩</h3>
+                    <p class="feature-desc">Python脚本、HTML页面、Arduino代码——零依赖，双击就能播放。甚至能直接烧进单片机的OLED屏幕里。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon-box">∞</div>
+                    <h3 class="feature-title">万物皆可</h3>
+                    <p class="feature-desc">GIF表情包、宠物照片、产品截图、任何你想终端化的东西。上传，转换，分享。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ FOOTER ═══════════ -->
+    <footer>
+        <div class="container">
+            <p class="footer-text">
+                <a href="https://github.com/ZhangJing-gugugaga/Termify">Termify</a> — 万物皆可终端 · MIT License
+            </p>
+            <p class="footer-cta">
+                字符集不够用？<a href="https://github.com/ZhangJing-gugugaga/Termify/issues">来提 Issue →</a>
+            </p>
+        </div>
+    </footer>
+
+    <!-- ═══════════ TWEAKS PANEL ═══════════ -->
+    <button class="tweaks-toggle" id="tweaksToggle" title="Tweaks">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+
+    <div class="tweaks-panel" id="tweaksPanel">
+        <div class="tweaks-header">
+            <span class="tweaks-title">Tweaks</span>
+            <button class="tweaks-close" id="tweaksClose">×</button>
+        </div>
+        <div class="tweak-group">
+            <div class="tweak-label">背景网格</div>
+            <div class="tweak-options">
+                <button class="tweak-opt active" data-tweak="grid-on">显示</button>
+                <button class="tweak-opt" data-tweak="grid-off">隐藏</button>
+            </div>
+        </div>
+        <div class="tweak-group">
+            <div class="tweak-label">扫描线</div>
+            <div class="tweak-options">
+                <button class="tweak-opt active" data-tweak="scan-on">显示</button>
+                <button class="tweak-opt" data-tweak="scan-off">隐藏</button>
+            </div>
+        </div>
+        <div class="tweak-group">
+            <div class="tweak-label">主题色</div>
+            <div class="tweak-options">
+                <button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button>
+                <button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button>
+                <button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ═══════════ Style card selection ═══════════
+        document.querySelectorAll('.style-card').forEach(card => {
+            card.addEventListener('click', () => {
+                document.querySelectorAll('.style-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+            });
+        });
+
+        // ═══════════ Format option selection (with MCU panel toggle) ═══════════
+        const mcuPanel = document.getElementById('mcuPanel');
+        const terminalSizeCard = document.getElementById('terminalSizeCard');
+        const downloadBtn = document.querySelector('.download-btn');
+        document.querySelectorAll('.format-option').forEach(opt => {
+            opt.addEventListener('click', () => {
+                document.querySelectorAll('.format-option').forEach(o => o.classList.remove('selected'));
+                opt.classList.add('selected');
+                if (opt.dataset.format === 'mcu') {
+                    mcuPanel.classList.add('visible');
+                    terminalSizeCard.style.display = 'none';
+                    downloadBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>下载 Arduino 代码';
+                } else {
+                    mcuPanel.classList.remove('visible');
+                    terminalSizeCard.style.display = '';
+                    downloadBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>下载动画文件';
+                }
+            });
+        });
+
+        // ═══════════ MCU resolution button selection ═══════════
+        document.querySelectorAll('.mcu-res-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.mcu-res-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+            });
+        });
+
+        // ═══════════ MCU format toggle ═══════════
+        document.querySelectorAll('.mcu-format-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.mcu-format-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+            });
+        });
+
+        // ═══════════ Size button selection ═══════════
+        document.querySelectorAll('.size-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+            });
+        });
+
+        // ═══════════ Upload zone drag effects ═══════════
+        const uploadZone = document.getElementById('uploadZone');
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('drag-over');
+        });
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('drag-over');
+        });
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('drag-over');
+        });
+
+        // ═══════════ Tweaks panel ═══════════
+        const tweaksToggle = document.getElementById('tweaksToggle');
+        const tweaksPanel = document.getElementById('tweaksPanel');
+        const tweaksClose = document.getElementById('tweaksClose');
+
+        tweaksToggle.addEventListener('click', () => {
+            tweaksPanel.classList.toggle('open');
+            tweaksToggle.style.display = tweaksPanel.classList.contains('open') ? 'none' : 'flex';
+        });
+
+        tweaksClose.addEventListener('click', () => {
+            tweaksPanel.classList.remove('open');
+            tweaksToggle.style.display = 'flex';
+        });
+
+        // Tweaks: grid toggle
+        document.querySelectorAll('[data-tweak="grid-on"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.body.style.setProperty('--grid-opacity', '0.3');
+                document.querySelectorAll('[data-tweak^="grid"]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+        document.querySelectorAll('[data-tweak="grid-off"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.body.style.setProperty('--grid-opacity', '0');
+                document.querySelectorAll('[data-tweak^="grid"]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // Tweaks: scanline toggle
+        document.querySelectorAll('[data-tweak="scan-on"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.body.style.setProperty('--scanline-opacity', '1');
+                document.querySelectorAll('[data-tweak^="scan"]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+        document.querySelectorAll('[data-tweak="scan-off"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.body.style.setProperty('--scanline-opacity', '0');
+                document.querySelectorAll('[data-tweak^="scan"]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // Tweaks: theme color
+        document.querySelectorAll('[data-tweak^="theme-"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('[data-tweak^="theme-"]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const theme = btn.dataset.tweak.replace('theme-', '');
+                const colors = {
+                    green: { main: '#00ff41', dim: '#00cc33', glow: 'rgba(0,255,65,0.15)' },
+                    amber: { main: '#ffb000', dim: '#cc8d00', glow: 'rgba(255,176,0,0.12)' },
+                    cyan:  { main: '#00d4ff', dim: '#00a8cc', glow: 'rgba(0,212,255,0.12)' }
+                };
+                const c = colors[theme];
+                document.documentElement.style.setProperty('--green', c.main);
+                document.documentElement.style.setProperty('--green-dim', c.dim);
+                document.documentElement.style.setProperty('--green-glow', c.glow);
+            });
+        });
+
+        // ═══════════ Progress bar animation ═══════════
+        let progress = 35;
+        const progressFill = document.querySelector('.progress-fill');
+        const frameCounter = document.querySelector('.frame-counter');
+
+        setInterval(() => {
+            progress += 0.5;
+            if (progress > 100) progress = 0;
+            progressFill.style.width = progress + '%';
+            const frame = Math.floor(progress / 100 * 24) + 1;
+            frameCounter.textContent = frame + ' / 24';
+        }, 100);
+    </script>
+    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+</body>
+</html>
