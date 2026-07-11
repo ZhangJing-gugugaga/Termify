@@ -2,21 +2,46 @@
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 venv/
 .venv/
 env/
+.eggs/
+*.egg-info/
+dist/
+build/)
 
-# Upload temp files
+# Temp upload / processing dirs (per-session, regenerated on demand)
 uploads/
 tmp/
+
+# Demo output artifacts (regenerable via demo.py)
+outputs/
+
+# Logs
+logs/
+*.log
+
+# Claude session / memory data (personal, not part of the product)
+.claude/
+
+# Environment / secrets — never commit real credentials
+.env
+.env.*
+*.pem
+*.key
+.secrets/
 
 # OS files
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# Output
-*.log
+# Python REPL history
+.python_history
