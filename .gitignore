@@ -45,3 +45,18 @@ Desktop.ini
 
 # Python REPL history
 .python_history
+
+# Playwright MCP screenshots + console logs
+.playwright-mcp/
+*.png
+
+# throwaway dev scripts
+_e2e.py
+_fixline.py
+tmp/_*.html
+
+# browser-test scratch (salarycat copy + validation HTML)
+static/test/
+
+# throwaway one-off scripts
+_*.py
