@@ -10,11 +10,14 @@ Full product spec: `PRD.md`. UI mockup (static, not wired to backend): `ui-mocku
 
 ## Current state
 
-**Phase 1 (backend) + Phase 2 (frontend) implemented.** `app.py` (Flask) is Phase 3 — not yet wired.
+**Phase 1 (backend) + Phase 2 (frontend) + Phase 3 (integration) all implemented.** MVP complete and pushed to GitHub.
 
-- Backend: `termify/` package (charset → frames → engine → output) with `pytest`-green unit tests. See `demo.py` for CLI end-to-end.
-- Frontend: `templates/index.html` + `static/css/{tokens,app}.css` + `static/js/app.js`, built by split from `ui-mockup.html` via `tools/build_frontend.py`. Preview uses a hardcoded multi-frame ASCII animation (no backend yet). MCU output panel is UI-only, labeled "v2 即将支持".
-- Tests: `tests/` — run `pytest tests/`.
+- Backend: `termify/` package (charset → frames → engine → output) with `pytest`-green 42 unit tests. See `demo.py` for CLI end-to-end.
+- Frontend: `templates/index.html` + `static/css/{tokens,app}.css` + `static/js/app.js`, built by split from `ui-mockup.html` via `tools/build_frontend.py`. Preview is now API-driven (calls `/api/preview`). MCU output panel is UI-only, labeled "v2 即将支持".
+- Integration: `app.py` (Flask) wires the three PRD §6 endpoints directly to `termify.convert()` + `render()`. Server: `python app.py` → `http://127.0.0.1:5000`.
+- Output rendering fix: browsers do not interpret raw ANSI, so `termify/ansi_to_html.py` converts TrueColor ANSI → HTML `<span>` with CSS gradients (half-block `▀` gets a top/bottom gradient). The `.html` player converts server-side; the live preview has a JS-side `ansiToHtml`.
+- Tests: `tests/` — 42 tests, all green.
+- Reference: `../../SalaryCat` is a terminal-animation *player* (plays pre-made ASCII art GIFs). Its `renderer.py` (half-block `▀` fg=bg pairing + color delta encoding) is the quality benchmark — our blocks renderer mirrors its approach.
 
 ## Tech stack (locked by PRD)
 
@@ -47,17 +50,20 @@ Core conversion pipeline (single source of truth is `PRD.md` §5.3):
 
 Charset definitions and output templates live in PRD §5.5 and §5.6. Reference them when implementing — don't reinvent mappings.
 
+Implementation notes:
+- `blocks` engine scales frames to **(w, 2h)** so the half-block renderer can pair consecutive rows (fg≠bg vertical-resolution doubling). Other charsets scale to (w, h).
+- `blocks` renderer uses **color delta encoding** (only emit ANSI escape when fg/bg changes vs previous cell) — matches the reference SalaryCat renderer and cuts output size ~70-75%.
+- `braille` collapses to (w/2 × h/4) because each Braille codepoint covers a 2×4 cell — tests assert against this, don't "fix" it.
+
 ## Commands
 
 ```bash
 pip install flask pillow        # install deps
+python app.py                   # start server → http://127.0.0.1:5000
 pytest tests/                   # run backend tests (42 tests, all green)
 python demo.py --charset all    # CLI end-to-end: SalaryCat GIF → outputs/*.py + *.html
 python tools/build_frontend.py  # re-split ui-mockup.html → templates/ + static/
-python -m http.server 8765      # then open http://127.0.0.1:8765/templates/index.html
 ```
-
-`app.py` (Flask) is Phase 3 — not yet written. The frontend currently uses `url_for('static', …)` so it needs Flask to render; for raw static preview, serve the project root with `http.server` and open `/templates/index.html` (relative asset paths resolve).
 
 ## Conventions
 

@@ -395,28 +395,36 @@ Response:
 
 ### Phase 1: 核心转换引擎（后端）
 
-- [ ] GIF帧提取 + 缩放逻辑
-- [ ] 5种字符集映射引擎
-- [ ] Python脚本生成器
-- [ ] HTML页面生成器
-- [ ] 单元测试
+- [x] GIF帧提取 + 缩放逻辑 — `termify/frames.py`（`ImageSequence.Iterator` 抽帧 + LANCZOS 等比缩放 + letterbox）
+- [x] 5种字符集映射引擎 — `termify/charset.py`（ascii/blocks/braille/geometric/binary）
+- [x] Python脚本生成器 — `termify/output/python.py`（嵌入 FRAMES + `time.sleep` 循环）
+- [x] HTML页面生成器 — `termify/output/html.py`（自包含 `<pre>` + JS 定时器）
+- [x] 单元测试 — `tests/`（42 tests，全绿）
 
 ### Phase 2: Web前端
 
-- [ ] 上传组件（拖拽 + 点击）
-- [ ] 5风格预览卡片
-- [ ] 终端模拟器动画播放
-- [ ] 下载按钮
-- [ ] 暗色主题样式
+- [x] 上传组件（拖拽 + 点击）— `static/js/app.js` `handleFile()` + `FormData` 上传
+- [x] 5风格预览卡片 — `.style-card[data-style]` + `requestPreview()`
+- [x] 终端模拟器动画播放 — `<pre id="animPreview">` + `setInterval` 播放/暂停/进度条
+- [x] 下载按钮 — `doDownload()` → `/api/generate`
+- [x] 暗色主题样式 — `static/css/{tokens,app}.css`（CSS 变量 + 网格背景 + 扫描线）
 
 ### Phase 3: 联调与部署
 
-- [ ] 前后端联调
-- [ ] 错误处理（文件过大、格式不支持、处理超时）
-- [ ] 本地运行测试
-- [ ] 编写README
-- [ ] 推送GitHub
+- [x] 前后端联调 — `app.py` 三个端点直连 `termify.convert()` + `render()`
+- [x] 错误处理 — 400/404/413 状态码 + 扩展名白名单 + 20MB 上限
+- [x] 本地运行测试 — `python app.py` → `http://127.0.0.1:5000`
+- [x] 编写README — 含 Quick Start / API 表 / 项目结构
+- [x] 推送GitHub — `https://github.com/ZhangJing-gugugaga/Termify`
+
+### v1.0 放行后修复与优化（2026-07-11）
+
+浏览器实测发现 blocks 彩色预览显示为 ANSI 字面量乱码 + 半色块双色失效，一并修复：
+
+- [x] **ANSI→HTML 转换** — 新增 `termify/ansi_to_html.py`，将 TrueColor ANSI 转成带 CSS 渐变的 `<span>`（浏览器不解释 ANSI，参考 SalaryCat 走的是终端 stdout 路径）；`html.py` 嵌入前转换，`app.js` 添加 JS 侧 `ansiToHtml`
+- [x] **blocks 半色块 fg≡bg 修复** — 根因是预缩放到 (w,h) 后 `y_top==y_bot`（同采样点），垂直分辨率加倍失效。改为引擎缩放到 **(w, 2h)** + 渲染器逐对采样行，fg≠bg 双色恢复
+- [x] **颜色 delta 编码** — 相邻 cell 颜色不变不重发转义码（与参考 SalaryCat 一致），输出体积从 ~12MB 降到 ~3MB，终端播放更流畅
 
 ---
 
-*PRD v1.0 | 2026-07-10 | Termify*
+*PRD v1.0 | 2026-07-10 | Termify | 进度更新 2026-07-11*
