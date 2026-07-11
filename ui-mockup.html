@@ -626,14 +626,24 @@
         }
 
         .animation-terminal .terminal-body {
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: block;
+            overflow-x: auto;
+            overflow-y: hidden;
             min-height: 360px;
+            padding: var(--space-5);
             font-size: 10px;
             line-height: 1.3;
             white-space: pre;
             color: var(--green);
+        }
+
+        .animation-terminal .terminal-body span.hb {
+            display: inline-block;
+            width: 1ch;
+            height: 1.3em;
+            line-height: 1.3;
+            overflow: hidden;
+            vertical-align: top;
         }
 
         .animation-controls {
