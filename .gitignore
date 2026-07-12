@@ -60,3 +60,7 @@ static/test/
 
 # throwaway one-off scripts
 _*.py
+
+# Allow documentation images
+!images/
+!images/*.png
