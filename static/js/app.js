@@ -134,18 +134,25 @@
 
     var cols = S.width;
     var rows = pixels.length / cols;
-    var cellW = 8; // pixels per character cell
-    var cellH = 8;
+
+    // Each ▀ encodes 2 vertical image pixels; terminal chars are ~2:1 h:w,
+    // so cellH ≈ 2 × cellW keeps the image aspect ratio correct.
+    var container = preview.parentNode;
+    var availW = container ? container.clientWidth - 32 : 640;
+    var cellW = Math.max(4, Math.floor(availW / cols));
+    var cellH = cellW * 2;
     var canvasW = cols * cellW;
     var canvasH = rows * cellH;
 
     var canvas = S.canvasEl;
     var ctx = S.canvasCtx;
 
-    // Resize canvas if needed
+    // Resize canvas buffer if dimensions changed
     if (canvas.width !== canvasW || canvas.height !== canvasH) {
       canvas.width = canvasW;
       canvas.height = canvasH;
+      canvas.style.width = canvasW + "px";
+      canvas.style.height = canvasH + "px";
     }
 
     // Clear with black background
