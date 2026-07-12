@@ -28,7 +28,8 @@ class FrameSequence:
     charset: str
 
 
-def convert(path: str, charset: str, width: int = 80, height: int = 24) -> FrameSequence:
+def convert(path: str, charset: str, width: int = 80, height: int = 24,
+            fg_color=None, bg_color=None) -> FrameSequence:
     """Convert an image/GIF to a FrameSequence in the given charset.
 
     Pipeline (PRD §5.3):
@@ -36,6 +37,8 @@ def convert(path: str, charset: str, width: int = 80, height: int = 24) -> Frame
       2. scale_frame     -> resized to width x height (letterboxed)
       3. render_frame    -> pixel -> character lines
     All frames share one interval (first frame's, default 0.1s).
+    fg_color / bg_color are optional (R,G,B) tuples; passed through to
+    render_frame so non-block charsets can wrap each cell in TrueColor ANSI.
     """
     if charset not in CHARSETS:
         raise ValueError(
@@ -43,13 +46,18 @@ def convert(path: str, charset: str, width: int = 80, height: int = 24) -> Frame
         )
 
     frames = extract_frames(path)
-    # Half-block charsets (blocks) sample paired rows, so they need 2x the
-    # vertical resolution to produce `height` terminal rows. Everything else
-    # scales straight to (width, height).
-    needs_double_height = (charset == "blocks")
-    scale_h = height * 2 if needs_double_height else height
-    scaled = [scale_frame(f, width, scale_h) for f, _ in frames]
-    lines_per_frame = [render_frame(s, charset, width, scale_h) for s in scaled]
+    if charset == "blocks":
+        scale_w, scale_h = width, height * 2
+    elif charset == "braille":
+        scale_w, scale_h = width * 2, height * 4
+    else:
+        scale_w, scale_h = width, height
+    scaled = [scale_frame(f, scale_w, scale_h) for f, _ in frames]
+    lines_per_frame = [
+        render_frame(s, charset, scale_w, scale_h,
+                     fg_color=fg_color, bg_color=bg_color)
+        for s in scaled
+    ]
 
     interval = frames[0][1] if frames and frames[0][1] > 0 else 0.1
     return FrameSequence(

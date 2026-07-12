@@ -343,6 +343,8 @@
                             <button class="size-btn">40×20</button>
                             <button class="size-btn selected">80×24</button>
                             <button class="size-btn">120×36</button>
+                            <button class="size-btn">160×48 <small>高清</small></button>
+                            <button class="size-btn">200×60 <small>超清</small></button>
                         </div>
                     </div>
 
@@ -433,6 +435,19 @@
                 <button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button>
                 <button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button>
             </div>
+        </div>
+        <div class="tweak-group">
+            <div class="tweak-label">前景色 / 背景色</div>
+            <div class="color-picker-row">
+                <label class="color-picker-label">前景
+                    <input type="color" id="fgColorPicker" value="#00ff41" title="字符颜色">
+                </label>
+                <label class="color-picker-label">背景
+                    <input type="color" id="bgColorPicker" value="#0a0e14" title="背景颜色">
+                </label>
+                <button class="color-reset-btn" id="colorResetBtn" title="恢复默认 (绿底黑字)">↺</button>
+            </div>
+            <div class="tweak-hint">提示: 仅对非 blocks 风格生效；默认 = 纯文本</div>
         </div>
     </div>
 
