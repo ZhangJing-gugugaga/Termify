@@ -10,7 +10,7 @@ Full product spec: `PRD.md`. UI mockup (static, not wired to backend): `ui-mocku
 
 ## Current state
 
-**Phase 1 (backend) + Phase 2 (frontend) + Phase 3 (integration) all implemented.** MVP complete and pushed to GitHub.
+**Phase 1 (backend) + Phase 2 (frontend) + Phase 3 (integration) all implemented.** MVP complete and pushed to GitHub. Post-release: fullscreen adaptive player + optional audio.
 
 - Backend: `termify/` package (charset → frames → engine → output) with `pytest`-green 42 unit tests. See `demo.py` for CLI end-to-end.
 - Frontend: `templates/index.html` + `static/css/{tokens,app}.css` + `static/js/app.js` (IIFE, API-driven). MCU output panel is UI-only, labeled "v2 即将支持".
@@ -19,6 +19,7 @@ Full product spec: `PRD.md`. UI mockup (static, not wired to backend): `ui-mocku
 - Performance: all frames pre-rendered to HTML strings on load (`S.htmlFrames`), playback via `requestAnimationFrame` (not `setInterval`), switching charsets uses `wasPlaying` flag to avoid progress bar jumps.
 - CJK Windows fix: `▀` (U+2580) renders as double-width on Chinese Windows; `.hb` spans force `width:1ch;height:1.3em` to prevent overflow.
 - Tests: `tests/` — 42 tests, all green.
+- Post-release enhancements: Python player auto-scales to terminal window (fullscreen adaptive, `GetConsoleScreenBufferInfo.srWindow` on Windows), optional `music.mp3` audio. Frontend UX: upload scrolls to style picker, style click scrolls to preview.
 
 ## Tech stack (locked by PRD)
 

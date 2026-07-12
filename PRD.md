@@ -444,7 +444,7 @@ Response:
 
 **功能增强：**
 
-- [x] **上传后自动滚动** — `handleFile` 上传完成后 `scrollIntoView` 到预览区
+- [x] **上传后自动滚动** — 上传完成后自动滚动到风格选择区（`#styles`）；点击风格卡片后自动滚动到预览区（`#preview`），形成上传→选风格→看预览的流畅引导
 - [x] **上传后自动播放** — `wasPlaying=true` 使动画在上传后自动开始
 
 **安全清理：**
@@ -456,6 +456,16 @@ Response:
 - **build_frontend.py 覆盖风险** — `tools/build_frontend.py` 从 `ui-mockup.html` 拆分 JS/CSS 到 `static/` 目录，会覆盖 `app.js` 和 `app.css` 的生产代码。Phase 3 的 API 集成、上传处理、rAF 循环等代码不在 mockup 中，一旦触发拆分就会丢失。**禁止在生产代码修改后运行此脚本**。修改前端应直接改 `static/js/app.js` 和 `static/css/app.css`，mockup 仅作视觉参考
 - **Read 工具不显示 ESC 控制字符** — `\x1b`（ASCII 27）在 Read 输出中不可见，需用 `open(path,'rb').read()` 检查实际字节
 - **空 inline-block span 高度坍塌** — 去掉 `▀` 文字后 span 变空，`inline-block` 无文本时高度为零，需加显式 `height:1.3em`
+
+
+### v1.0 放行后修复与优化（2026-07-12 续）
+
+**功能增强 — Python 播放器全屏自适应 + 音频：**
+
+- [x] **终端全屏自适应** — 下载的 `.py` 脚本运行时自动适应终端窗口大小，动画等比缩放居中显示；拖拽终端窗口边缘改变大小时实时重新缩放。新增函数：`_get_terminal_size()`（Windows 使用 `GetConsoleScreenBufferInfo` 的 `srWindow` 获取可见窗口矩形）、`_fit_frames()`（等比缩放帧数据）、`_compose_screen()`（居中合成）、`_scale_ansi_line()`（ANSI 行缩放）
+- [x] **可选音频播放** — 将 `music.mp3` 放在 `.py` 同目录下，播放器自动检测并用系统自带工具播放（Windows: `MediaElement` / macOS: `afplay`），`_start_audio()` + `_stop_audio()` 管理生命周期
+- [x] **ANSI 解析与编码** — `_parse_ansi_line()` 解析带 ANSI 转义的行提取纯文本+颜色，`_encode_ansi_line()` 重新编码，确保缩放后颜色不丢失
+- [x] **Windows ANSI 支持** — `_enable_windows_ansi()` 调用 `kernel32.SetConsoleMode` 启用 VT100 处理
 
 ---
 
