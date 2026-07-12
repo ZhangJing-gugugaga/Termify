@@ -13,11 +13,12 @@ Full product spec: `PRD.md`. UI mockup (static, not wired to backend): `ui-mocku
 **Phase 1 (backend) + Phase 2 (frontend) + Phase 3 (integration) all implemented.** MVP complete and pushed to GitHub.
 
 - Backend: `termify/` package (charset → frames → engine → output) with `pytest`-green 42 unit tests. See `demo.py` for CLI end-to-end.
-- Frontend: `templates/index.html` + `static/css/{tokens,app}.css` + `static/js/app.js`, built by split from `ui-mockup.html` via `tools/build_frontend.py`. Preview is now API-driven (calls `/api/preview`). MCU output panel is UI-only, labeled "v2 即将支持".
+- Frontend: `templates/index.html` + `static/css/{tokens,app}.css` + `static/js/app.js` (IIFE, API-driven). MCU output panel is UI-only, labeled "v2 即将支持".
 - Integration: `app.py` (Flask) wires the three PRD §6 endpoints directly to `termify.convert()` + `render()`. Server: `python app.py` → `http://127.0.0.1:5000`.
-- Output rendering fix: browsers do not interpret raw ANSI, so `termify/ansi_to_html.py` converts TrueColor ANSI → HTML `<span>` with CSS gradients (half-block `▀` gets a top/bottom gradient). The `.html` player converts server-side; the live preview has a JS-side `ansiToHtml`.
+- Output rendering fix: browsers do not interpret raw ANSI, so `ansiToHtml` (JS-side) converts TrueColor ANSI → HTML `<span>` with CSS gradients. Half-block `▀` gets a top/bottom linear gradient on an empty `<span class="hb">` (no `background-clip:text` for performance).
+- Performance: all frames pre-rendered to HTML strings on load (`S.htmlFrames`), playback via `requestAnimationFrame` (not `setInterval`), switching charsets uses `wasPlaying` flag to avoid progress bar jumps.
+- CJK Windows fix: `▀` (U+2580) renders as double-width on Chinese Windows; `.hb` spans force `width:1ch;height:1.3em` to prevent overflow.
 - Tests: `tests/` — 42 tests, all green.
-- Reference: `../../SalaryCat` is a terminal-animation *player* (plays pre-made ASCII art GIFs). Its `renderer.py` (half-block `▀` fg=bg pairing + color delta encoding) is the quality benchmark — our blocks renderer mirrors its approach.
 
 ## Tech stack (locked by PRD)
 
@@ -61,9 +62,14 @@ Implementation notes:
 pip install flask pillow        # install deps
 python app.py                   # start server → http://127.0.0.1:5000
 pytest tests/                   # run backend tests (42 tests, all green)
-python demo.py --charset all    # CLI end-to-end: SalaryCat GIF → outputs/*.py + *.html
-python tools/build_frontend.py  # re-split ui-mockup.html → templates/ + static/
+python demo.py your.gif --charset all  # CLI end-to-end: GIF → outputs/*.py + *.html
 ```
+
+**⚠️ DO NOT run `python tools/build_frontend.py`** — it re-splits `ui-mockup.html`
+into `static/` files, overwriting Phase 3 production code (API integration, upload
+handler, rAF loop, pre-rendering) with the mockup's static-only JavaScript.
+Edit `static/js/app.js` and `static/css/app.css` directly. The mockup is visual
+reference only.
 
 ## Conventions
 

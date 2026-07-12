@@ -425,6 +425,38 @@ Response:
 - [x] **blocks 半色块 fg≡bg 修复** — 根因是预缩放到 (w,h) 后 `y_top==y_bot`（同采样点），垂直分辨率加倍失效。改为引擎缩放到 **(w, 2h)** + 渲染器逐对采样行，fg≠bg 双色恢复
 - [x] **颜色 delta 编码** — 相邻 cell 颜色不变不重发转义码（与参考 SalaryCat 一致），输出体积从 ~12MB 降到 ~3MB，终端播放更流畅
 
+### v1.0 放行后修复与优化（2026-07-12）
+
+浏览器实测 + 人工测验发现 blocks 预览溢出界面、播放卡顿、进度条乱跳等问题，逐一修复：
+
+**Bug 修复：**
+
+- [x] **CJK Windows 下 blocks 溢出** — `▀`(U+2580) 在中文 Windows 上被浏览器渲染为双倍宽度（East Asian Ambiguous Width 问题），导致 80 个 `▀` 撑满 160 字符宽度冲出容器。修复：每个 `▀` 独立包裹在 `<span class="hb">` 中，CSS 强制 `display:inline-block;width:1ch;height:1.3em;overflow:hidden`；容器从 `display:flex;justify-content:center` 改为 `display:block;overflow-x:auto`
+- [x] **进度条乱跳** — `requestPreview` 切换字符集时立即调用 `startPlayer()`，但新帧还没从 API 返回，播放器用旧帧数据跑，进度条从旧位置突然跳到 0。修复：引入 `wasPlaying` 标记，先停播放器→等 API 返回→预渲染新帧→再重启播放器
+- [x] **其他风格播放不了** — 同一根因：旧 rAF 循环未被正确停止，新帧被旧帧覆盖。修复后切换字符集会先停播放器→等 API 返回→预渲染新帧→再启动
+- [x] **blocks 首帧跳帧** — `rafLoop` 首次回调时 `lastFrameTime=0`，`ts-0` 恒为 true 导致首帧立即跳到下一帧。修复：首次回调初始化 `lastFrameTime=ts` 而非直接 tick
+
+**性能优化：**
+
+- [x] **预渲染所有帧** — `applyPreview` 接收帧数据后一次性把 28 帧全部转成 HTML 字符串存入 `S.htmlFrames`，播放时 `renderFrame` 直接取 `innerHTML`，不再每帧调用 `ansiToHtml` 解析 ANSI 码（原 24×80=1920 个 span 解析 ×25fps → 一次预渲染）
+- [x] **空 span 替代 background-clip:text** — blocks 的 `▀` 渲染从 `<span>▀</span>` + `background-clip:text;color:transparent;-webkit-text-fill-color:transparent`（GPU 密集）改为空 `<span class="hb"></span>` + 纯 `background:linear-gradient`，视觉一致但渲染开销大幅降低
+- [x] **requestAnimationFrame 替代 setInterval** — 与浏览器 paint cycle 对齐，避免丢帧和布局抖动
+
+**功能增强：**
+
+- [x] **上传后自动滚动** — `handleFile` 上传完成后 `scrollIntoView` 到预览区
+- [x] **上传后自动播放** — `wasPlaying=true` 使动画在上传后自动开始
+
+**安全清理：**
+
+- [x] **移除 demo.py 硬编码本地路径** — `E:\Desktop\...` 改为相对路径 `sample.gif`，避免泄露文件系统结构
+
+**经验教训：**
+
+- **build_frontend.py 覆盖风险** — `tools/build_frontend.py` 从 `ui-mockup.html` 拆分 JS/CSS 到 `static/` 目录，会覆盖 `app.js` 和 `app.css` 的生产代码。Phase 3 的 API 集成、上传处理、rAF 循环等代码不在 mockup 中，一旦触发拆分就会丢失。**禁止在生产代码修改后运行此脚本**。修改前端应直接改 `static/js/app.js` 和 `static/css/app.css`，mockup 仅作视觉参考
+- **Read 工具不显示 ESC 控制字符** — `\x1b`（ASCII 27）在 Read 输出中不可见，需用 `open(path,'rb').read()` 检查实际字节
+- **空 inline-block span 高度坍塌** — 去掉 `▀` 文字后 span 变空，`inline-block` 无文本时高度为零，需加显式 `height:1.3em`
+
 ---
 
-*PRD v1.0 | 2026-07-10 | Termify | 进度更新 2026-07-11*
+*PRD v1.0 | 2026-07-10 | Termify | 进度更新 2026-07-12*
