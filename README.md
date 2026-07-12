@@ -145,7 +145,7 @@ Termify/
 │   ├── css/{tokens,app}.css
 │   └── js/app.js           # 前端逻辑
 ├── tools/
-│   └── build_frontend.py   # 从 ui-mockup.html 拆分前端文件
+│   └── build_frontend.py   # ⚠️ 禁止运行！会覆盖生产代码
 ├── tests/                  # pytest 单元测试（42 tests）
 ├── ui-mockup.html          # UI 视觉唯一真相源
 └── README.md               # 本文件
@@ -167,12 +167,16 @@ pip install -r requirements.txt
 # 运行测试
 pytest tests/ -v
 
-# 重新构建前端（从 ui-mockup.html 拆分）
-python tools/build_frontend.py
-
 # 启动开发服务器
 python app.py  # debug 模式，修改代码后手动重启
 ```
+
+> **⚠️ 注意：不要运行 `python tools/build_frontend.py`**
+>
+> 这个脚本会从 `ui-mockup.html` 拆分 JS/CSS 覆盖 `static/` 目录下的生产文件。
+> Phase 3 的 API 集成、上传处理、requestAnimationFrame 循环等代码不在 mockup 中，
+> 一旦运行此脚本，这些代码会被覆盖丢失。修改前端请直接改 `static/js/app.js`
+> 和 `static/css/app.css`，`ui-mockup.html` 仅作视觉参考。
 
 ## License
 
