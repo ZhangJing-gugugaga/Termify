@@ -9,26 +9,40 @@ from termify.engine import FrameSequence
 
 _PLAYER_TEMPLATE = '''#!/usr/bin/env python3
 """Termify generated terminal animation — {charset} style, {w}x{h}, {n} frames."""
-import sys, time, os
+import sys, time, os, shutil
 
 FRAMES = {frames}
 
 FRAME_INTERVAL = {interval:.4f}
-
-
-def clear_screen():
-    os.system('cls' if os.name == 'nt' else 'clear')
+W, H = {w}, {h}
 
 
 def play():
+    # Check terminal size
+    cols, rows = shutil.get_terminal_size((80, 24))
+    if cols < W or rows < H + 1:
+        print(f"Terminal too small: need {{W}}x{{H}}, have {{cols}}x{{rows}}")
+        print("Resize your terminal or regenerate with smaller dimensions.")
+        input("Press Enter to try anyway...")
+
+    # Hide cursor, use alternate screen buffer for clean playback
+    sys.stdout.write('\\033[?25l')  # hide cursor
+    sys.stdout.write('\\033[?1049h')  # alternate screen
+    sys.stdout.flush()
     try:
         while True:
             for frame in FRAMES:
-                clear_screen()
-                print('\\n'.join(frame))
+                sys.stdout.write('\\033[H')  # cursor home — no flicker
+                sys.stdout.write('\\n'.join(frame))
+                sys.stdout.write('\\033[K')  # clear to end of line
+                sys.stdout.flush()
                 time.sleep(FRAME_INTERVAL)
     except KeyboardInterrupt:
-        clear_screen()
+        pass
+    finally:
+        sys.stdout.write('\\033[?1049l')  # restore screen
+        sys.stdout.write('\\033[?25h')  # show cursor
+        sys.stdout.flush()
         print("Thanks for using Termify!")
 
 
