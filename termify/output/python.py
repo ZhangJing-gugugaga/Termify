@@ -21,9 +21,9 @@ def play():
     # Check terminal size
     cols, rows = shutil.get_terminal_size((80, 24))
     if cols < W or rows < H + 1:
-        print(f"Terminal too small: need {{W}}x{{H}}, have {{cols}}x{{rows}}")
-        print("Resize your terminal or regenerate with smaller dimensions.")
-        input("Press Enter to try anyway...")
+        print(f"Warning: terminal {{cols}}x{{rows}} is smaller than {{W}}x{{H}}. Output may be clipped.", file=sys.stderr)
+        print("Tip: resize your terminal or regenerate with smaller dimensions.", file=sys.stderr)
+        time.sleep(1.5)
 
     # Hide cursor, use alternate screen buffer for clean playback
     sys.stdout.write('\\033[?25l')  # hide cursor
