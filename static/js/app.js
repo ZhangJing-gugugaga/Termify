@@ -328,8 +328,8 @@
         markSelected(".style-card", '[data-style="ascii"]');
         S.width = 80; S.height = 24; S.wasPlaying = true;
         requestPreview("ascii");
-        var previewSection = document.getElementById("preview");
-        if (previewSection) previewSection.scrollIntoView({ behavior: "smooth", block: "start" });
+        var stylesSection = document.getElementById("styles");
+        if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
       })
       .catch(function (e) {
         if (uploadZone) uploadZone.classList.remove("uploading");
@@ -394,6 +394,8 @@
       card.classList.add("selected");
       var s = card.getAttribute("data-style");
       requestPreview(s);
+      var previewSection = document.getElementById("preview");
+      if (previewSection) previewSection.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
 
