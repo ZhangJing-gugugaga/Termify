@@ -108,14 +108,28 @@ def play():
     # For blocks mode, each char row encodes 2 pixel rows, so char height = H//2
     char_h = H // 2 if CHARSET == "blocks" else H
 
-    # Auto-scale if terminal is too small
     play_frames = FRAMES
-    if FRAMES and (W > cols or char_h > rows - 1):
-        target_rows = rows - 1  # leave room for status line
+    needs_scale = FRAMES and (W > cols or char_h > rows - 1)
+
+    if needs_scale:
+        target_rows = rows - 1
         target_cols = cols
-        play_frames, sw, sh = _scale_frames(FRAMES, target_cols, target_rows)
-        print(f"Warning: scaled {{W}}x{{char_h}} -> {{sw}}x{{sh}} to fit {{cols}}x{{rows}} terminal", file=sys.stderr)
-        time.sleep(1)
+        print(f"Animation is {{W}}x{{char_h}} but terminal is only {{cols}}x{{rows}}.", file=sys.stderr)
+        print(f"  [s] Scale down to fit (default)", file=sys.stderr)
+        print(f"  [p] Play anyway (output may be clipped/wrapped)", file=sys.stderr)
+        print(f"  [q] Exit — resize terminal or regenerate with smaller size", file=sys.stderr)
+        try:
+            choice = input("Choice: ").strip().lower()
+        except EOFError:
+            choice = "s"
+        if choice == "q":
+            print("Exited.", file=sys.stderr)
+            return
+        if choice == "p":
+            pass  # play original frames, accept clipping
+        else:
+            play_frames, sw, sh = _scale_frames(FRAMES, target_cols, target_rows)
+            print(f"Scaled {{W}}x{{char_h}} -> {{sw}}x{{sh}}", file=sys.stderr)
 
     # Hide cursor, use alternate screen buffer for clean playback
     sys.stdout.write('\\033[?25l')  # hide cursor
