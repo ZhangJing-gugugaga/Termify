@@ -8,8 +8,43 @@ from termify.engine import FrameSequence
 
 
 _PLAYER_TEMPLATE = '''#!/usr/bin/env python3
-"""Termify generated terminal animation — {charset} style, {w}x{h}, {n} frames."""
-import sys, time, os, shutil, re
+# -*- coding: utf-8 -*-
+"""
+Termify 终端动画播放器
+======================
+风格: {charset} | 尺寸: {w}x{h} | {n} 帧
+
+【运行前准备】
+  需要 Python 3.6 或更高版本。
+  检查方法: 打开终端/PowerShell，输入 python --version
+  如果没有 Python: 前往 https://www.python.org/downloads/ 下载安装
+   安装时务必勾选 "Add Python to PATH"
+
+【如何运行】
+  Windows:  打开 PowerShell，cd 到本文件所在目录，输入 python 本文件名.py
+  macOS:    打开 Terminal，cd 到本文件所在目录，输入 python3 本文件名.py
+  Linux:    打开 Terminal，cd 到本文件所在目录，输入 python3 本文件名.py
+
+【如何停止】
+  按 Ctrl+C 即可退出播放
+
+【小贴士】
+  - 终端窗口越大，显示效果越好。窗口太小时会自动缩放。
+  - 如果看到乱码或颜色不对，试试换成 HTML 格式下载，用浏览器打开。
+  - 本文件无任何第三方依赖，只需 Python 本身。
+"""
+
+import sys
+
+# Python 版本检查
+if sys.version_info < (3, 6):
+    print("错误: 需要 Python 3.6 或更高版本。")
+    print("当前版本: " + sys.version)
+    print("请前往 https://www.python.org/downloads/ 下载安装最新版。")
+    input("按 Enter 退出...")
+    sys.exit(1)
+
+import time, os, shutil, re
 
 FRAMES = {frames}
 
