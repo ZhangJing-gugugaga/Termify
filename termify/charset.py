@@ -44,7 +44,28 @@ def _luminance(r: int, g: int, b: int) -> int:
     return round(0.299 * r + 0.587 * g + 0.114 * b)
 
 
-def _render_ascii(img, width: int, height: int) -> list[str]:
+def _ansi_fg(rgb):
+    return f"\x1b[38;2;{rgb[0]};{rgb[1]};{rgb[2]}m"
+
+
+def _ansi_bg(rgb):
+    return f"\x1b[48;2;{rgb[0]};{rgb[1]};{rgb[2]}m"
+
+
+def _emit(char: str, fg, bg) -> str:
+    """Wrap a single char in optional TrueColor ANSI fg/bg codes."""
+    if fg is None and bg is None:
+        return char
+    parts = []
+    if fg is not None:
+        parts.append(_ansi_fg(fg))
+    if bg is not None:
+        parts.append(_ansi_bg(bg))
+    parts.append(char)
+    return "".join(parts)
+
+
+def _render_ascii(img, width, height, fg=None, bg=None):
     chars = CHARSETS["ascii"]["chars"]
     n = len(chars)
     px = img.load()
@@ -55,26 +76,16 @@ def _render_ascii(img, width: int, height: int) -> list[str]:
             r, g, b = px[x, y][:3]
             gray = _luminance(r, g, b)
             idx = gray * (n - 1) // 255  # 0 -> densest char
-            row.append(chars[idx])
+            row.append(_emit(chars[idx], fg, bg))
+        if fg is not None or bg is not None:
+            row.append("\x1b[0m")
         lines.append("".join(row))
     return lines
 
 
-def _render_blocks(img, width: int, height: int) -> list[str]:
-    """Half-block `▀` with TrueColor fg (top pixel) + bg (bottom pixel).
-
-    The source image must be scaled to (width, 2 * terminal_height) so each
-    output row samples a distinct top/bottom pair -- twice the vertical
-    resolution (the approach the reference SalaryCat renderer uses).
-
-    Colour delta encoding: an escape sequence is emitted only when the fg or
-    bg colour actually changes from the previous cell, exactly like the
-    reference renderer. This roughly halves output size and makes in-terminal
-    playback noticeably smoother.
-    """
+def _render_blocks(img, width, height):
     px = img.load()
     src_w, src_h = img.size
-    DEFAULT_BG = "[49m"
     out_lines = []
     for y_top in range(0, src_h, 2):
         y_bot = y_top + 1 if y_top + 1 < src_h else y_top
@@ -87,18 +98,19 @@ def _render_blocks(img, width: int, height: int) -> list[str]:
             fg = (rt, gt, bt)
             bg = (rb, gb, bb)
             if fg != last_fg:
-                parts.append(f"[38;2;{rt};{gt};{bt}m")
+                parts.append(_ansi_fg(fg))
                 last_fg = fg
             if bg != last_bg:
-                parts.append(f"[48;2;{rb};{gb};{bb}m")
+                parts.append(_ansi_bg(bg))
                 last_bg = bg
             parts.append("▀")
-        parts.append(f"{DEFAULT_BG}[0m")
+        # No trailing reset: each ▀ has explicit fg/bg codes,
+        # and reset would clear state causing next line's ▀ to render black.
         out_lines.append("".join(parts))
     return out_lines
 
-def _render_braille(img, width: int, height: int) -> list[str]:
-    """2x4 pixel block -> one Braille codepoint (U+2800 + bit mask)."""
+
+def _render_braille(img, width, height, fg=None, bg=None):
     px = img.load()
     src_w, src_h = img.size
     cell_w, cell_h = 2, 4
@@ -124,12 +136,14 @@ def _render_braille(img, width: int, height: int) -> list[str]:
                 r, g, b = px[sx, sy][:3]
                 if _luminance(r, g, b) < 128:
                     bits |= mask
-            row.append(chr(0x2800 + bits))
+            row.append(_emit(chr(0x2800 + bits), fg, bg))
+        if fg is not None or bg is not None:
+            row.append("\x1b[0m")
         lines.append("".join(row))
     return lines
 
 
-def _render_geometric(img, width: int, height: int) -> list[str]:
+def _render_geometric(img, width, height, fg=None, bg=None):
     chars = CHARSETS["geometric"]["chars"]
     n = len(chars)
     px = img.load()
@@ -140,19 +154,23 @@ def _render_geometric(img, width: int, height: int) -> list[str]:
             r, g, b = px[x, y][:3]
             gray = _luminance(r, g, b)
             idx = gray * (n - 1) // 255
-            row.append(chars[idx])
+            row.append(_emit(chars[idx], fg, bg))
+        if fg is not None or bg is not None:
+            row.append("\x1b[0m")
         lines.append("".join(row))
     return lines
 
 
-def _render_binary(img, width: int, height: int) -> list[str]:
+def _render_binary(img, width, height, fg=None, bg=None):
     px = img.load()
     lines = []
     for y in range(height):
         row = []
         for x in range(width):
             r, g, b = px[x, y][:3]
-            row.append("█" if _luminance(r, g, b) < 128 else " ")
+            row.append(_emit("█" if _luminance(r, g, b) < 128 else " ", fg, bg))
+        if fg is not None or bg is not None:
+            row.append("\x1b[0m")
         lines.append("".join(row))
     return lines
 
@@ -166,10 +184,12 @@ _RENDERERS = {
 }
 
 
-def render_frame(img, charset_name: str, width: int, height: int) -> list[str]:
+def render_frame(img, charset_name, width, height, fg_color=None, bg_color=None):
     """Map a PIL.Image (already scaled to width x height) to text lines.
 
-    Returns list of line strings (no trailing newline; caller adds as needed).
+    fg_color / bg_color are (R, G, B) tuples or None. When provided, non-block
+    charsets wrap each character in TrueColor ANSI so the user can override
+    the default look. blocks ignores these (pixel colour wins).
     """
     if charset_name not in CHARSETS:
         raise ValueError(
@@ -179,4 +199,6 @@ def render_frame(img, charset_name: str, width: int, height: int) -> list[str]:
         raise ValueError(
             f"Image width {img.size[0]} != target {width} -- scale first"
         )
-    return _RENDERERS[charset_name](img, width, height)
+    if charset_name == "blocks":
+        return _render_blocks(img, width, height)
+    return _RENDERERS[charset_name](img, width, height, fg_color, bg_color)

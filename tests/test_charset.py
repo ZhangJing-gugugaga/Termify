@@ -29,14 +29,12 @@ def test_render_frame_rejects_unknown_charset(name):
 
 
 def test_ascii_black_maps_to_densest_char():
-    # Densest char in CHARSETS["ascii"]["chars"] is at index 0.
     img = _new(4, 4, (0, 0, 0))
     lines = render_frame(img, "ascii", 4, 4)
     assert all(ln == CHARSETS["ascii"]["chars"][0] * 4 for ln in lines)
 
 
 def test_ascii_white_maps_to_sparsest_char():
-    # Sparsest char in CHARSETS["ascii"]["chars"] is the last one.
     img = _new(4, 4, (255, 255, 255))
     lines = render_frame(img, "ascii", 4, 4)
     sparsest = CHARSETS["ascii"]["chars"][-1]
@@ -60,40 +58,37 @@ def test_geometric_has_eight_levels():
     assert len(chars) == 8
 
 
-def test_braille_output_half_width_quarter_height():
-    # 8x4 source mapped via Braille (2x4 cell) -> 4x1 chars.
-    img = _new(8, 4, (0, 0, 0))
-    lines = render_frame(img, "braille", 8, 4)
-    assert len(lines) == 1
-    assert len(lines[0]) == 4
-    # All black should give full Braille block (U+28FF).
-    assert all(ch == "⣿" for ch in lines[0])
+def test_braille_on_prescaled_input_keeps_cell_mapping():
+    # Engine pre-scales braille input to (w*2, h*4); render_frame then
+    # collapses by its 2x4 cell to give (w, h) output. 8x4 target ->
+    # 16x16 image -> 8x4 chars.
+    img = _new(16, 16, (0, 0, 0))
+    lines = render_frame(img, "braille", 16, 16)
+    assert len(lines) == 4
+    assert all(len(ln) == 8 for ln in lines)
+    # All black -> full Braille block (U+28FF).
+    assert all(ch == "⣿" for ln in lines for ch in ln)
 
 
 def test_blocks_emits_ansi_truecolor():
     img = _new(4, 4, (255, 0, 0))  # red
     lines = render_frame(img, "blocks", 4, 4)
     joined = "".join(lines)
-    # Should carry the ANSI red fg+bg codes and the upper-half block char.
     assert "▀" in joined
     assert "38;2;255;0;0" in joined
     assert "48;2;255;0;0" in joined
-    assert "\x1b[0m" in joined
+    # No trailing reset: each ▀ has explicit fg/bg codes,
+    # reset would clear state causing next line's ▀ to render black
+    assert "\x1b[0m" not in joined
 
 
-@pytest.mark.parametrize("name", [c for c in ALL_CHARSETS if c not in ("braille", "blocks")])
+@pytest.mark.parametrize(
+    "name",
+    [c for c in ALL_CHARSETS if c not in ("blocks", "braille")],
+)
 def test_render_returns_right_line_count_and_width(name):
     w, h = 12, 6
     img = _new(w, h, (50, 100, 150))
     lines = render_frame(img, name, w, h)
     assert len(lines) == h
     assert all(len(ln) == w for ln in lines)
-
-
-def test_braille_reduces_resolution_by_2x4_cell():
-    # 12x6 source through Braille (2x4 cells) -> ceil(12/2) wide, ceil(6/4) high = 6x1.
-    w, h = 12, 6
-    img = _new(w, h, (50, 100, 150))
-    lines = render_frame(img, "braille", w, h)
-    assert len(lines) == max(1, h // 4)
-    assert all(len(ln) == w // 2 for ln in lines)

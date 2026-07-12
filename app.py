@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import threading
+import re
 import uuid
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -21,6 +22,19 @@ TASKS_LOCK = threading.Lock()
 
 VALID_EXT = {".gif", ".png", ".jpg", ".jpeg"}
 VALID_FORMATS = {"python", "html"}
+
+def _parse_rgb(value):
+    """Parse 'rgb(R,G,B)' string into (R,G,B) tuple, or None if invalid/empty."""
+    if not value:
+        return None
+    m = re.match(r"rgb\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)", value)
+    if not m:
+        return None
+    r, g, b = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if not (0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255):
+        return None
+    return (r, g, b)
+
 
 
 def _original_size(path: str) -> dict:
@@ -77,21 +91,23 @@ def upload():
     })
 
 
-def _get_sequence(task_id: str, charset: str, width: int, height: int):
+def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=None, bg_color=None):
     """Return a converted FrameSequence, converting+caching on first miss."""
     with TASKS_LOCK:
         task = TASKS.get(task_id)
     if task is None:
         return None
 
-    key = f"{charset}:{width}x{height}"
+    fg_part = f"rgb({fg_color[0]},{fg_color[1]},{fg_color[2]})" if fg_color else "none"
+    bg_part = f"rgb({bg_color[0]},{bg_color[1]},{bg_color[2]})" if bg_color else "none"
+    key = f"{charset}:{width}x{height}:{fg_part}:{bg_part}"
     seq = task.get("cache", {}).get(key)
     if seq is not None:
         return seq
 
     from termify import convert
 
-    seq = convert(task["filepath"], charset, width, height)
+    seq = convert(task["filepath"], charset, width, height, fg_color=fg_color, bg_color=bg_color)
     with TASKS_LOCK:
         if task_id in TASKS:
             TASKS[task_id].setdefault("cache", {})[key] = seq
@@ -119,7 +135,9 @@ def preview(task_id):
     except ValueError:
         return jsonify({"error": "frame must be an integer"}), 400
 
-    seq = _get_sequence(task_id, charset, width, height)
+    fg_color = _parse_rgb(request.args.get("fg"))
+    bg_color = _parse_rgb(request.args.get("bg"))
+    seq = _get_sequence(task_id, charset, width, height, fg_color=fg_color, bg_color=bg_color)
     if seq is None:
         return jsonify({"error": "Task not found"}), 404
 
@@ -171,7 +189,9 @@ def generate():
     except ValueError:
         return jsonify({"error": "width/height must be integers"}), 400
 
-    seq = _get_sequence(task_id, charset, width, height)
+    fg_color = _parse_rgb(data.get("fg"))
+    bg_color = _parse_rgb(data.get("bg"))
+    seq = _get_sequence(task_id, charset, width, height, fg_color=fg_color, bg_color=bg_color)
 
     from termify.output import render
 
