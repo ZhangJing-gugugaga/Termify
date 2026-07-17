@@ -11,7 +11,7 @@
 - `termify.convert(path, charset, w=80, h=24) -> FrameSequence`（字段：`lines_per_frame`, `interval`, `width`, `height`, `charset`）
 - `termify.output.render(sequence, format) -> str`（format: `"python"`/`"html"`）
 - `termify.charset.CHARSETS`：键为 `ascii`/`blocks`/`braille`/`geometric`/`binary`
-- `tests/` 42 个测试全绿；`demo.py --charset all` 可端到端跑通
+- `tests/` 45 个测试全绿；`demo.py --charset all` 可端到端跑通
 - `static/js/app.js`：IIFE，硬编码 `DEMO_FRAMES`(2帧)，下载按钮 toast `"Phase 3"`
 - `ui-mockup.html`：视觉唯一真相源
 - 依赖锁：`flask`/`pillow`/`pytest`，禁止引入新依赖
@@ -54,7 +54,7 @@
 
 1. 逐一验证：上传拖拽、5 风格卡片、播放/暂停/进度条、Python/HTML/MCU 格式切换、Tweaks 面板、分享按钮——全部与后端正确联动，下载按钮不再 toast "Phase 3"
 2. 视觉对比 `ui-mockup.html` 与运行页面，无偏差
-3. `pytest tests/ -v` 42 项全绿
+3. `pytest tests/ -v` 45 项全绿
 4. `python demo.py --charset all` 正常输出 10 个文件
 5. `app.js` 括号平衡（圆括号/花括号各自开闭一致）
 

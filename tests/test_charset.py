@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from PIL import Image
 
-from termify.charset import CHARSETS, render_frame
+from termify.charset import CHARSETS, _adaptive_lut, render_frame
 
 ALL_CHARSETS = list(CHARSETS)
 
@@ -92,3 +92,34 @@ def test_render_returns_right_line_count_and_width(name):
     lines = render_frame(img, name, w, h)
     assert len(lines) == h
     assert all(len(ln) == w for ln in lines)
+
+
+def test_adaptive_lut_identity_for_uniform_black():
+    lut = _adaptive_lut(_new(4, 4, (0, 0, 0)))
+    assert lut[0] == 0
+
+
+def test_adaptive_lut_identity_for_uniform_white():
+    lut = _adaptive_lut(_new(4, 4, (255, 255, 255)))
+    assert lut[255] == 255
+
+
+def test_adaptive_lut_spreads_biased_histogram():
+    img = _new(100, 100, (20, 20, 20))
+    px = img.load()
+    for y in range(10):
+        for x in range(10):
+            px[x, y] = (240, 240, 240)
+    lut = _adaptive_lut(img)
+    assert lut[20] < lut[240]
+
+
+def test_ascii_adaptive_uses_full_range_for_biased_image():
+    img = _new(100, 100, (20, 20, 20))
+    px = img.load()
+    for y in range(10):
+        for x in range(10):
+            px[x, y] = (240, 240, 240)
+    lines = render_frame(img, "ascii", 100, 100)
+    used = {ch for ln in lines for ch in ln}
+    assert len(used) >= 2

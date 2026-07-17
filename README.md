@@ -228,7 +228,7 @@ Termify/
 ├── static/
 │   ├── css/{tokens,app}.css
 │   └── js/app.js           # 前端逻辑
-├── tests/                  # pytest 单元测试（41 tests）
+├── tests/                  # pytest 单元测试（45 tests）
 ├── ui-mockup.html          # UI 视觉唯一真相源
 └── README.md               # 本文件
 ```
@@ -237,7 +237,7 @@ Termify/
 
 - **后端**：Python 3.10+、Flask、Pillow
 - **前端**：原生 HTML/CSS/JS，无框架依赖
-- **测试**：pytest（41 tests，运行 `pytest tests/` 即可）
+- **测试**：pytest（45 tests，运行 `pytest tests/` 即可）
 - **主题**：暗色终端美学，JetBrains Mono + Space Grotesk 字体
 
 ## 参与贡献
