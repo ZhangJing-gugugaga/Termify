@@ -197,13 +197,6 @@ def _render_braille(img, width, height, fg=None, bg=None):
     cell_w, cell_h = 2, 4
     out_w = max(1, width // cell_w)
     out_h = max(1, height // cell_h)
-    # Adaptive contrast equalisation: reuse the same CDF lookup table as the
-    # ascii/geometric renderers so braille dots track the image's brightness
-    # distribution. Dynamic median threshold (instead of hard-coded 128)
-    # handles extreme histograms. Uniform images fall back to identity.
-    lut = _adaptive_lut(img)
-    stretched = [lut[_luminance(*px[x, y][:3])] for y in range(src_h) for x in range(src_w)]
-    threshold = max(1, stretched[len(stretched) // 2]) if stretched else 127
     dots = [
         (0, 0, 0x01), (0, 1, 0x02), (0, 2, 0x04),
         (1, 0, 0x08), (1, 1, 0x10), (1, 2, 0x20),
@@ -222,11 +215,8 @@ def _render_braille(img, width, height, fg=None, bg=None):
                 if sy >= src_h:
                     sy = src_h - 1
                 r, g, b = px[sx, sy][:3]
-                if lut[_luminance(r, g, b)] < threshold:
+                if _luminance(r, g, b) < 128:
                     bits |= mask
-            # Braille is intrinsically a monochrome dot pattern; do NOT wrap
-            # each cell in TrueColor ANSI (that destroys the dot rendering and
-            # turns output into "colored blocks around characters").
             row.append(_emit(chr(0x2800 + bits), fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")
@@ -254,40 +244,13 @@ def _render_geometric(img, width, height, fg=None, bg=None):
 
 
 def _render_binary(img, width, height, fg=None, bg=None):
-    # Otsu 阈值 + █ 对应少数侧（主体）：不论亮暗主体都保留，
-    # 避免"白猫在暗背景 → 猫被挖空"或"硬编码 127 错配拉伸后分布"。
-    # Fast path: Pillow C 加速拿 luma（vs 逐像素 Python 循环）。
-    gray = img.convert("L")
-    raw = list(gray.getdata())
-    src_w, src_h = img.size
-    hist = [0] * 256
-    for v in raw:
-        hist[v] += 1
-    total = len(raw)
-    cdf = 0
-    cdf_min = None
-    lut = [0] * 256
-    for i in range(256):
-        cdf += hist[i]
-        if cdf_min is None and hist[i] > 0:
-            cdf_min = cdf
-        if cdf_min is None:
-            lut[i] = 0
-        elif total == cdf_min:
-            lut[i] = i
-        else:
-            lut[i] = round((cdf - cdf_min) / (total - cdf_min) * 255)
-    stretched = [lut[v] for v in raw]
-    threshold, minority_is_bright = _otsu_threshold(stretched)
+    px = img.load()
     lines = []
     for y in range(height):
         row = []
         for x in range(width):
-            idx = y * src_w + x
-            luma = stretched[idx]
-            is_bright = luma >= threshold
-            char = "█" if is_bright == minority_is_bright else " "
-            row.append(_emit(char, fg, bg))
+            r, g, b = px[x, y][:3]
+            row.append(_emit("█" if _luminance(r, g, b) < 128 else " ", fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")
         lines.append("".join(row))
