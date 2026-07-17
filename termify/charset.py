@@ -202,7 +202,14 @@ def _render_braille(img, width, height, fg=None, bg=None):
         (1, 0, 0x08), (1, 1, 0x10), (1, 2, 0x20),
         (0, 3, 0x40), (1, 3, 0x80),
     ]
-    lut = _adaptive_lut(img)
+    # Collect all luminance values and compute Otsu threshold
+    lum_values = []
+    for y in range(src_h):
+        for x in range(src_w):
+            r, g, b = px[x, y][:3]
+            lum_values.append(_luminance(r, g, b))
+    threshold, minority_is_bright = _otsu_threshold(lum_values)
+
     lines = []
     for by in range(out_h):
         row = []
@@ -216,8 +223,15 @@ def _render_braille(img, width, height, fg=None, bg=None):
                 if sy >= src_h:
                     sy = src_h - 1
                 r, g, b = px[sx, sy][:3]
-                if lut[_luminance(r, g, b)] < 128:
-                    bits |= mask
+                lum = _luminance(r, g, b)
+                if minority_is_bright:
+                    # Subject is bright → dots for bright pixels
+                    if lum >= threshold:
+                        bits |= mask
+                else:
+                    # Subject is dark → dots for dark pixels
+                    if lum < threshold:
+                        bits |= mask
             row.append(_emit(chr(0x2800 + bits), fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")
