@@ -197,31 +197,13 @@ def _render_braille(img, width, height, fg=None, bg=None):
     cell_w, cell_h = 2, 4
     out_w = max(1, width // cell_w)
     out_h = max(1, height // cell_h)
-    # Fast path: 用 Pillow C 加速拿 luma（ITU-R BT.601，与 _luminance 同公式），
-    # 替代逐像素 Python 循环。200x60 96k 像素从 ~6s 降到 <1s。
-    gray = img.convert("L")
-    raw = list(gray.getdata())
-    # 一次性算 CDF 拉伸 LUT + stretched 数组
-    hist = [0] * 256
-    for v in raw:
-        hist[v] += 1
-    total = len(raw)
-    cdf = 0
-    cdf_min = None
-    lut = [0] * 256
-    for i in range(256):
-        cdf += hist[i]
-        if cdf_min is None and hist[i] > 0:
-            cdf_min = cdf
-        if cdf_min is None:
-            lut[i] = 0
-        elif total == cdf_min:
-            lut[i] = i
-        else:
-            lut[i] = round((cdf - cdf_min) / (total - cdf_min) * 255)
-    stretched = [lut[v] for v in raw]
-    # Otsu 阈值 + 点对应少数侧（主体）：不论亮暗主体都保留
-    threshold, minority_is_bright = _otsu_threshold(stretched)
+    # Adaptive contrast equalisation: reuse the same CDF lookup table as the
+    # ascii/geometric renderers so braille dots track the image's brightness
+    # distribution. Dynamic median threshold (instead of hard-coded 128)
+    # handles extreme histograms. Uniform images fall back to identity.
+    lut = _adaptive_lut(img)
+    stretched = [lut[_luminance(*px[x, y][:3])] for y in range(src_h) for x in range(src_w)]
+    threshold = max(1, stretched[len(stretched) // 2]) if stretched else 127
     dots = [
         (0, 0, 0x01), (0, 1, 0x02), (0, 2, 0x04),
         (1, 0, 0x08), (1, 1, 0x10), (1, 2, 0x20),
@@ -239,14 +221,12 @@ def _render_braille(img, width, height, fg=None, bg=None):
                     sx = src_w - 1
                 if sy >= src_h:
                     sy = src_h - 1
-                idx = sy * src_w + sx
-                luma = stretched[idx]
-                is_bright = luma >= threshold
-                # 点 = 少数侧（主体），不论 is_bright 真假
-                if is_bright == minority_is_bright:
+                r, g, b = px[sx, sy][:3]
+                if lut[_luminance(r, g, b)] < threshold:
                     bits |= mask
-            # Braille 本质是单色点阵；不要给每个字符包 TrueColor ANSI
-            # （会破坏点阵渲染，变成"色块包字符"）
+            # Braille is intrinsically a monochrome dot pattern; do NOT wrap
+            # each cell in TrueColor ANSI (that destroys the dot rendering and
+            # turns output into "colored blocks around characters").
             row.append(_emit(chr(0x2800 + bits), fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")
