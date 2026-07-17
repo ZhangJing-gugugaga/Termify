@@ -211,8 +211,15 @@
       var joined = lines.join("\n");
       var hasAnsi = joined.indexOf("\x1b") !== -1;
       if (hasAnsi) {
-        preview.innerHTML = S.htmlFrames[idx] || lines.map(ansiToHtml).join("\n");
+        // 仅当有 ANSI 时才 innerHTML（blocks 不会走这里，因为 blocks 用 canvas）
+        var html = S.htmlFrames[idx];
+        if (!html) {
+          html = lines.map(ansiToHtml).join("\n");
+          S.htmlFrames[idx] = html;
+        }
+        preview.innerHTML = html;
       } else {
+        // 无 ANSI（braille/ascii/geometric/binary）→ textContent 直渲染，极快
         preview.textContent = joined;
       }
     }
@@ -261,15 +268,14 @@
     S.frames = d.frames || [];
     S.interval = d.interval || 0.1;
     S.totalFrames = d.frame_count || S.frames.length;
+    // Lazy rendering: 不再对所有帧做 ansiToHtml 预计算（28 帧 × 200×60 ≈ 33 万字符
+    // 的同步字符串处理 + innerHTML DOM 渲染会让 UI 冻结 3 秒）。改成 renderFrame
+    // 按需处理：无 ANSI 直接 textContent（快几个数量级），有 ANSI 才 innerHTML。
     S.htmlFrames = [];
     S.canvasFrames = [];
 
-    // Pre-compute HTML frames for all styles
-    for (var i = 0; i < S.frames.length; i++) {
-      S.htmlFrames.push(S.frames[i].map(ansiToHtml).join("\n"));
-    }
-
-    // For blocks style, also pre-compute pixel data for canvas rendering
+    // For blocks style, pre-compute pixel data for canvas rendering (canvas 渲染
+    // 必须在切换 charset 前准备好，否则第一帧会空白)。
     if (S.charset === "blocks") {
       initBlocksCanvas();
       for (var i = 0; i < S.frames.length; i++) {
@@ -293,7 +299,19 @@
   }
 
   /* ── Request preview from backend ── */
+  var previewDebounce = null;
   function requestPreview(charset) {
+    if (!S.taskId) { toast("请先上传文件"); return; }
+    // Debounce: 快速切换风格（如灰度→unicode→点阵→极简）只发最后一次请求，
+    // 避免连续触发 6s+ 的后端 convert 把 UI 锁死。
+    if (previewDebounce) clearTimeout(previewDebounce);
+    previewDebounce = setTimeout(function () {
+      previewDebounce = null;
+      doRequestPreview(charset);
+    }, 250);
+  }
+
+  function doRequestPreview(charset) {
     if (!S.taskId) { toast("请先上传文件"); return; }
     var myId = ++latestReq;
     var url = "/api/preview/" + S.taskId
