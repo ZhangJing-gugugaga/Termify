@@ -44,6 +44,37 @@ def _luminance(r: int, g: int, b: int) -> int:
     return round(0.299 * r + 0.587 * g + 0.114 * b)
 
 
+def _adaptive_lut(img) -> list[int]:
+    """Build a CDF-based luminance lookup table for adaptive grayscale bucketing.
+
+    Maps pixel luminance through the cumulative distribution function so that
+    the full character range is utilised regardless of the image's brightness
+    histogram. Uniform images (min == max) fall back to identity.
+    """
+    px = img.load()
+    w, h = img.size
+    hist = [0] * 256
+    for y in range(h):
+        for x in range(w):
+            r, g, b = px[x, y][:3]
+            hist[_luminance(r, g, b)] += 1
+    total = w * h
+    cdf = 0
+    cdf_min = None
+    lut = [0] * 256
+    for i in range(256):
+        cdf += hist[i]
+        if cdf_min is None and hist[i] > 0:
+            cdf_min = cdf
+        if cdf_min is None:
+            lut[i] = 0
+        elif total == cdf_min:
+            lut[i] = i
+        else:
+            lut[i] = round((cdf - cdf_min) / (total - cdf_min) * 255)
+    return lut
+
+
 def _ansi_fg(rgb):
     return f"\x1b[38;2;{rgb[0]};{rgb[1]};{rgb[2]}m"
 
@@ -68,13 +99,14 @@ def _emit(char: str, fg, bg) -> str:
 def _render_ascii(img, width, height, fg=None, bg=None):
     chars = CHARSETS["ascii"]["chars"]
     n = len(chars)
+    lut = _adaptive_lut(img)
     px = img.load()
     lines = []
     for y in range(height):
         row = []
         for x in range(width):
             r, g, b = px[x, y][:3]
-            gray = _luminance(r, g, b)
+            gray = lut[_luminance(r, g, b)]
             idx = gray * (n - 1) // 255  # 0 -> densest char
             row.append(_emit(chars[idx], fg, bg))
         if fg is not None or bg is not None:
@@ -146,13 +178,14 @@ def _render_braille(img, width, height, fg=None, bg=None):
 def _render_geometric(img, width, height, fg=None, bg=None):
     chars = CHARSETS["geometric"]["chars"]
     n = len(chars)
+    lut = _adaptive_lut(img)
     px = img.load()
     lines = []
     for y in range(height):
         row = []
         for x in range(width):
             r, g, b = px[x, y][:3]
-            gray = _luminance(r, g, b)
+            gray = lut[_luminance(r, g, b)]
             idx = gray * (n - 1) // 255
             row.append(_emit(chars[idx], fg, bg))
         if fg is not None or bg is not None:
