@@ -21,7 +21,7 @@ CHARSETS: dict[str, dict] = {
     "braille": {
         "name": "Braille点阵",
         "chars": "⠁⠂⠄⡀⠈⠐⠠⢀⣀⠉⠠⠄⡁⢀⣀⠘⠒⠤⣀⣄⣆⣇⣧⣷⣿",
-        "color": False,
+        "color": True,
         "description": "分辨率高，科技感十足",
     },
     "geometric": {
@@ -149,9 +149,6 @@ def _render_braille(img, width, height, fg=None, bg=None):
     out_w = max(1, width // cell_w)
     out_h = max(1, height // cell_h)
     lut = _adaptive_lut(img)
-    # Dynamic threshold: median of the stretched luma distribution so braille
-    # dots track the image's brightness balance. Falls back to 127 for uniform
-    # images where the histogram has no spread.
     stretched = [lut[_luminance(*px[x, y][:3])] for y in range(src_h) for x in range(src_w)]
     threshold = max(1, stretched[len(stretched) // 2]) if stretched else 127
     dots = [
@@ -164,6 +161,10 @@ def _render_braille(img, width, height, fg=None, bg=None):
         row = []
         for bx in range(out_w):
             bits = 0
+            lit_r = lit_g = lit_b = 0
+            lit_n = 0
+            unlit_r = unlit_g = unlit_b = 0
+            unlit_n = 0
             for dx, dy, mask in dots:
                 sx = int((bx * cell_w + dx) * src_w / (out_w * cell_w))
                 sy = int((by * cell_h + dy) * src_h / (out_h * cell_h))
@@ -174,9 +175,14 @@ def _render_braille(img, width, height, fg=None, bg=None):
                 r, g, b = px[sx, sy][:3]
                 if lut[_luminance(r, g, b)] < threshold:
                     bits |= mask
-            row.append(_emit(chr(0x2800 + bits), fg, bg))
-        if fg is not None or bg is not None:
-            row.append("\x1b[0m")
+                    lit_r += r; lit_g += g; lit_b += b; lit_n += 1
+                else:
+                    unlit_r += r; unlit_g += g; unlit_b += b; unlit_n += 1
+            # fg = average color of lit dots, bg = average of unlit dots
+            cell_fg = (lit_r // lit_n, lit_g // lit_n, lit_b // lit_n) if lit_n > 0 else None
+            cell_bg = (unlit_r // unlit_n, unlit_g // unlit_n, unlit_b // unlit_n) if unlit_n > 0 else None
+            row.append(_emit(chr(0x2800 + bits), cell_fg or fg, cell_bg or bg))
+        row.append("\x1b[0m")
         lines.append("".join(row))
     return lines
 
