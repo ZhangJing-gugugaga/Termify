@@ -148,6 +148,11 @@ def _render_braille(img, width, height, fg=None, bg=None):
     cell_w, cell_h = 2, 4
     out_w = max(1, width // cell_w)
     out_h = max(1, height // cell_h)
+    # Adaptive contrast equalisation: reuse the same CDF lookup table as the
+    # ascii/geometric renderers so braille dots track the image's brightness
+    # distribution instead of a fixed 128 midpoint. Uniform images fall back
+    # to identity (lut[luma] == luma), preserving the original behaviour.
+    lut = _adaptive_lut(img)
     dots = [
         (0, 0, 0x01), (0, 1, 0x02), (0, 2, 0x04),
         (1, 0, 0x08), (1, 1, 0x10), (1, 2, 0x20),
@@ -166,7 +171,7 @@ def _render_braille(img, width, height, fg=None, bg=None):
                 if sy >= src_h:
                     sy = src_h - 1
                 r, g, b = px[sx, sy][:3]
-                if _luminance(r, g, b) < 128:
+                if lut[_luminance(r, g, b)] < 128:
                     bits |= mask
             row.append(_emit(chr(0x2800 + bits), fg, bg))
         if fg is not None or bg is not None:
