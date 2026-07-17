@@ -23,7 +23,7 @@ _PLAYER_TEMPLATE = """<!DOCTYPE html>
   h1 {{ font-size:14px; font-weight:600; letter-spacing:.05em; color:var(--accent); }}
   pre {{ background:#161b22; border:1px solid #30363d; border-radius:8px;
         padding:16px 20px; line-height:1.15; font-size:13px;
-        overflow:auto; max-width:100%; max-height:80vh; white-space:pre; }}
+        overflow:hidden; max-width:100%; max-height:80vh; white-space:pre; }}
   canvas {{ image-rendering:pixelated; image-rendering:crisp-edges;
            background:#000; border-radius:4px; max-width:100%%; max-height:80vh; height:auto; }}
   footer {{ margin-top:12px; font-size:11px; color:#6e7681; }}

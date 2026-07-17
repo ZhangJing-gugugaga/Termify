@@ -62,12 +62,16 @@ def test_braille_on_prescaled_input_keeps_cell_mapping():
     # Engine pre-scales braille input to (w*2, h*4); render_frame then
     # collapses by its 2x4 cell to give (w, h) output. 8x4 target ->
     # 16x16 image -> 8x4 chars.
+    import re
+    _ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
     img = _new(16, 16, (0, 0, 0))
     lines = render_frame(img, "braille", 16, 16)
     assert len(lines) == 4
-    assert all(len(ln) == 8 for ln in lines)
+    # 去掉 ANSI 转义后每行应为 8 个字符
+    stripped = [_ANSI_RE.sub('', ln) for ln in lines]
+    assert all(len(ln) == 8 for ln in stripped)
     # All black -> full Braille block (U+28FF).
-    assert all(ch == "⣿" for ln in lines for ch in ln)
+    assert all(ch == "⣿" for ln in stripped for ch in ln)
 
 
 def test_blocks_emits_ansi_truecolor():

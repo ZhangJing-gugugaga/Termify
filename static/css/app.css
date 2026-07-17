@@ -515,6 +515,8 @@
             color: var(--cyan);
             white-space: pre;
             font-size: 10px;
+            overflow: hidden;
+            max-width: 100%;
         }
 
         /* Geometric style preview */
