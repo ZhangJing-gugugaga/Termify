@@ -260,12 +260,28 @@ def _render_geometric(img, width, height, fg=None, bg=None):
 
 def _render_binary(img, width, height, fg=None, bg=None):
     px = img.load()
+    src_w, src_h = img.size
+    # Otsu threshold + minority-is-subject (same logic as braille)
+    lum_values = []
+    for y in range(src_h):
+        for x in range(src_w):
+            r, g, b = px[x, y][:3]
+            lum_values.append(_luminance(r, g, b))
+    threshold, minority_is_bright = _otsu_threshold(lum_values)
+
     lines = []
     for y in range(height):
         row = []
         for x in range(width):
             r, g, b = px[x, y][:3]
-            row.append(_emit("█" if _luminance(r, g, b) < 128 else " ", fg, bg))
+            lum = _luminance(r, g, b)
+            if minority_is_bright:
+                # Subject is bright → █ for bright pixels
+                ch = "█" if lum >= threshold else " "
+            else:
+                # Subject is dark → █ for dark pixels
+                ch = "█" if lum < threshold else " "
+            row.append(_emit(ch, fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")
         lines.append("".join(row))
