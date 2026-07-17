@@ -2,7 +2,6 @@
 
 > 万物皆可终端 —— 把任何 GIF / 图片转换成终端可播放的动画
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 **核心价值**：把"我会做终端动画"这件事的门槛降到零。上传文件 → 点击风格卡片 → 下载可运行文件，**三步出活**，无需注册、无需安装、下载即走。
@@ -248,7 +247,3 @@ Termify/
 4. 提交 Pull Request
 
 遇到问题？先查 [FAQ](#常见问题) → 再开 [Issue](https://github.com/ZhangJing-gugugaga/Termify/issues)。
-
-## License
-
-[MIT](LICENSE)
