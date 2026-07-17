@@ -202,6 +202,7 @@ def _render_braille(img, width, height, fg=None, bg=None):
         (1, 0, 0x08), (1, 1, 0x10), (1, 2, 0x20),
         (0, 3, 0x40), (1, 3, 0x80),
     ]
+    lut = _adaptive_lut(img)
     lines = []
     for by in range(out_h):
         row = []
@@ -215,7 +216,7 @@ def _render_braille(img, width, height, fg=None, bg=None):
                 if sy >= src_h:
                     sy = src_h - 1
                 r, g, b = px[sx, sy][:3]
-                if _luminance(r, g, b) < 128:
+                if lut[_luminance(r, g, b)] < 128:
                     bits |= mask
             row.append(_emit(chr(0x2800 + bits), fg, bg))
         if fg is not None or bg is not None:
