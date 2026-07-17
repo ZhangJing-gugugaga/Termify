@@ -16,7 +16,7 @@
 |---|---|
 | 名称 | Termify（Terminal + -ify，使……终端化） |
 | 一句话描述 | 上传 GIF / PNG / JPG，选择渲染风格，下载能在任何终端 / 浏览器播放的动画文件（**视频 v2 规划中**） |
-| 技术栈 | Python 3.10+ / Flask / Pillow 后端；原生 HTML/CSS/JS 前端；pytest（**实测 41 个测试，全绿**） |
+| 技术栈 | Python 3.10+ / Flask / Pillow 后端；原生 HTML/CSS/JS 前端；pytest（**实测 45 个测试，全绿**） |
 | 已交付 | 转换引擎（termify/ 包）+ Web 界面（app.py）+ CLI（demo.py）+ 5 种渲染风格 + 全屏自适应 + music.mp3 音频 + REST API（upload / preview / generate / download） |
 | 协议 | MIT（零注册、零云端、隐私友好） |
 
