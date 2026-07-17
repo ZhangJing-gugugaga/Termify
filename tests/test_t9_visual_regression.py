@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 
 import pytest
 from PIL import Image
@@ -24,13 +23,11 @@ def _frame_hash(seq) -> str:
     return hashlib.md5(content.encode("utf-8")).hexdigest()
 
 
-def _convert(charset: str, w: int, h: int, color=(60, 120, 180)):
+def _convert(charset: str, w: int, h: int, tmp_path, color=(60, 120, 180)):
     img = Image.new("RGB", (w, h), color)
-    img.save("_t9tmp.png")
-    try:
-        return convert("_t9tmp.png", charset, w, h)
-    finally:
-        os.remove("_t9tmp.png")
+    p = tmp_path / f"_t9_{charset}_{w}x{h}.png"
+    img.save(str(p))
+    return convert(str(p), charset, w, h)
 
 
 # 5 个基线 hash（可在代码结构变化时更新这些值）
@@ -50,23 +47,21 @@ BASELINE = {
     ("geometric", 24, 12),
     ("binary", 24, 12),
 ])
-def test_visual_regression_frame_hash(charset, width, height):
+def test_visual_regression_frame_hash(charset, width, height, tmp_path):
     """对每种 charset 生成第一帧 hash，验证输出稳定性。"""
-    seq = _convert(charset, width, height)
+    seq = _convert(charset, width, height, tmp_path)
     h = _frame_hash(seq)
     assert len(h) == 32  # valid md5
     # 相同的输入必须产生相同的 hash（幂等性验证）
-    seq2 = _convert(charset, width, height)
+    seq2 = _convert(charset, width, height, tmp_path)
     assert _frame_hash(seq2) == h
 
 
-def test_visual_regression_produces_same_output_on_rerun():
+def test_visual_regression_produces_same_output_on_rerun(tmp_path):
     """同输入同 charset 二次运行输出完全一致。"""
     img = Image.new("RGB", (32, 16), (100, 100, 100))
-    img.save("_t9idemp.png")
-    try:
-        seq1 = convert("_t9idemp.png", "ascii", 32, 16)
-        seq2 = convert("_t9idemp.png", "ascii", 32, 16)
-    finally:
-        os.remove("_t9idemp.png")
+    p = tmp_path / "_t9_idemp.png"
+    img.save(str(p))
+    seq1 = convert(str(p), "ascii", 32, 16)
+    seq2 = convert(str(p), "ascii", 32, 16)
     assert seq1.lines_per_frame == seq2.lines_per_frame

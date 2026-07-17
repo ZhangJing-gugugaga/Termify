@@ -16,14 +16,11 @@ from termify.engine import convert
 from termify.output import render
 
 
-def _gen_html(charset: str, width: int, height: int) -> str:
+def _gen_html(charset: str, width: int, height: int, tmp_path) -> str:
     img = Image.new("RGB", (width, height), (60, 120, 180))
-    img.save("_t2tmp.png")
-    try:
-        seq = convert("_t2tmp.png", charset, width, height)
-    finally:
-        import os
-        os.remove("_t2tmp.png")
+    p = tmp_path / f"_t2_{charset}_{width}x{height}.png"
+    img.save(str(p))
+    seq = convert(str(p), charset, width, height)
     return render(seq, "html")
 
 
@@ -43,9 +40,9 @@ def _gen_html(charset: str, width: int, height: int) -> str:
         ("binary", 80, 40),
     ],
 )
-def test_html_is_valid_and_has_frames(charset, width, height):
+def test_html_is_valid_and_has_frames(charset, width, height, tmp_path):
     """HTML 可解析、DOCTYPE 存在、FRAMES 非空数组。"""
-    src = _gen_html(charset, width, height)
+    src = _gen_html(charset, width, height, tmp_path)
     soup = BeautifulSoup(src, "html.parser")
     assert soup.find("!DOCTYPE") is not None or "<!DOCTYPE html>" in src
     # FRAMES 变量存在且为非空数组
@@ -56,46 +53,46 @@ def test_html_is_valid_and_has_frames(charset, width, height):
     assert "]," in script_text or "];" in script_text
 
 
-def test_html_has_pre_element():
+def test_html_has_pre_element(tmp_path):
     """非 blocks 模式应渲染 <pre> 元素。"""
-    src = _gen_html("ascii", 24, 12)
+    src = _gen_html("ascii", 24, 12, tmp_path)
     soup = BeautifulSoup(src, "html.parser")
     pre = soup.find("pre")
     assert pre is not None
 
 
-def test_html_blocks_has_canvas():
+def test_html_blocks_has_canvas(tmp_path):
     """blocks 模式应有 <canvas> 元素（JS 渲染目标）。"""
-    src = _gen_html("blocks", 24, 12)
+    src = _gen_html("blocks", 24, 12, tmp_path)
     soup = BeautifulSoup(src, "html.parser")
     assert soup.find("canvas") is not None
 
 
-def test_html_blocks_hide_pre_when_blocks():
+def test_html_blocks_hide_pre_when_blocks(tmp_path):
     """blocks 模式下 pre 应隐藏（display:none），canvas 显示。"""
-    src = _gen_html("blocks", 24, 12)
+    src = _gen_html("blocks", 24, 12, tmp_path)
     assert "display:none" in src
 
 
-def test_html_self_contained_no_cdn():
+def test_html_self_contained_no_cdn(tmp_path):
     """HTML 完全自包含，无外部脚本/CSS。"""
     for cs in ["ascii", "blocks", "braille", "geometric", "binary"]:
-        src = _gen_html(cs, 24, 12)
+        src = _gen_html(cs, 24, 12, tmp_path)
         assert "https://" not in src
         assert "<script src=" not in src
         assert "<link" not in src
 
 
-def test_html_pre_has_max_height():
+def test_html_pre_has_max_height(tmp_path):
     """高分辨率下有 max-height CSS 防溢出（B4 修复）。"""
-    src = _gen_html("ascii", 200, 60)
+    src = _gen_html("ascii", 200, 60, tmp_path)
     assert "max-height" in src
     assert "80vh" in src
 
 
-def test_html_frames_parseable_as_json():
+def test_html_frames_parseable_as_json(tmp_path):
     """HTML 中 FRAMES 数据必须是合法 JSON。"""
-    src = _gen_html("ascii", 16, 8)
+    src = _gen_html("ascii", 16, 8, tmp_path)
     start = src.index("var FRAMES = ")
     start = src.index("[", start)
     end = src.index("];", start) + 1
