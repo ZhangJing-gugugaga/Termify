@@ -148,11 +148,12 @@ def _render_braille(img, width, height, fg=None, bg=None):
     cell_w, cell_h = 2, 4
     out_w = max(1, width // cell_w)
     out_h = max(1, height // cell_h)
-    # Adaptive contrast equalisation: reuse the same CDF lookup table as the
-    # ascii/geometric renderers so braille dots track the image's brightness
-    # distribution instead of a fixed 128 midpoint. Uniform images fall back
-    # to identity (lut[luma] == luma), preserving the original behaviour.
     lut = _adaptive_lut(img)
+    # Dynamic threshold: median of the stretched luma distribution so braille
+    # dots track the image's brightness balance. Falls back to 127 for uniform
+    # images where the histogram has no spread.
+    stretched = [lut[_luminance(*px[x, y][:3])] for y in range(src_h) for x in range(src_w)]
+    threshold = max(1, stretched[len(stretched) // 2]) if stretched else 127
     dots = [
         (0, 0, 0x01), (0, 1, 0x02), (0, 2, 0x04),
         (1, 0, 0x08), (1, 1, 0x10), (1, 2, 0x20),
@@ -171,7 +172,7 @@ def _render_braille(img, width, height, fg=None, bg=None):
                 if sy >= src_h:
                     sy = src_h - 1
                 r, g, b = px[sx, sy][:3]
-                if lut[_luminance(r, g, b)] < 128:
+                if lut[_luminance(r, g, b)] < threshold:
                     bits |= mask
             row.append(_emit(chr(0x2800 + bits), fg, bg))
         if fg is not None or bg is not None:
@@ -200,13 +201,14 @@ def _render_geometric(img, width, height, fg=None, bg=None):
 
 
 def _render_binary(img, width, height, fg=None, bg=None):
+    lut = _adaptive_lut(img)
     px = img.load()
     lines = []
     for y in range(height):
         row = []
         for x in range(width):
             r, g, b = px[x, y][:3]
-            row.append(_emit("█" if _luminance(r, g, b) < 128 else " ", fg, bg))
+            row.append(_emit("█" if lut[_luminance(r, g, b)] < 127 else " ", fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")
         lines.append("".join(row))
