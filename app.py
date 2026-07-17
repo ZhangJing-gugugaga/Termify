@@ -92,18 +92,16 @@ def upload():
 
 
 def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=None, bg_color=None):
-    """Return a converted FrameSequence, converting+caching on first miss.
-
-    Cache key 故意不含 fg/bg——核心转换（luma/LUT/Otsu/字符映射）与颜色无关，
-    fg/bg 只影响外层 ANSI 包装。这样同 file+size+charset 的切换秒回。
-    """
+    """Return a converted FrameSequence, converting+caching on first miss."""
     with TASKS_LOCK:
         task = TASKS.get(task_id)
     if task is None:
         return None
 
-    base_key = f"{charset}:{width}x{height}"
-    seq = task.get("cache", {}).get(base_key)
+    fg_part = f"rgb({fg_color[0]},{fg_color[1]},{fg_color[2]})" if fg_color else "none"
+    bg_part = f"rgb({bg_color[0]},{bg_color[1]},{bg_color[2]})" if bg_color else "none"
+    key = f"{charset}:{width}x{height}:{fg_part}:{bg_part}"
+    seq = task.get("cache", {}).get(key)
     if seq is not None:
         return seq
 
@@ -112,7 +110,7 @@ def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=
     seq = convert(task["filepath"], charset, width, height, fg_color=fg_color, bg_color=bg_color)
     with TASKS_LOCK:
         if task_id in TASKS:
-            TASKS[task_id].setdefault("cache", {})[base_key] = seq
+            TASKS[task_id].setdefault("cache", {})[key] = seq
     return seq
 
 
