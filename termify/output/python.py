@@ -40,6 +40,13 @@ Termify 终端动画播放器
 
 import sys
 
+# Force UTF-8 output so Unicode chars (▀, ⠁, etc.) work on Windows GBK consoles
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 # Python 版本检查
 if sys.version_info < (3, 6):
     print("错误: 需要 Python 3.6 或更高版本。")

@@ -290,7 +290,8 @@
     var term = document.querySelector(".animation-terminal");
     var panel = document.querySelector(".output-panel");
     if (!term || !panel) return;
-    // Reset to auto first so we can measure natural panel height
+    // With align-items:start the panel keeps its natural height.
+    // Reset terminal to auto first so we get an unbiased panel measurement.
     term.style.height = "";
     var h = panel.getBoundingClientRect().height;
     if (h > 0) term.style.height = h + "px";
