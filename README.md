@@ -232,6 +232,21 @@ curl -X POST http://127.0.0.1:5000/api/fetch-url \
 curl -X POST http://127.0.0.1:5000/api/upload-video -F "file=@clip.mp4"
 ```
 
+## 桌面客户端（PyInstaller 一键独立包）
+
+```bash
+# 安装构建依赖（仅打包时需要）
+pip install pyinstaller
+
+# 构建单文件夹 Windows .exe
+pyinstaller termify.spec --clean --noconfirm
+
+# 输出: dist/Termify/Termify.exe（单文件夹, 双击即可运行）
+```
+
+构建产物启动后会自动打开浏览器访问 `http://127.0.0.1:5000`。
+
+
 ## 项目结构
 
 ```
@@ -251,7 +266,7 @@ Termify/
 ├── static/
 │   ├── css/{tokens,app}.css
 │   └── js/app.js           # 前端逻辑
-├── tests/                  # pytest 单元测试（146 tests）
+├── tests/                  # pytest 单元测试（157 tests）
 ├── ui-mockup.html          # UI 视觉唯一真相源
 └── README.md               # 本文件
 ```
@@ -260,7 +275,7 @@ Termify/
 
 - **后端**：Python 3.10+、Flask、Pillow
 - **前端**：原生 HTML/CSS/JS，无框架依赖
-- **测试**：pytest（146 tests，运行 `pytest tests/` 即可）
+- **测试**：pytest（157 tests，运行 `pytest tests/` 即可）
 - **主题**：暗色终端美学，JetBrains Mono + Space Grotesk 字体
 
 ## 参与贡献
