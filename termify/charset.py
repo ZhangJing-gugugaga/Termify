@@ -113,7 +113,7 @@ def _otsu_threshold(stretched):
         if var > max_var:
             max_var = var
             threshold = t
-    n_below = sum(hist[:threshold])
+    n_below = sum(hist[:threshold + 1])  # +1: Otsu loop includes hist[t] in w_bg
     n_above = total - n_below
     # 均匀图（全黑/全白）边界处理：没有真正的"少数侧"，回退到旧行为
     # "暗=█/点"，保证均匀色图的语义不反转（test_binary_black_maps_to_block 等
