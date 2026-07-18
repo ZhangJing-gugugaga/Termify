@@ -5,7 +5,7 @@
     charset: "ascii", totalFrames: 0, width: 80, height: 24,
     wasPlaying: false, fg: null, bg: null,
     canvasFrames: [], canvasEl: null, canvasCtx: null,
-    fileList: [], selIdx: 0
+    fileList: [], selIdx: 0, sourceFile: null
   };
   var latestReq = 0;
   var currentFrame = 0, playing = false, rafId = null, lastFrameTime = 0;
@@ -748,4 +748,135 @@
   });
 
   setTitleMeta();
+
+  /* ── Gallery share: store source file on upload ── */
+  var _origHandleFiles = handleFiles;
+  handleFiles = function (fileList) {
+    var files = Array.prototype.slice.call(fileList);
+    var first = files[0];
+    if (first) S.sourceFile = first;
+    _origHandleFiles(fileList);
+  };
+
+  /* ── View-page hook: inject gallery source as uploaded file ── */
+  window.__termify_view_inject = function (file, params) {
+    var charset = (params && params.charset) || "blocks";
+    var width = (params && params.width) || 80;
+    var height = (params && params.height) || 24;
+    S.sourceFile = file;
+    var fd = new FormData();
+    fd.append("files", file);
+    uploadZone.classList.add("uploading");
+    fetch("/api/upload-batch", { method: "POST", body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        uploadZone.classList.remove("uploading");
+        if (d.error) { toast(d.error); return; }
+        if (d.task_ids && d.task_ids.length) {
+          var newFiles = d.task_ids.map(function (t) {
+            return { task_id: t.task_id, filename: t.filename, frames_count: t.frames_count,
+                     charset: charset, width: width, height: height };
+          });
+          S.fileList = newFiles;
+          S.selIdx = 0;
+          S.charset = charset;
+          S.width = width;
+          S.height = height;
+          markSelected(".style-card", '[data-style="' + charset + '"]');
+          selectFile(0);
+          renderFileList();
+          window.__termify_view_task_id = newFiles[0].task_id;
+          window.__termify_view_task_ready = true;
+        }
+      })
+      .catch(function () { uploadZone.classList.remove("uploading"); toast("auto-load failed"); });
+  };
+
+  /* ── Gallery share: open/close modal + submit ── */
+  var shareBtn = byId("shareToGalleryBtn");
+  var galleryModal = byId("galleryModal");
+
+  function openGalleryModal() {
+    if (!S.sourceFile) { toast("请先上传文件"); return; }
+    galleryModal.classList.add("open");
+    var title = byId("galleryTitle");
+    if (!title.value && S.sourceFile.name) {
+      title.value = S.sourceFile.name.replace(/\.[^.]+$/, "").slice(0, 60);
+      updateCounts();
+    }
+  }
+  function closeGalleryModal() { galleryModal.classList.remove("open"); }
+
+  if (shareBtn) shareBtn.addEventListener("click", openGalleryModal);
+  if (byId("galleryModalClose")) byId("galleryModalClose").addEventListener("click", closeGalleryModal);
+  if (galleryModal) galleryModal.addEventListener("click", function (e) {
+    if (e.target === galleryModal) closeGalleryModal();
+  });
+
+  /* ── Show share button when upload succeeds ── */
+  var _origSelectFile = selectFile;
+  selectFile = function (idx) {
+    _origSelectFile(idx);
+    if (shareBtn && S.sourceFile) shareBtn.style.display = "flex";
+  };
+
+  /* ── Character counters ── */
+  function updateCounts() {
+    var t = byId("galleryTitle"), d = byId("galleryDesc"), a = byId("galleryAuthor");
+    if (byId("titleCount") && t) byId("titleCount").textContent = t.value.length + "/60";
+    if (byId("descCount") && d) byId("descCount").textContent = d.value.length + "/500";
+    if (byId("authorCount") && a) byId("authorCount").textContent = a.value.length + "/20";
+  }
+  ["galleryTitle", "galleryDesc", "galleryAuthor"].forEach(function (id) {
+    var el = byId(id);
+    if (el) el.addEventListener("input", updateCounts);
+  });
+
+  /* ── Tag checkbox limit (max 3) ── */
+  var tagChecks = document.querySelectorAll('.gallery-tag-checkbox input[type="checkbox"]');
+  tagChecks.forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      var checked = document.querySelectorAll('.gallery-tag-checkbox input:checked');
+      if (checked.length > 3) { this.checked = false; toast("最多选 3 个标签"); }
+    });
+  });
+
+  /* ── Submit gallery upload ── */
+  if (byId("gallerySubmitBtn")) byId("gallerySubmitBtn").addEventListener("click", function () {
+    if (!S.sourceFile) { toast("请先上传文件"); return; }
+    var title = byId("galleryTitle").value.trim() || S.sourceFile.name.replace(/\.[^.]+$/, "");
+    var desc = byId("galleryDesc").value.trim();
+    var author = byId("galleryAuthor").value.trim();
+    var isPrivate = document.querySelector('input[name="galleryVis"]:checked').value;
+    var tags = [];
+    document.querySelectorAll('.gallery-tag-checkbox input:checked').forEach(function (cb) {
+      tags.push(cb.value);
+    });
+    var fd = new FormData();
+    fd.append("source", S.sourceFile);
+    fd.append("title", title);
+    fd.append("description", desc);
+    fd.append("author", author);
+    fd.append("tags", JSON.stringify(tags));
+    fd.append("is_private", isPrivate);
+    var params = { charset: S.charset, width: S.width, height: S.height };
+    fd.append("params", JSON.stringify(params));
+
+    this.disabled = true; this.textContent = "发布中...";
+    fetch("/api/gallery/upload", { method: "POST", body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        this.disabled = false; this.textContent = "发布到画廊";
+        if (d.error) { toast(d.error); return; }
+        closeGalleryModal();
+        var url = window.location.origin + d.url;
+        toast("已发布！");
+        setTimeout(function () {
+          if (confirm("已发布到画廊！\n链接: " + url + "\n\n是否前往查看？")) {
+            window.open(url, "_blank");
+          }
+        }, 500);
+      }.bind(this))
+      .catch(function () { this.disabled = false; this.textContent = "发布到画廊"; toast("发布失败"); }.bind(this));
+  });
 })();

@@ -23,6 +23,7 @@
                 <li><a href="#upload">上传</a></li>
                 <li><a href="#styles">风格</a></li>
                 <li><a href="#preview">预览</a></li>
+                <li><a href="/gallery">画廊</a></li>
             </ul>
             <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
@@ -367,6 +368,8 @@
                         下载动画文件
                     </button>
 
+                    <button class="gallery-share-btn" id="shareToGalleryBtn" style="display:none;">分享到画廊</button>
+
                     <div class="share-link">
                         <input type="text" value="termify.dev/s/a3x9Kq" readonly>
                         <button>复制</button>
@@ -413,6 +416,46 @@
             </p>
         </div>
     </footer>
+
+    <!-- ═══════════ GALLERY SHARE MODAL ═══════════ -->
+    <div class="gallery-modal-backdrop" id="galleryModal">
+        <div class="gallery-modal-content">
+            <button class="gallery-modal-close" id="galleryModalClose">×</button>
+            <h3 class="gallery-modal-title">分享到画廊</h3>
+            <div class="gallery-form-row">
+                <label class="gallery-form-label">标题 <span class="gallery-form-count" id="titleCount">0/60</span></label>
+                <input type="text" class="gallery-form-input" id="galleryTitle" maxlength="60" placeholder="给你的作品起个名字">
+            </div>
+            <div class="gallery-form-row">
+                <label class="gallery-form-label">描述 <span class="gallery-form-count" id="descCount">0/500</span></label>
+                <textarea class="gallery-form-textarea" id="galleryDesc" maxlength="500" placeholder="描述这张图片的特点或创作意图（可选）"></textarea>
+            </div>
+            <div class="gallery-form-row">
+                <label class="gallery-form-label">标签 <span class="gallery-form-hint">最多选 3 个</span></label>
+                <div class="gallery-tag-checkboxes">
+                    <label class="gallery-tag-checkbox"><input type="checkbox" value="动画"> 动画</label>
+                    <label class="gallery-tag-checkbox"><input type="checkbox" value="几何"> 几何</label>
+                    <label class="gallery-tag-checkbox"><input type="checkbox" value="人像"> 人像</label>
+                    <label class="gallery-tag-checkbox"><input type="checkbox" value="场景"> 场景</label>
+                    <label class="gallery-tag-checkbox"><input type="checkbox" value="抽象"> 抽象</label>
+                    <label class="gallery-tag-checkbox"><input type="checkbox" value="像素艺术"> 像素艺术</label>
+                    <label class="gallery-tag-checkbox"><input type="checkbox" value="ASCII art"> ASCII art</label>
+                </div>
+            </div>
+            <div class="gallery-form-row">
+                <label class="gallery-form-label">作者 <span class="gallery-form-count" id="authorCount">0/20</span></label>
+                <input type="text" class="gallery-form-input" id="galleryAuthor" maxlength="20" placeholder="你的名字或昵称">
+            </div>
+            <div class="gallery-form-row">
+                <label class="gallery-form-label">可见性</label>
+                <div class="gallery-vis-radios">
+                    <label class="gallery-vis-radio"><input type="radio" name="galleryVis" value="0" checked> 公开</label>
+                    <label class="gallery-vis-radio"><input type="radio" name="galleryVis" value="1"> 仅限链接可见</label>
+                </div>
+            </div>
+            <button class="gallery-submit-btn" id="gallerySubmitBtn">发布到画廊</button>
+        </div>
+    </div>
 
     <!-- ═══════════ TWEAKS PANEL ═══════════ -->
     <button class="tweaks-toggle" id="tweaksToggle" title="Tweaks">

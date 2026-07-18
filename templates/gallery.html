@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>在线画廊 — Termify</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+<div id="toast"></div>
+
+    <!-- ═══════════ NAVIGATION ═══════════ -->
+    <nav>
+        <div class="container">
+            <a href="/" class="logo">
+                <div class="logo-icon">T</div>
+                <div class="logo-text">Termi<span>fy</span></div>
+            </a>
+            <ul class="nav-links">
+                <li><a href="/#upload">上传</a></li>
+                <li><a href="/#styles">风格</a></li>
+                <li><a href="/#preview">预览</a></li>
+                <li><a href="/gallery">画廊</a></li>
+            </ul>
+            <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                GitHub
+            </a>
+        </div>
+    </nav>
+
+    <!-- ═══════════ GALLERY HERO ═══════════ -->
+    <section class="gallery-hero">
+        <div class="container">
+            <h1>在线<span class="highlight">画廊</span></h1>
+            <p class="gallery-hero-subtitle">发现社区创作的终端动画</p>
+        </div>
+    </section>
+
+    <!-- ═══════════ FILTERS ═══════════ -->
+    <section class="gallery-filters">
+        <div class="container">
+            <div class="gallery-sort-tabs">
+                <button class="sort-tab active" data-sort="latest">最新</button>
+                <button class="sort-tab" data-sort="hot">热门</button>
+                <button class="sort-tab" data-sort="random">随机</button>
+            </div>
+            <div class="gallery-tag-chips">
+                <button class="tag-chip active" data-tag="">全部</button>
+                <button class="tag-chip" data-tag="动画">动画</button>
+                <button class="tag-chip" data-tag="几何">几何</button>
+                <button class="tag-chip" data-tag="人像">人像</button>
+                <button class="tag-chip" data-tag="场景">场景</button>
+                <button class="tag-chip" data-tag="抽象">抽象</button>
+                <button class="tag-chip" data-tag="像素艺术">像素艺术</button>
+                <button class="tag-chip" data-tag="ASCII art">ASCII art</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ CARD GRID ═══════════ -->
+    <section class="gallery-section">
+        <div class="container">
+            <div class="gallery-grid" id="galleryGrid"></div>
+            <div class="gallery-empty" id="galleryEmpty" style="display:none;">
+                <p>暂无作品，<a href="/">去上传第一个 →</a></p>
+            </div>
+            <div class="gallery-pagination" id="galleryPagination"></div>
+        </div>
+    </section>
+
+    <!-- ═══════════ FOOTER ═══════════ -->
+    <footer>
+        <div class="container">
+            <p class="footer-text">
+                <a href="https://github.com/ZhangJing-gugugaga/Termify">Termify</a> — 万物皆可终端 · MIT License
+            </p>
+            <p class="footer-cta">
+                字符集不够用？<a href="https://github.com/ZhangJing-gugugaga/Termify/issues">来提 Issue →</a>
+            </p>
+        </div>
+    </footer>
+
+    <!-- ═══════════ TWEAKS PANEL ═══════════ -->
+    <button class="tweaks-toggle" id="tweaksToggle" title="Tweaks">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+
+    <div class="tweaks-panel" id="tweaksPanel">
+        <div class="tweaks-header">
+            <span class="tweaks-title">Tweaks</span>
+            <button class="tweaks-close" id="tweaksClose">×</button>
+        </div>
+        <div class="tweak-group">
+            <div class="tweak-label">背景网格</div>
+            <div class="tweak-options">
+                <button class="tweak-opt active" data-tweak="grid-on">显示</button>
+                <button class="tweak-opt" data-tweak="grid-off">隐藏</button>
+            </div>
+        </div>
+        <div class="tweak-group">
+            <div class="tweak-label">扫描线</div>
+            <div class="tweak-options">
+                <button class="tweak-opt active" data-tweak="scan-on">显示</button>
+                <button class="tweak-opt" data-tweak="scan-off">隐藏</button>
+            </div>
+        </div>
+        <div class="tweak-group">
+            <div class="tweak-label">主题色</div>
+            <div class="tweak-options">
+                <button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button>
+                <button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button>
+                <button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var toastTimer = null;
+        function toast(msg) {
+            var el = document.getElementById("toast"); if (!el) return;
+            el.textContent = msg; el.classList.add("show");
+            if (toastTimer !== null) clearTimeout(toastTimer);
+            toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2200);
+        }
+
+        var G = { sort: "latest", tag: "", page: 1, limit: 24, total: 0, hasMore: false };
+
+        function fetchGallery() {
+            var params = new URLSearchParams({ sort: G.sort, tag: G.tag, page: G.page, limit: G.limit });
+            fetch("/api/gallery/list?" + params.toString())
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    G.total = d.total;
+                    G.hasMore = d.has_more;
+                    renderCards(d.items);
+                    renderPagination(d);
+                })
+                .catch(function () { toast("加载失败"); });
+        }
+
+        function renderCards(items) {
+            var grid = document.getElementById("galleryGrid");
+            var empty = document.getElementById("galleryEmpty");
+            if (!items.length) {
+                grid.innerHTML = "";
+                empty.style.display = "block";
+                return;
+            }
+            empty.style.display = "none";
+            grid.innerHTML = items.map(function (w) {
+                return '<a class="gallery-card" href="/v/' + w.id + '">' +
+                    '<div class="gallery-card-img">' +
+                    '<img src="' + w.thumbnail_url + '" alt="' + w.title + '" loading="lazy">' +
+                    '</div>' +
+                    '<div class="gallery-card-info">' +
+                    '<div class="gallery-card-title">' + w.title + '</div>' +
+                    '<div class="gallery-card-meta">' +
+                    '<span class="gallery-card-author">' + (w.author || '匿名') + '</span>' +
+                    '<span class="gallery-card-stats">' +
+                    '<span>❤ ' + w.like_count + '</span>' +
+                    '<span>👁 ' + w.view_count + '</span>' +
+                    '</span>' +
+                    '</div></div></a>';
+            }).join("");
+        }
+
+        function renderPagination(d) {
+            var el = document.getElementById("galleryPagination");
+            if (d.total <= d.limit) { el.innerHTML = ""; return; }
+            var totalPages = Math.ceil(d.total / d.limit);
+            var html = "";
+            if (d.page > 1) html += '<button class="gallery-page-btn" data-page="' + (d.page - 1) + '">← 上一页</button>';
+            html += '<span class="gallery-page-info">第 ' + d.page + ' / ' + totalPages + ' 页</span>';
+            if (d.has_more) html += '<button class="gallery-page-btn" data-page="' + (d.page + 1) + '">下一页 →</button>';
+            el.innerHTML = html;
+        }
+
+        // Sort tabs
+        document.querySelectorAll(".sort-tab").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                document.querySelectorAll(".sort-tab").forEach(function (b) { b.classList.remove("active"); });
+                btn.classList.add("active");
+                G.sort = btn.dataset.sort;
+                G.page = 1;
+                fetchGallery();
+            });
+        });
+
+        // Tag chips
+        document.querySelectorAll(".tag-chip").forEach(function (chip) {
+            chip.addEventListener("click", function () {
+                document.querySelectorAll(".tag-chip").forEach(function (c) { c.classList.remove("active"); });
+                chip.classList.add("active");
+                G.tag = chip.dataset.tag;
+                G.page = 1;
+                fetchGallery();
+            });
+        });
+
+        // Pagination click delegation
+        document.getElementById("galleryPagination").addEventListener("click", function (e) {
+            var btn = e.target.closest(".gallery-page-btn");
+            if (!btn) return;
+            G.page = parseInt(btn.dataset.page, 10);
+            fetchGallery();
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+
+        // Tweaks panel
+        var tweaksToggle = document.getElementById("tweaksToggle");
+        var tweaksPanel = document.getElementById("tweaksPanel");
+        var tweaksClose = document.getElementById("tweaksClose");
+        if (tweaksToggle) tweaksToggle.addEventListener("click", function () {
+            tweaksPanel.classList.toggle("open");
+            tweaksToggle.style.display = tweaksPanel.classList.contains("open") ? "none" : "flex";
+        });
+        if (tweaksClose) tweaksClose.addEventListener("click", function () {
+            tweaksPanel.classList.remove("open");
+            tweaksToggle.style.display = "flex";
+        });
+
+        // Grid / scanline toggles
+        function bindTweak(onSel, offSel, prop, onVal, offVal) {
+            document.querySelectorAll(onSel).forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    document.body.style.setProperty(prop, onVal);
+                    document.querySelectorAll(onSel + "," + offSel).forEach(function (b) { b.classList.remove("active"); });
+                    btn.classList.add("active");
+                });
+            });
+            document.querySelectorAll(offSel).forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    document.body.style.setProperty(prop, offVal);
+                    document.querySelectorAll(onSel + "," + offSel).forEach(function (b) { b.classList.remove("active"); });
+                    btn.classList.add("active");
+                });
+            });
+        }
+        bindTweak('[data-tweak="grid-on"]', '[data-tweak="grid-off"]', "--grid-opacity", "0.3", "0");
+        bindTweak('[data-tweak="scan-on"]', '[data-tweak="scan-off"]', "--scanline-opacity", "1", "0");
+
+        // Theme color toggles
+        document.querySelectorAll('[data-tweak^="theme-"]').forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                document.querySelectorAll('[data-tweak^="theme-"]').forEach(function (b) { b.classList.remove("active"); });
+                btn.classList.add("active");
+                var theme = btn.getAttribute("data-tweak").replace("theme-", "");
+                var colors = {
+                    green: { main: "#00ff41", dim: "#00cc33", glow: "rgba(0,255,65,0.15)" },
+                    amber: { main: "#ffb000", dim: "#cc8d00", glow: "rgba(255,176,0,0.12)" },
+                    cyan:  { main: "#00d4ff", dim: "#00a8cc", glow: "rgba(0,212,255,0.12)" }
+                };
+                var c = colors[theme]; if (!c) return;
+                document.documentElement.style.setProperty("--green", c.main);
+                document.documentElement.style.setProperty("--green-dim", c.dim);
+                document.documentElement.style.setProperty("--green-glow", c.glow);
+            });
+        });
+
+        fetchGallery();
+    </script>
+</body>
+</html>
