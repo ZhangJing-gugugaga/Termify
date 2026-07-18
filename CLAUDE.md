@@ -12,13 +12,13 @@ Full product spec: `PRD.md`. UI mockup (static, not wired to backend): `ui-mocku
 
 **Phase 1 (backend) + Phase 2 (frontend) + Phase 3 (integration) all implemented.** MVP complete and pushed to GitHub. Post-release: fullscreen adaptive player + optional audio.
 
-- Backend: `termify/` package (charset → frames → engine → output) with `pytest`-green 45 unit tests. See `demo.py` for CLI end-to-end.
+- Backend: `termify/` package (charset → frames → engine → output) with `pytest`-green 123 unit tests. See `demo.py` for CLI end-to-end.
 - Frontend: `templates/index.html` + `static/css/{tokens,app}.css` + `static/js/app.js` (IIFE, API-driven). MCU output panel is UI-only, labeled "v2 即将支持".
 - Integration: `app.py` (Flask) wires the three PRD §6 endpoints directly to `termify.convert()` + `render()`. Server: `python app.py` → `http://127.0.0.1:5000`.
 - Output rendering fix: browsers do not interpret raw ANSI, so `ansiToHtml` (JS-side) converts TrueColor ANSI → HTML `<span>` with CSS gradients. Half-block `▀` gets a top/bottom linear gradient on an empty `<span class="hb">` (no `background-clip:text` for performance).
 - Performance: all frames pre-rendered to HTML strings on load (`S.htmlFrames`), playback via `requestAnimationFrame` (not `setInterval`), switching charsets uses `wasPlaying` flag to avoid progress bar jumps.
 - CJK Windows fix: `▀` (U+2580) renders as double-width on Chinese Windows; `.hb` spans force `width:1ch;height:1.3em` to prevent overflow.
-- Tests: `tests/` — 45 tests, all green.
+- Tests: `tests/` — 123 tests, all green.
 - Post-release enhancements: Python player auto-scales to terminal window (fullscreen adaptive, `GetConsoleScreenBufferInfo.srWindow` on Windows), optional `music.mp3` audio. Frontend UX: upload scrolls to style picker, style click scrolls to preview.
 
 ## Tech stack (locked by PRD)
@@ -62,7 +62,7 @@ Implementation notes:
 ```bash
 pip install flask pillow        # install deps
 python app.py                   # start server → http://127.0.0.1:5000
-pytest tests/                   # run backend tests (45 tests, all green)
+pytest tests/                   # run backend tests (123 tests, all green)
 python demo.py your.gif --charset all  # CLI end-to-end: GIF → outputs/*.py + *.html
 ```
 

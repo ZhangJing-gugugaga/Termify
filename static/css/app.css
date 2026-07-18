@@ -556,41 +556,42 @@
         .animation-layout {
             display: grid;
             grid-template-columns: 1fr 320px;
+            align-items: start;          /* break default stretch — each column keeps its own height */
             gap: var(--space-8);
             margin-top: var(--space-8);
         }
 
         .animation-terminal {
-            min-height: 400px;
             max-width: 100%;
-            overflow-x: auto;
+            height: 400px;               /* fixed height to match right panel */
+            overflow: hidden;            /* clip when content exceeds fixed height */
+            display: flex;
+            flex-direction: column;
+        }
+
+        .animation-terminal .terminal {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;               /* allow flex child to shrink */
+        }
+
+        .animation-terminal .terminal-body {
+            flex: 1;
+            min-height: 0;               /* allow flex child to shrink */
         }
 
         .animation-terminal .terminal-body {
             display: block;
             overflow-x: auto;
-            overflow-y: hidden;
-            min-height: 200px;
+            overflow-y: auto;
             padding: var(--space-5);
-            font-size: 10px;
+            font-size: 10px;  /* fallback, JS overrides via fitTerminalFontSize() */
             line-height: 1.3;
             white-space: pre;
             color: var(--green);
-            /* Auto-scale wide outputs to fit viewport without JS */
             max-width: 100%;
             box-sizing: border-box;
-        }
-        /* High-res size modes shrink the terminal so it stays on-screen */
-        .animation-terminal[data-size="160"] .terminal-body,
-        .animation-terminal[data-size="200"] .terminal-body {
-            font-size: 6px !important;
-            line-height: 1.15;
-        }
-        .animation-terminal[data-size="200"] .terminal-body {
-            font-size: 4.5px !important;
-        }
-        .animation-terminal .terminal-body[data-charset="geometric"] {
-            font-size: 13px;
         }
 
         /* Force block-element chars (▀ etc.) to single-width on CJK Windows */

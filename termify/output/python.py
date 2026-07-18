@@ -40,6 +40,13 @@ Termify 终端动画播放器
 
 import sys
 
+# Force UTF-8 output so Unicode chars (▀, ⠁, etc.) work on Windows GBK consoles
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 # Python 版本检查
 if sys.version_info < (3, 6):
     print("错误: 需要 Python 3.6 或更高版本。")
@@ -195,10 +202,40 @@ def _compose_screen(scaled_frame, cols, rows, bg_color=None):
 
 # ── Windows ANSI ──────────────────────────────────────────────
 
-def _enable_windows_ansi():
-    """Enable VT100 processing on Windows consoles."""
+def _detect_terminal_capabilities():
+    """Probe environment for ANSI + Unicode support signals.
+
+    Returns (ansi_ok, unicode_ok). On non-Windows we assume both are fine.
+    On Windows we check environment hints (WT_SESSION / COLORTERM) and the
+    console codepage to decide whether to warn the user.
+    """
     if os.name != 'nt':
-        return
+        return True, True
+    unicode_ok = stdout_codepage() in ('cp65001', 'utf-8', 'utf8')
+    ansi_ok = bool(os.environ.get('WT_SESSION') or os.environ.get('COLORTERM'))
+    return ansi_ok, unicode_ok
+
+
+def stdout_codepage():
+    """Return the active output codepage string, or None on failure."""
+    try:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        return 'cp%d' % k32.GetConsoleOutputCP()
+    except Exception:
+        try:
+            import subprocess as _sp
+            out = _sp.check_output(['chcp'], shell=True, stderr=_sp.DEVNULL)
+            token = out.decode('ascii', errors='ignore').strip().split(':')[-1].strip().rstrip('.')
+            return 'cp' + token
+        except Exception:
+            return None
+
+
+def _enable_windows_ansi():
+    """Enable VT100 processing on Windows consoles. Returns True on success."""
+    if os.name != 'nt':
+        return True
     try:
         import ctypes
         k32 = ctypes.windll.kernel32
@@ -206,8 +243,9 @@ def _enable_windows_ansi():
         m = ctypes.c_ulong()
         k32.GetConsoleMode(h, ctypes.byref(m))
         k32.SetConsoleMode(h, m.value | 0x0004)
+        return True
     except Exception:
-        pass
+        return False
 
 
 
@@ -304,7 +342,15 @@ def _stop_audio():
 # ── Main playback ─────────────────────────────────────────────
 
 def play():
-    _enable_windows_ansi()
+    ansi_ok, unicode_ok = _detect_terminal_capabilities()
+    ansi_enabled = _enable_windows_ansi()
+    if CHARSET == "blocks" and (not ansi_enabled or not unicode_ok):
+        sys.stderr.write(
+            "⚠ 终端未通过 ANSI/Unicode 检测，blocks 风格可能显示乱码。\\n"
+            "  建议：改用 HTML 格式下载，用浏览器打开即可获得最佳效果。\\n"
+            "  按 Ctrl+C 退出；或忽略本提示继续。\\n\\n"
+        )
+        sys.stderr.flush()
     _start_audio()
 
     sys.stdout.write('\\x1b[?25l\\x1b[?1049h\\x1b[2J')
