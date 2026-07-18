@@ -263,7 +263,12 @@ def _render_braille(img, width, height, fg=None, bg=None):
 def _render_geometric(img, width, height, fg=None, bg=None):
     chars = CHARSETS["geometric"]["chars"]
     n = len(chars)
-    lut = _adaptive_lut(img)
+    # Use direct linear luminance → index mapping (NOT adaptive LUT).
+    # The adaptive LUT pre-stretches the histogram so dark always maps to 0
+    # and bright to 255, which breaks the mib inversion (double-inversion).
+    # Direct linear mapping: bright pixels → low idx (dense ■),
+    # dark pixels → high idx (sparse □).  Then mib flips it when the
+    # subject is dark-on-light so the dark subject still gets dense chars.
     mib = _minority_is_bright_for_img(img)
     px = img.load()
     lines = []
@@ -271,11 +276,13 @@ def _render_geometric(img, width, height, fg=None, bg=None):
         row = []
         for x in range(width):
             r, g, b = px[x, y][:3]
-            gray = lut[_luminance(r, g, b)]
+            lum = _luminance(r, g, b)
             if mib:
-                idx = (n - 1) - gray * (n - 1) // 255
+                # Bright subject: bright → dense, dark → sparse
+                idx = (n - 1) - lum * (n - 1) // 255
             else:
-                idx = gray * (n - 1) // 255
+                # Dark subject: dark → dense, bright → sparse
+                idx = lum * (n - 1) // 255
             row.append(_emit(chars[idx], fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")
