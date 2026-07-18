@@ -20,6 +20,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import secrets
 
 import pytest
 from PIL import Image
@@ -102,10 +103,11 @@ def _upload(client, title="cat", desc="a cool cat", tags=None, author="tester",
         "is_private": is_private,
         "params": json.dumps(params),
     }
-    _UPLOAD_COUNTER[0] += 1
+    # UUID-based IP ensures each call uses a fresh rate-limit bucket
+    # (avoids collision with fixed IPs used in rate-limit-focused tests).
     resp = client.post("/api/gallery/upload", data=data,
                        content_type="multipart/form-data",
-                       headers={"X-Forwarded-For": f"10.0.0.{_UPLOAD_COUNTER[0]}"})
+                       headers={"X-Forwarded-For": secrets.token_hex(4) + ":" + secrets.token_hex(4)})
     assert resp.status_code == expect_status
     return json.loads(resp.data)
 
@@ -716,6 +718,51 @@ def test_view_page_size_btn_classname(isolated_env):
     # Click handler should remove 'active' (not 'selected')
     assert 'b.classList.remove("active")' in html
     assert 'b.classList.remove("selected")' not in html.replace('c.classList.remove("selected")', "")
+
+
+# ----------------------------------------------------------------------------
+# 17. Like persistence
+# ----------------------------------------------------------------------------
+
+def test_work_detail_includes_is_liked_true_after_liking(isolated_env):
+    """After liking + re-fetching work detail, is_liked must be True."""
+    b = _upload(isolated_env)
+    wid = b["id"]
+    # Like via the helper (sets cookie via Set-Cookie)
+    like_resp = isolated_env.post(f"/api/gallery/like/{wid}",
+                                  headers={"X-Forwarded-For": "10.0.0.88"})
+    assert like_resp.status_code == 200
+    body = json.loads(like_resp.data)
+    assert body["liked"] is True
+    assert body["count"] == 1
+    # Extract the like cookie
+    set_cookie = like_resp.headers.get("Set-Cookie", "")
+    assert f"termify_like_{wid}=" in set_cookie
+    cookie_val = set_cookie.split(f"termify_like_{wid}=")[1].split(";")[0]
+    # Re-fetch work detail WITH the cookie + same IP → is_liked must be True
+    detail = isolated_env.get(f"/api/gallery/work/{wid}",
+                             headers={"Cookie": f"termify_like_{wid}={cookie_val}",
+                                      "X-Forwarded-For": "10.0.0.88"})
+    detail_body = json.loads(detail.data)
+    assert detail_body.get("is_liked") is True
+
+
+def test_work_detail_is_liked_false_without_cookie(isolated_env):
+    """Without the like cookie, is_liked must be False."""
+    b = _upload(isolated_env)
+    resp = isolated_env.get(f"/api/gallery/work/{b['id']}")
+    body = json.loads(resp.data)
+    assert body.get("is_liked") is False
+
+
+def test_view_page_fetches_like_state_on_load(isolated_env):
+    """view_work.html JS must fetch work detail to restore liked state."""
+    b = _upload(isolated_env)
+    resp = isolated_env.get(f"/v/{b['id']}")
+    html = resp.data.decode("utf-8", errors="ignore")
+    # JS should fetch /api/gallery/work/<id> to restore liked state
+    assert '"/api/gallery/work/" + WORK_ID' in html
+    assert "is_liked" in html
 
 
 if __name__ == "__main__":

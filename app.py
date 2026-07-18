@@ -685,11 +685,16 @@ def gallery_work(work_id):
     GALLERY_DB.increment_view(work_id)
     fresh = GALLERY_DB.get_work(work_id)
     out = _gallery_public_dict(fresh)
-    # Omit sensitive when listing
     out["is_authorized"] = (
         request.cookies.get(f"termify_admin_{work_id}") == work["admin_token"]
         or (bool(_admin_pwd()) and request.args.get("pwd") == _admin_pwd())
     )
+    # Has the current visitor (IP + cookie) liked this work?
+    like_cookie = request.cookies.get(f"termify_like_{work_id}", "")
+    if like_cookie:
+        out["is_liked"] = GALLERY_DB.has_liked(work_id, _client_ip(), like_cookie)
+    else:
+        out["is_liked"] = False
     return jsonify(out)
 
 

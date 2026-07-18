@@ -394,12 +394,16 @@
             if (work.tags && work.tags.length && tagsEl) {
                 tagsEl.innerHTML = work.tags.map(function (t) { return '<span class="view-banner-tag">' + escapeHtml(t) + '</span>'; }).join("");
             }
-            // like
-            document.getElementById("likeBtn").addEventListener("click", function () {
+            // like — check existing state on load, then wire click
+            var likeBtnEl = document.getElementById("likeBtn");
+            fetch("/api/gallery/work/" + WORK_ID).then(function (r) { return r.json(); }).then(function (wd) {
+                if (wd && wd.is_liked) { likeBtnEl.classList.add("liked"); }
+            }).catch(function () {});
+            likeBtnEl.addEventListener("click", function () {
                 fetch("/api/gallery/like/" + WORK_ID, { method: "POST" }).then(function (r) { return r.json(); }).then(function (d) {
                     if (d.error) { toast(d.error); return; }
                     document.getElementById("bannerLikes").textContent = d.count;
-                    document.getElementById("likeBtn").classList.toggle("liked", d.liked);
+                    likeBtnEl.classList.toggle("liked", d.liked);
                     if (d.liked) toast("已点赞");
                 }).catch(function () { toast("操作失败"); });
             });
