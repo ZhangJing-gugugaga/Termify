@@ -9,7 +9,10 @@ env/
 .eggs/
 *.egg-info/
 dist/
-build/)
+build/
+*.spec.bak
+termify/build/
+termify/dist/
 
 # Temp upload / processing dirs (per-session, regenerated on demand)
 uploads/
