@@ -583,6 +583,41 @@
     });
   }
 
+  // URL fetch
+  (function () {
+    var urlSect = byId("urlFetch");
+    var urlInput = byId("urlInput");
+    var urlBtn = byId("urlFetchBtn");
+    if (!urlSect || !urlInput || !urlBtn) return;
+    urlSect.style.display = "flex";
+    function doFetchUrl() {
+      var url = urlInput.value.trim();
+      if (!url) { toast("请输入 URL"); return; }
+      urlBtn.disabled = true; urlBtn.textContent = "下载中...";
+      fetch("/api/fetch-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        urlBtn.disabled = false; urlBtn.textContent = "下载";
+        if (d.error) { toast(d.error); return; }
+        S.fileList = [{ task_id: d.task_id, filename: d.filename || "url-image",
+                        frames_count: d.frames_count, charset: "ascii", width: 80, height: 24 }];
+        S.selIdx = 0; selectFile(0); renderFileList();
+        var stylesSection = byId("styles");
+        if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
+        urlInput.value = "";
+      }).catch(function (e) {
+        urlBtn.disabled = false; urlBtn.textContent = "下载";
+        toast("fetch failed: " + e);
+      });
+    }
+    urlBtn.addEventListener("click", doFetchUrl);
+    urlInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") doFetchUrl();
+    });
+  })();
+
   // Tweaks panel toggle
   var tweaksToggle = byId("tweaksToggle"),
       tweaksPanel = byId("tweaksPanel"),

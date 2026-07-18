@@ -142,6 +142,52 @@ def upload_batch():
     return jsonify({"task_ids": results, "errors": errors})
 
 
+@app.route("/api/fetch-url", methods=["POST"])
+def fetch_url():
+    """Download an image URL server-side and create a conversion task.
+
+    SSRF protection: private IP blocked, Content-Type/Size validation,
+    download timeout 15s, size cap 20MB, PIL verify.
+    """
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+
+    from termify.urlfetch import fetch_url_to_temp, URLFetchError
+    from termify import convert
+
+    try:
+        tmp_path = fetch_url_to_temp(url)
+    except URLFetchError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    try:
+        task_id = uuid.uuid4().hex[:12]
+        seq = convert(tmp_path, "ascii", 80, 24)
+    except Exception as exc:  # noqa: BLE001
+        os.remove(tmp_path)
+        return jsonify({"error": f"Conversion failed: {exc}"}), 500
+
+    with TASKS_LOCK:
+        TASKS[task_id] = {
+            "filepath": tmp_path,
+            "original_size": {"width": seq.width, "height": seq.height},
+            "target_size": {"width": seq.width, "height": seq.height},
+            "frames_count": len(seq.lines_per_frame),
+            "interval": seq.interval,
+            "cache": {"ascii:80x24": seq},
+        }
+
+    return jsonify({
+        "task_id": task_id,
+        "filename": os.path.basename(tmp_path),
+        "frames_count": len(seq.lines_per_frame),
+        "original_size": {"width": seq.width, "height": seq.height},
+        "target_size": {"width": seq.width, "height": seq.height},
+    })
+
+
 def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=None, bg_color=None):
     """Return a converted FrameSequence, converting+caching on first miss."""
     with TASKS_LOCK:

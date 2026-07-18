@@ -438,6 +438,49 @@
             letter-spacing: 0.5px;
         }
 
+        /* ── URL fetch ── */
+        .url-fetch {
+            display: none;
+            align-items: center;
+            gap: var(--space-2);
+            margin-top: var(--space-4);
+            position: relative;
+            z-index: 1;
+        }
+        .url-fetch-label {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-dim);
+            white-space: nowrap;
+        }
+        .url-fetch-input {
+            flex: 1;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            padding: var(--space-2) var(--space-3);
+            background: var(--bg-base);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            outline: none;
+            transition: border-color var(--transition-fast);
+        }
+        .url-fetch-input:focus { border-color: var(--green); }
+        .url-fetch-input::placeholder { color: var(--text-dim); opacity: 0.5; }
+        .url-fetch-btn {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            padding: var(--space-2) var(--space-4);
+            background: var(--green);
+            border: none;
+            border-radius: var(--radius-sm);
+            color: var(--bg-base);
+            cursor: pointer;
+            font-weight: 600;
+            transition: opacity var(--transition-fast);
+        }
+        .url-fetch-btn:hover { opacity: 0.85; }
+
         /* ── File list (batch upload) ── */
         .file-list {
             display: none;
