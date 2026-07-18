@@ -71,4 +71,5 @@ _*.py
 
 # Test artifacts (temporary, regenerable)
 test_*.json
+test_*.py
 static/geometric_preview.html
