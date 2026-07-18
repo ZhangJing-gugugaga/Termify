@@ -40,13 +40,6 @@ Termify 终端动画播放器
 
 import sys
 
-# Force UTF-8 output so Unicode chars (▀, ⠁, etc.) work on Windows GBK consoles
-try:
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-except Exception:
-    pass
-
 # Python 版本检查
 if sys.version_info < (3, 6):
     print("错误: 需要 Python 3.6 或更高版本。")
@@ -344,6 +337,14 @@ def _stop_audio():
 def play():
     ansi_ok, unicode_ok = _detect_terminal_capabilities()
     ansi_enabled = _enable_windows_ansi()
+    
+    # Force UTF-8 output after ANSI support is enabled
+    # This ensures ANSI escape sequences work correctly on Windows
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
     
     # Warn about potential display issues
     if CHARSET == "blocks" and (not ansi_enabled or not unicode_ok):
