@@ -298,22 +298,6 @@ python .../state-validator.py .project-state.md
 **变更**: 后端 POST /api/fetch-url + SSRF 防护（内网IP拦截/15s超时/20MB限制/PIL验证）；前端粘贴链接输入框；+6 tests 133→140 全绿
 
 ---
-### ② URL 直输（P1 — 次项）~~旧版~~
-
-**需求**：用户粘贴一个图片/GIF 在线链接 → 服务器下载该 → 进入转换流程（无需先下载再上传）。
-
-**技术要点**：
-- 后端：新增 `POST /api/fetch-url`，接收 `{"url":"..."}` → `urllib.request.urlopen(url)` → 校验响应头 Content-Type 是否为 image/gif/png/jpeg → 写入临时文件 → 复用 `termify.convert()` 流水线。
-- 安全：限制 IP（防 SSRF）、设置下载超时（15s）、限制文件大小（同上传 20MB）、校验真实类型（PIL 尝试打开，防类型伪装）。
-- 前端：上传区新增"粘贴链接"输入框或按钮，与拖拽上传并列。
-
-**涉及文件**：`app.py`（新增路由）、`static/js/app.js`（前端链接输入组件）、`static/css/app.css`
-
-**FireCrawl 分析结论**：排除。`github.com/firecrawl/firecrawl` 的 `extractImages.ts` 是**网页 HTML 爬图片**（从 `<img>`/`<meta>` 标签提取 URL），不适合直接下载用户粘贴的图片直链。`video.ts` 调用外部 avgrab 服务做视频发现，与 Termify 不需要的依赖。（**不需依赖 FireCrawl**，一个 `urllib` 调用即可。）
-
-**UI 改动时参考的设计 Skills**：`ui-ux-pro-max`、`ux-design`
-
----
 ### ③ 后端 ffmpeg 视频接入 — ✅ 已完成（feat/batch-upload 分支，PR #3）
 
 **变更**:
@@ -322,23 +306,6 @@ python .../state-validator.py .project-state.md
 - 流程：上传 → validate → ffmpeg 抽帧(10fps) → 逐帧 convert → FrameSequence
 - 前端：上传区格式提示 MP4/WEBM 已支持
 - 测试：+6 tests (T13-video-upload)，140→146 全绿
-
----
-### ③ 后端 ffmpeg 视频接入（P1 — 后续）~~旧版~~
-
-**需求**：用户上传 MP4/WEBM 视频 → 后端用 ffmpeg 抽帧 → 进入引擎转换。
-
-**技术要点**：
-- 依赖：新增 `ffmpeg-python` 或直接 `subprocess ffmpeg`。**不走前端 ffmpeg.wasm**（铁律）。
-- 流程：上传 → 校验视频（扩展名/大小/时长限制） → ffmpeg 抽帧为 PNG 序列 → `termify.convert()` 逐帧处理。建议限制视频时长 ≤30s、文件大小同 20MB。
-- API：复用 `POST /api/upload`（自动检测视频类型走不同路径），或新增 `POST /api/upload-video`。
-- 需在 `requirements.txt` 和部署文档标注 ffmpeg 是可选运行时依赖（不像 Pillow 是纯 Python 包）。
-
-**涉及文件**：`app.py`（新增视频处理分支）、`termify/engine.py`（可能需适配帧序列输入）、新文件 `termify/video.py`（ffmpeg 抽帧逻辑）、`tests/`（新增视频端到端测试）、`PRD.md`（更新进度清单）、`requirements.txt`（加 ffmpeg-python 标记）。
-
-**约束**：遵守 PRD §5.2「视频处理走后端 ffmpeg」和护城河铁律（不因视频输入弱化可下载可运行文件输出）。
-
-**测试**：新增视频端到端测试（ffmpeg 抽小测试视频 → convert → 验证输出），以及异常测试（格式不支持、超长时长、大文件）。**运行时需要 ffmpeg 安装在测试环境。**
 
 ---
 ### 🎨 前端 UI 改动时的设计 Skills 索引

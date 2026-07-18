@@ -386,10 +386,43 @@
     requestPreview(S.charset);
   }
 
+  /* ── File type routing ── */
+  var VIDEO_EXTS = [".mp4", ".webm", ".mov", ".avi", ".mkv"];
+  var IMAGE_EXTS = [".gif", ".png", ".jpg", ".jpeg"];
+  function extOf(name) {
+    var idx = name.lastIndexOf(".");
+    return idx >= 0 ? name.slice(idx).toLowerCase() : "";
+  }
+  function isVideo(file) { return VIDEO_EXTS.indexOf(extOf(file.name)) >= 0; }
+  function isImage(file) { return IMAGE_EXTS.indexOf(extOf(file.name)) >= 0; }
+
   /* ── File upload ── */
   function handleFiles(fileList) {
     var files = Array.prototype.slice.call(fileList);
     if (!files.length) return;
+
+    // Split by type
+    var videos = files.filter(isVideo);
+    var images = files.filter(isImage);
+    var unsupported = files.filter(function (f) { return !isVideo(f) && !isImage(f); });
+
+    if (unsupported.length) {
+      unsupported.forEach(function (f) { toast(f.name + ": 不支持的格式"); });
+    }
+
+    // Upload images via batch endpoint
+    if (images.length) {
+      uploadImages(images);
+    }
+
+    // Upload videos one at a time (endpoint is single-file)
+    videos.forEach(function (v) { uploadVideo(v); });
+
+    // Fallthrough: nothing to upload
+    if (!images.length && !videos.length) return;
+  }
+
+  function uploadImages(files) {
     var fd = new FormData();
     files.forEach(function (f) { fd.append("files", f); });
     if (uploadZone) uploadZone.classList.add("uploading");
@@ -401,12 +434,13 @@
           d.errors.forEach(function (err) { toast(err.filename + ": " + err.error); });
         }
         if (d.task_ids && d.task_ids.length) {
-          S.fileList = d.task_ids.map(function (t) {
+          var newFiles = d.task_ids.map(function (t) {
             return { task_id: t.task_id, filename: t.filename, frames_count: t.frames_count,
                      charset: "ascii", width: 80, height: 24 };
           });
-          S.selIdx = 0;
-          selectFile(0);
+          S.fileList = S.fileList.concat(newFiles);
+          S.selIdx = S.fileList.length - newFiles.length;
+          selectFile(S.selIdx);
           renderFileList();
           var stylesSection = document.getElementById("styles");
           if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -421,6 +455,30 @@
       .catch(function (e) {
         if (uploadZone) uploadZone.classList.remove("uploading");
         toast("upload failed: " + e);
+      });
+  }
+
+  function uploadVideo(file) {
+    var fd = new FormData();
+    fd.append("file", file);
+    if (uploadZone) uploadZone.classList.add("uploading");
+    fetch("/api/upload-video", { method: "POST", body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (uploadZone) uploadZone.classList.remove("uploading");
+        if (d.error) { toast(d.error); return; }
+        var vf = { task_id: d.task_id, filename: d.filename || file.name,
+                   frames_count: d.frames_count, charset: "ascii", width: 80, height: 24 };
+        S.fileList = S.fileList.concat([vf]);
+        S.selIdx = S.fileList.length - 1;
+        selectFile(S.selIdx);
+        renderFileList();
+        var stylesSection = document.getElementById("styles");
+        if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      })
+      .catch(function (e) {
+        if (uploadZone) uploadZone.classList.remove("uploading");
+        toast("video upload failed: " + e);
       });
   }
 

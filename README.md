@@ -218,6 +218,18 @@ curl -X POST http://127.0.0.1:5000/api/generate \
 
 # 下载
 curl -O http://127.0.0.1:5000/api/download/abc123_ascii.py
+
+# 批量上传（多文件）
+curl -X POST http://127.0.0.1:5000/api/upload-batch \
+  -F "files=@cat.gif" -F "files=@dog.png"
+
+# URL 直输
+curl -X POST http://127.0.0.1:5000/api/fetch-url \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com/image.gif"}'
+
+# 视频上传（后端 ffmpeg 抽帧）
+curl -X POST http://127.0.0.1:5000/api/upload-video -F "file=@clip.mp4"
 ```
 
 ## 项目结构
