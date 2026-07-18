@@ -76,3 +76,4 @@ _*.py
 test_*.json
 test_*.py
 static/geometric_preview.html
+data/
