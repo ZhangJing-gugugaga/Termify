@@ -26,7 +26,7 @@ CHARSETS: dict[str, dict] = {
     },
     "geometric": {
         "name": "几何图形",
-        "chars": "■●◆▪▫◇○□",  # dense → sparse (black → white)
+        "chars": "■●◆▪▫◇○ ",  # dense → sparse (black → white, space = invisible background)
         "color": False,
         "description": "现代设计感",
     },
