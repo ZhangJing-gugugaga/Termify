@@ -4,7 +4,8 @@
     taskId: null, frames: [], htmlFrames: [], interval: 0.1,
     charset: "ascii", totalFrames: 0, width: 80, height: 24,
     wasPlaying: false, fg: null, bg: null,
-    canvasFrames: [], canvasEl: null, canvasCtx: null
+    canvasFrames: [], canvasEl: null, canvasCtx: null,
+    fileList: [], selIdx: 0
   };
   var latestReq = 0;
   var currentFrame = 0, playing = false, rafId = null, lastFrameTime = 0;
@@ -353,6 +354,38 @@
     }).catch(function () { if (myId !== latestReq) return; toast("preview failed"); });
   }
 
+  /* ── File list rendering ── */
+  function renderFileList() {
+    var container = byId("fileList");
+    if (!container) return;
+    if (!S.fileList.length) { container.innerHTML = ""; container.style.display = "none"; return; }
+    container.style.display = "flex";
+    container.innerHTML = "";
+    S.fileList.forEach(function (f, i) {
+      var item = document.createElement("div");
+      item.className = "file-list-item" + (i === S.selIdx ? " active" : "");
+      item.textContent = f.filename;
+      item.title = f.filename + " — 点击下载切换";
+      item.addEventListener("click", function () { selectFile(i); });
+      container.appendChild(item);
+    });
+  }
+
+  function selectFile(idx) {
+    if (idx < 0 || idx >= S.fileList.length) return;
+    S.selIdx = idx;
+    var f = S.fileList[idx];
+    S.taskId = f.task_id;
+    S.charset = f.charset || "ascii";
+    S.width = f.width || 80;
+    S.height = f.height || 24;
+    S.totalFrames = f.frames_count;
+    S.wasPlaying = true;
+    markSelected(".style-card", '[data-style="' + S.charset + '"]');
+    renderFileList();
+    requestPreview(S.charset);
+  }
+
   /* ── File upload ── */
   function handleFiles(fileList) {
     var files = Array.prototype.slice.call(fileList);
@@ -368,16 +401,17 @@
           d.errors.forEach(function (err) { toast(err.filename + ": " + err.error); });
         }
         if (d.task_ids && d.task_ids.length) {
-          var first = d.task_ids[0];
-          S.taskId = first.task_id;
-          S.totalFrames = first.frames_count;
-          markSelected(".style-card", '[data-style="ascii"]');
-          S.width = 80; S.height = 24; S.wasPlaying = true;
-          requestPreview("ascii");
+          S.fileList = d.task_ids.map(function (t) {
+            return { task_id: t.task_id, filename: t.filename, frames_count: t.frames_count,
+                     charset: "ascii", width: 80, height: 24 };
+          });
+          S.selIdx = 0;
+          selectFile(0);
+          renderFileList();
           var stylesSection = document.getElementById("styles");
           if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
           if (d.task_ids.length > 1) {
-            toast("已上传 " + d.task_ids.length + " 个文件");
+            toast("已上传 " + d.task_ids.length + " 个文件，点击文件名切换");
           }
         } else if (!d.error) {
           toast("没有有效文件被上传");
