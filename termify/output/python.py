@@ -338,13 +338,15 @@ def play():
     ansi_ok, unicode_ok = _detect_terminal_capabilities()
     ansi_enabled = _enable_windows_ansi()
     
-    # Force UTF-8 output after ANSI support is enabled
-    # This ensures ANSI escape sequences work correctly on Windows
-    try:
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-    except Exception:
-        pass
+    # Force UTF-8 output on Windows consoles (but NOT Windows Terminal)
+    # Windows Terminal already supports UTF-8 natively, and reconfigure()
+    # interferes with ANSI escape sequence interpretation
+    if os.name == 'nt' and not os.environ.get('WT_SESSION'):
+        try:
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+            sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
     
     # Warn about potential display issues
     if CHARSET == "blocks" and (not ansi_enabled or not unicode_ok):
