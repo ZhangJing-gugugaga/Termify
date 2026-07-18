@@ -129,9 +129,11 @@
             <!-- Size selector -->
             <div class="view-size-row">
                 <span class="view-size-label">尺寸:</span>
+                <button class="view-size-btn" data-size="40x20">40×20</button>
                 <button class="view-size-btn" data-size="80x24">80×24</button>
                 <button class="view-size-btn" data-size="120x36">120×36</button>
-                <button class="view-size-btn" data-size="200x60">200×60</button>
+                <button class="view-size-btn" data-size="160x48">160×48 <small>高清</small></button>
+                <button class="view-size-btn" data-size="200x60">200×60 <small>超清</small></button>
             </div>
             <div class="animation-layout">
                 <div class="animation-terminal">
@@ -254,14 +256,14 @@
             function ansiToHtml(text) {
                 var fg = null, bg = null, out = "";
                 var toks = text.split(/(\x1b\[[0-9;]*m)/);
-                var buf = "", bufFg = null, bufBg = null;
+                var buf = "";
                 function flush() {
                     if (!buf) return;
                     var esc = escapeHtml(buf);
-                    if (bufFg || bufBg) {
+                    if (fg || bg) {
                         var st = [];
-                        if (bufFg) st.push("color:" + bufFg);
-                        if (bufBg) st.push("background-color:" + bufBg);
+                        if (fg) st.push("color:" + fg);
+                        if (bg) st.push("background-color:" + bg);
                         out += '<span style="' + st.join(";") + '">' + esc + "</span>";
                     } else { out += esc; }
                     buf = "";
@@ -322,10 +324,13 @@
             // ── load preview ──
             function loadPreview() {
                 var myId = ++latestReq;
+                preview.style.transition = "opacity 0.15s ease";
+                preview.style.opacity = "0.5";
                 preview.innerHTML = '<div class="view-loading"><div class="view-spinner"></div><span>加载中...</span></div>';
                 var url = "/api/gallery/preview/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight;
                 fetch(url).then(function (r) { return r.json(); }).then(function (d) {
                     if (myId !== latestReq) return;
+                    preview.style.opacity = "1";
                     if (d.error) { preview.textContent = "错误: " + d.error; return; }
                     frames = d.frames || [];
                     interval = d.interval || 0.1;
@@ -336,6 +341,7 @@
                     if (frames.length >= 2) startPlayer();
                 }).catch(function () {
                     if (myId !== latestReq) return;
+                    preview.style.opacity = "1";
                     preview.textContent = "加载失败";
                 });
             }
@@ -352,7 +358,7 @@
             // ── size buttons ──
             document.querySelectorAll(".view-size-btn").forEach(function (btn) {
                 btn.addEventListener("click", function () {
-                    document.querySelectorAll(".view-size-btn").forEach(function (b) { b.classList.remove("selected"); });
+                    document.querySelectorAll(".view-size-btn").forEach(function (b) { b.classList.remove("active"); });
                     btn.classList.add("active");
                     var sz = btn.getAttribute("data-size").split("x");
                     curWidth = parseInt(sz[0]); curHeight = parseInt(sz[1]);
@@ -437,9 +443,27 @@
             document.querySelectorAll("#styles .style-card").forEach(function (c) {
                 if (c.getAttribute("data-style") === curCharset) { c.classList.add("selected"); }
             });
+            // Default: match exact size, otherwise find closest by area
+            var sizePresets = ["40x20", "80x24", "120x36", "160x48", "200x60"];
+            var exactMatch = curWidth + "x" + curHeight;
+            var matchedSize = sizePresets.indexOf(exactMatch) >= 0 ? exactMatch : null;
+            if (!matchedSize) {
+                var targetArea = curWidth * curHeight;
+                var bestDiff = Infinity;
+                for (var si = 0; si < sizePresets.length; si++) {
+                    var parts = sizePresets[si].split("x");
+                    var area = parseInt(parts[0]) * parseInt(parts[1]);
+                    var diff = Math.abs(area - targetArea);
+                    if (diff < bestDiff) { bestDiff = diff; matchedSize = sizePresets[si]; }
+                }
+            }
             document.querySelectorAll(".view-size-btn").forEach(function (b) {
-                if (b.getAttribute("data-size") === curWidth + "x" + curHeight) { b.classList.add("active"); }
+                if (b.getAttribute("data-size") === matchedSize) { b.classList.add("active"); }
             });
+            // Snap curWidth/curHeight to the matched preset so initial preview matches the highlighted button
+            var matchedParts = matchedSize.split("x");
+            curWidth = parseInt(matchedParts[0]);
+            curHeight = parseInt(matchedParts[1]);
 
             // ── kick off first preview ──
             loadPreview();
