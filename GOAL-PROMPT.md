@@ -267,7 +267,7 @@ python .../state-validator.py .project-state.md
 
 ---
 
-### ① Web 批量上传 — ✅ 已完成（feat/batch-upload 分支，待 PR 合并 main）
+### ① Web 批量上传 — ✅ 已完成（feat/batch-upload 分支，PR #3 已批准）
 
 **变更**:
 - 后端：新增 `POST /api/upload-batch`（multipart `files[]`），返回 `task_ids[]` + `errors[]`
@@ -293,7 +293,12 @@ python .../state-validator.py .project-state.md
 **测试**：新增 T11-batch 测试（flask test_client 模拟多文件上传，验证各文件独立状态正确）。
 
 ---
-### ② URL 直输（P1 — 次项）
+### ② URL 直输 — ✅ 已完成（feat/batch-upload 分支，PR #3）
+
+**变更**: 后端 POST /api/fetch-url + SSRF 防护（内网IP拦截/15s超时/20MB限制/PIL验证）；前端粘贴链接输入框；+6 tests 133→140 全绿
+
+---
+### ② URL 直输（P1 — 次项）~~旧版~~
 
 **需求**：用户粘贴一个图片/GIF 在线链接 → 服务器下载该 → 进入转换流程（无需先下载再上传）。
 
@@ -309,7 +314,17 @@ python .../state-validator.py .project-state.md
 **UI 改动时参考的设计 Skills**：`ui-ux-pro-max`、`ux-design`
 
 ---
-### ③ 后端 ffmpeg 视频接入（P1 — 后续）
+### ③ 后端 ffmpeg 视频接入 — ✅ 已完成（feat/batch-upload 分支，PR #3）
+
+**变更**:
+- 后端：新增 `POST /api/upload-video`，`termify/video.py` ffmpeg subprocess 抽帧
+- 校验：扩展名/大小(20MB)/时长(30s via ffprobe)
+- 流程：上传 → validate → ffmpeg 抽帧(10fps) → 逐帧 convert → FrameSequence
+- 前端：上传区格式提示 MP4/WEBM 已支持
+- 测试：+6 tests (T13-video-upload)，140→146 全绿
+
+---
+### ③ 后端 ffmpeg 视频接入（P1 — 后续）~~旧版~~
 
 **需求**：用户上传 MP4/WEBM 视频 → 后端用 ffmpeg 抽帧 → 进入引擎转换。
 
