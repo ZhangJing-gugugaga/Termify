@@ -111,3 +111,22 @@ def test_batch_upload_each_has_independent_task(client):
     body = json.loads(resp.data)
     task_ids = [t["task_id"] for t in body["task_ids"]]
     assert len(task_ids) == len(set(task_ids))  # 全部唯一
+
+
+def test_batch_upload_response_has_file_list_metadata(client):
+    """每个 task_id 含 filename + frames_count，供前端文件列表渲染。"""
+    data = {
+        "files": [
+            (_img_bytes(12, 6, (100, 100, 100), "PNG"), "cat.png"),
+            (_img_bytes(12, 6, (200, 200, 200), "PNG"), "dog.png"),
+        ]
+    }
+    resp = client.post("/api/upload-batch", data=data, content_type="multipart/form-data")
+    body = json.loads(resp.data)
+    for entry in body["task_ids"]:
+        assert "filename" in entry
+        assert "frames_count" in entry
+        assert "task_id" in entry
+    filenames = [t["filename"] for t in body["task_ids"]]
+    assert "cat.png" in filenames
+    assert "dog.png" in filenames

@@ -98,6 +98,8 @@ def upload_batch():
     if not files or all(f.filename == "" for f in files):
         return jsonify({"error": "No files provided"}), 400
 
+    from termify import convert
+
     results = []
     errors = []
     for file in files:
@@ -113,7 +115,6 @@ def upload_batch():
         file.save(save_path)
 
         try:
-            from termify import convert
             seq = convert(save_path, "ascii", 80, 24)
         except Exception as exc:  # noqa: BLE001
             os.remove(save_path)
@@ -123,7 +124,7 @@ def upload_batch():
         with TASKS_LOCK:
             TASKS[task_id] = {
                 "filepath": save_path,
-                "original_size": _original_size(save_path),
+                "original_size": {"width": seq.width, "height": seq.height},
                 "target_size": {"width": seq.width, "height": seq.height},
                 "frames_count": len(seq.lines_per_frame),
                 "interval": seq.interval,
