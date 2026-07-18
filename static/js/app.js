@@ -281,8 +281,22 @@
     if (preview) preview.dataset.charset = S.charset;
     setTitleMeta();
     renderFrame(0);
+    syncTerminalHeight();
     if (S.wasPlaying) { S.wasPlaying = false; startPlayer(); }
   }
+
+  /* ── Sync preview terminal height to output panel ── */
+  function syncTerminalHeight() {
+    var term = document.querySelector(".animation-terminal");
+    var panel = document.querySelector(".output-panel");
+    if (!term || !panel) return;
+    // Reset to auto first so we can measure natural panel height
+    term.style.height = "";
+    var h = panel.getBoundingClientRect().height;
+    if (h > 0) term.style.height = h + "px";
+  }
+
+  window.addEventListener("resize", function () { syncTerminalHeight(); });
 
   /* ── Build color query params ── */
   function colorParams() {
@@ -394,6 +408,8 @@
       card.classList.add("selected");
       var s = card.getAttribute("data-style");
       requestPreview(s);
+      var previewEl = document.getElementById("preview");
+      if (previewEl) previewEl.scrollIntoView({ behavior: "instant", block: "start" });
     });
   });
 
