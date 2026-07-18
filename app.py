@@ -91,6 +91,56 @@ def upload():
     })
 
 
+@app.route("/api/upload-batch", methods=["POST"])
+def upload_batch():
+    """Receive multiple files, return task_ids for each."""
+    files = request.files.getlist("files")
+    if not files or all(f.filename == "" for f in files):
+        return jsonify({"error": "No files provided"}), 400
+
+    results = []
+    errors = []
+    for file in files:
+        if not file or not file.filename:
+            continue
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in VALID_EXT:
+            errors.append({"filename": file.filename, "error": "Unsupported format"})
+            continue
+
+        task_id = uuid.uuid4().hex[:12]
+        save_path = os.path.join("uploads", f"{task_id}_{file.filename}")
+        file.save(save_path)
+
+        try:
+            from termify import convert
+            seq = convert(save_path, "ascii", 80, 24)
+        except Exception as exc:  # noqa: BLE001
+            os.remove(save_path)
+            errors.append({"filename": file.filename, "error": str(exc)})
+            continue
+
+        with TASKS_LOCK:
+            TASKS[task_id] = {
+                "filepath": save_path,
+                "original_size": _original_size(save_path),
+                "target_size": {"width": seq.width, "height": seq.height},
+                "frames_count": len(seq.lines_per_frame),
+                "interval": seq.interval,
+                "cache": {"ascii:80x24": seq},
+            }
+
+        results.append({
+            "task_id": task_id,
+            "filename": file.filename,
+            "frames_count": len(seq.lines_per_frame),
+            "original_size": TASKS[task_id]["original_size"],
+            "target_size": TASKS[task_id]["target_size"],
+        })
+
+    return jsonify({"task_ids": results, "errors": errors})
+
+
 def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=None, bg_color=None):
     """Return a converted FrameSequence, converting+caching on first miss."""
     with TASKS_LOCK:
