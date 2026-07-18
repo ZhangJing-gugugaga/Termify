@@ -354,28 +354,44 @@
   }
 
   /* ── File upload ── */
-  function handleFile(file) {
-    if (!file) return;
-    var fd = new FormData(); fd.append("file", file);
+  function handleFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList);
+    if (!files.length) return;
+    var fd = new FormData();
+    files.forEach(function (f) { fd.append("files", f); });
     if (uploadZone) uploadZone.classList.add("uploading");
-    fetch("/api/upload", { method: "POST", body: fd })
+    fetch("/api/upload-batch", { method: "POST", body: fd })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (uploadZone) uploadZone.classList.remove("uploading");
-        if (d.error) { toast(d.error); return; }
-        S.taskId = d.task_id;
-        S.totalFrames = d.frames_count;
-        markSelected(".style-card", '[data-style="ascii"]');
-        S.width = 80; S.height = 24; S.wasPlaying = true;
-        requestPreview("ascii");
-        var stylesSection = document.getElementById("styles");
-        if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (d.errors && d.errors.length) {
+          d.errors.forEach(function (err) { toast(err.filename + ": " + err.error); });
+        }
+        if (d.task_ids && d.task_ids.length) {
+          var first = d.task_ids[0];
+          S.taskId = first.task_id;
+          S.totalFrames = first.frames_count;
+          markSelected(".style-card", '[data-style="ascii"]');
+          S.width = 80; S.height = 24; S.wasPlaying = true;
+          requestPreview("ascii");
+          var stylesSection = document.getElementById("styles");
+          if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
+          if (d.task_ids.length > 1) {
+            toast("已上传 " + d.task_ids.length + " 个文件");
+          }
+        } else if (!d.error) {
+          toast("没有有效文件被上传");
+        }
+        if (d.error) { toast(d.error); }
       })
       .catch(function (e) {
         if (uploadZone) uploadZone.classList.remove("uploading");
         toast("upload failed: " + e);
       });
   }
+
+  // Backward-compatible alias
+  function handleFile(file) { handleFiles([file]); }
 
   function markSelected(scopeSel, matchSel) {
     qa(scopeSel).forEach(function (el) { el.classList.remove("selected"); });
@@ -504,9 +520,9 @@
   var copyBtn = document.querySelector(".share-link button");
   if (copyBtn) copyBtn.addEventListener("click", function () { toast("分享功能即将上线"); });
 
-  // Hidden file input
+  // Hidden file input (multi-select)
   var fileInput = (function () {
-    var f = document.createElement("input"); f.type = "file";
+    var f = document.createElement("input"); f.type = "file"; f.multiple = true;
     f.accept = "image/gif,image/png,image/jpeg"; f.style.display = "none";
     document.body.appendChild(f); return f;
   })();
@@ -518,12 +534,12 @@
       fileInput.click();
     });
     fileInput.addEventListener("change", function () {
-      if (fileInput.files.length) handleFile(fileInput.files[0]);
+      if (fileInput.files.length) handleFiles(fileInput.files);
     });
     uploadZone.addEventListener("drop", function (e) {
       e.preventDefault(); uploadZone.classList.remove("drag-over");
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length)
-        handleFile(e.dataTransfer.files[0]);
+        handleFiles(e.dataTransfer.files);
     });
     uploadZone.addEventListener("dragover", function (e) {
       e.preventDefault(); uploadZone.classList.add("drag-over");
