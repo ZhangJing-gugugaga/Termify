@@ -608,10 +608,6 @@
   // Download
   if (downloadBtn) downloadBtn.addEventListener("click", doDownload);
 
-  // Share link copy
-  var copyBtn = document.querySelector(".share-link button");
-  if (copyBtn) copyBtn.addEventListener("click", function () { toast("分享功能即将上线"); });
-
   // Hidden file input (multi-select)
   var fileInput = (function () {
     var f = document.createElement("input"); f.type = "file"; f.multiple = true;

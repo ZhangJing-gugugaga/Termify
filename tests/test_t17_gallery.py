@@ -663,5 +663,60 @@ def test_view_work_page_no_upload_section(isolated_env):
     assert "复制链接" in html
 
 
+# ----------------------------------------------------------------------------
+# 16. View page UX bug fixes
+# ----------------------------------------------------------------------------
+
+def test_view_page_has_5_size_buttons(isolated_env):
+    """Bug 2: size selector must have 5 preset buttons (40x20 → 200x60)."""
+    b = _upload(isolated_env)
+    resp = isolated_env.get(f"/v/{b['id']}")
+    html = resp.data.decode("utf-8", errors="ignore")
+    for size in ["40x20", "80x24", "120x36", "160x48", "200x60"]:
+        assert f'data-size="{size}"' in html, f"missing size button {size}"
+
+
+def test_view_page_no_share_link_on_home(isolated_env):
+    """Bug 4: 主页 '/' 不得存在 share-link 假链接 + 复制按钮."""
+    resp = isolated_env.get("/")
+    assert resp.status_code == 200
+    html = resp.data.decode("utf-8", errors="ignore")
+    assert 'class="share-link"' not in html
+    assert "termify.dev/s/" not in html
+
+
+def test_view_page_has_opacity_transition(isolated_env):
+    """Bug 5: loadPreview 函数包含 opacity 过渡逻辑."""
+    b = _upload(isolated_env)
+    resp = isolated_env.get(f"/v/{b['id']}")
+    html = resp.data.decode("utf-8", errors="ignore")
+    # loadPreview should set opacity 0.5 during loading and restore to 1
+    assert "opacity 0.15s ease" in html
+    assert 'preview.style.opacity = "0.5"' in html
+    assert 'preview.style.opacity = "1"' in html
+
+
+def test_view_page_ansi_to_html_uses_fg_bg(isolated_env):
+    """Bug 3: ansiToHtml flush 必须使用闭包 fg/bg（不是 bufFg/bufBg）."""
+    b = _upload(isolated_env)
+    resp = isolated_env.get(f"/v/{b['id']}")
+    html = resp.data.decode("utf-8", errors="ignore")
+    # Should reference fg/bg in flush, NOT bufFg/bufBg (which were never assigned)
+    assert "bufFg" not in html
+    assert "bufBg" not in html
+    # flush should use closure fg/bg for color
+    assert 'if (fg || bg)' in html
+
+
+def test_view_page_size_btn_classname(isolated_env):
+    """Bug 1: size buttons toggle 'active' class (not 'selected')."""
+    b = _upload(isolated_env)
+    resp = isolated_env.get(f"/v/{b['id']}")
+    html = resp.data.decode("utf-8", errors="ignore")
+    # Click handler should remove 'active' (not 'selected')
+    assert 'b.classList.remove("active")' in html
+    assert 'b.classList.remove("selected")' not in html.replace('c.classList.remove("selected")', "")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
