@@ -561,16 +561,14 @@
         }
 
         .animation-terminal {
-            min-height: 400px;
             max-width: 100%;
-            overflow-x: auto;
+            overflow: hidden;
         }
 
         .animation-terminal .terminal-body {
             display: block;
             overflow-x: auto;
-            overflow-y: hidden;
-            min-height: 200px;
+            overflow-y: auto;
             padding: var(--space-5);
             font-size: 10px;
             line-height: 1.3;

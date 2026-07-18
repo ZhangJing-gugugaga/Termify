@@ -26,7 +26,7 @@ CHARSETS: dict[str, dict] = {
     },
     "geometric": {
         "name": "几何图形",
-        "chars": "■□▪▫●○◆◇",  # 8 levels
+        "chars": "■●◆▪▫◇○□",  # dense → sparse (black → white)
         "color": False,
         "description": "现代设计感",
     },
@@ -124,6 +124,23 @@ def _otsu_threshold(stretched):
     return threshold, minority_is_bright
 
 
+def _minority_is_bright_for_img(img) -> bool:
+    """Use Otsu to decide whether the bright or dark side is the subject.
+
+    Returns True when the bright minority is the subject (e.g. white cat on
+    dark background), False otherwise.
+    """
+    px = img.load()
+    w, h = img.size
+    lum_values = []
+    for y in range(h):
+        for x in range(w):
+            r, g, b = px[x, y][:3]
+            lum_values.append(_luminance(r, g, b))
+    _, mib = _otsu_threshold(lum_values)
+    return mib
+
+
 def _ansi_fg(rgb):
     return f"\x1b[38;2;{rgb[0]};{rgb[1]};{rgb[2]}m"
 
@@ -149,6 +166,7 @@ def _render_ascii(img, width, height, fg=None, bg=None):
     chars = CHARSETS["ascii"]["chars"]
     n = len(chars)
     lut = _adaptive_lut(img)
+    mib = _minority_is_bright_for_img(img)
     px = img.load()
     lines = []
     for y in range(height):
@@ -156,7 +174,10 @@ def _render_ascii(img, width, height, fg=None, bg=None):
         for x in range(width):
             r, g, b = px[x, y][:3]
             gray = lut[_luminance(r, g, b)]
-            idx = gray * (n - 1) // 255  # 0 -> densest char
+            if mib:
+                idx = (n - 1) - gray * (n - 1) // 255
+            else:
+                idx = gray * (n - 1) // 255
             row.append(_emit(chars[idx], fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")
@@ -243,6 +264,7 @@ def _render_geometric(img, width, height, fg=None, bg=None):
     chars = CHARSETS["geometric"]["chars"]
     n = len(chars)
     lut = _adaptive_lut(img)
+    mib = _minority_is_bright_for_img(img)
     px = img.load()
     lines = []
     for y in range(height):
@@ -250,7 +272,10 @@ def _render_geometric(img, width, height, fg=None, bg=None):
         for x in range(width):
             r, g, b = px[x, y][:3]
             gray = lut[_luminance(r, g, b)]
-            idx = gray * (n - 1) // 255
+            if mib:
+                idx = (n - 1) - gray * (n - 1) // 255
+            else:
+                idx = gray * (n - 1) // 255
             row.append(_emit(chars[idx], fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")
