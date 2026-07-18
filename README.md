@@ -246,6 +246,8 @@ pyinstaller termify.spec --clean --noconfirm
 
 构建产物启动后会自动打开浏览器访问 `http://127.0.0.1:5000`。
 
+> 已通过 Windows 真实 build 验证：`dist/Termify/Termify.exe`（单文件夹, ~5MB）。
+
 
 ## 项目结构
 
