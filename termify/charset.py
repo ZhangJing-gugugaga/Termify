@@ -26,7 +26,7 @@ CHARSETS: dict[str, dict] = {
     },
     "geometric": {
         "name": "几何图形",
-        "chars": "■□▪▫●○◆◇",  # 8 levels
+        "chars": "■●◆▪▫◇○ ",  # dense → sparse (black → white, space = invisible background)
         "color": False,
         "description": "现代设计感",
     },
@@ -75,6 +75,72 @@ def _adaptive_lut(img) -> list[int]:
     return lut
 
 
+def _otsu_threshold(stretched):
+    """Otsu 二值化 + 少数侧判定。
+
+    返回 (threshold, minority_is_bright)：
+    - threshold：Otsu 找到的最优分割点（最大化前景/背景类间方差）
+    - minority_is_bright：少数侧（主体）是否是"亮"那一边
+
+    用法：让"点/█"对应少数侧（主体），不论主体是亮（白猫在暗背景）
+    还是暗（黑猫在亮背景），主体都会被点出来。
+    """
+    if not stretched:
+        return 127, True
+    hist = [0] * 256
+    for v in stretched:
+        if 0 <= v <= 255:
+            hist[v] += 1
+    total = len(stretched)
+    if total == 0:
+        return 127, True
+    sum_all = sum(i * h for i, h in enumerate(hist))
+    sum_bg = 0
+    w_bg = 0
+    max_var = 0
+    threshold = 127
+    for t in range(256):
+        w_bg += hist[t]
+        if w_bg == 0:
+            continue
+        w_fg = total - w_bg
+        if w_fg == 0:
+            break
+        sum_bg += t * hist[t]
+        m_bg = sum_bg / w_bg
+        m_fg = (sum_all - sum_bg) / w_fg
+        var = w_bg * w_fg * (m_bg - m_fg) ** 2
+        if var > max_var:
+            max_var = var
+            threshold = t
+    n_below = sum(hist[:threshold + 1])  # +1: Otsu loop includes hist[t] in w_bg
+    n_above = total - n_below
+    # 均匀图（全黑/全白）边界处理：没有真正的"少数侧"，回退到旧行为
+    # "暗=█/点"，保证均匀色图的语义不反转（test_binary_black_maps_to_block 等
+    # 测试依赖此行为）。
+    if n_below == 0 or n_above == 0:
+        return threshold, False
+    minority_is_bright = n_above < n_below
+    return threshold, minority_is_bright
+
+
+def _minority_is_bright_for_img(img) -> bool:
+    """Use Otsu to decide whether the bright or dark side is the subject.
+
+    Returns True when the bright minority is the subject (e.g. white cat on
+    dark background), False otherwise.
+    """
+    px = img.load()
+    w, h = img.size
+    lum_values = []
+    for y in range(h):
+        for x in range(w):
+            r, g, b = px[x, y][:3]
+            lum_values.append(_luminance(r, g, b))
+    _, mib = _otsu_threshold(lum_values)
+    return mib
+
+
 def _ansi_fg(rgb):
     return f"\x1b[38;2;{rgb[0]};{rgb[1]};{rgb[2]}m"
 
@@ -100,6 +166,7 @@ def _render_ascii(img, width, height, fg=None, bg=None):
     chars = CHARSETS["ascii"]["chars"]
     n = len(chars)
     lut = _adaptive_lut(img)
+    mib = _minority_is_bright_for_img(img)
     px = img.load()
     lines = []
     for y in range(height):
@@ -107,7 +174,10 @@ def _render_ascii(img, width, height, fg=None, bg=None):
         for x in range(width):
             r, g, b = px[x, y][:3]
             gray = lut[_luminance(r, g, b)]
-            idx = gray * (n - 1) // 255  # 0 -> densest char
+            if mib:
+                idx = (n - 1) - gray * (n - 1) // 255
+            else:
+                idx = gray * (n - 1) // 255
             row.append(_emit(chars[idx], fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")
@@ -148,16 +218,19 @@ def _render_braille(img, width, height, fg=None, bg=None):
     cell_w, cell_h = 2, 4
     out_w = max(1, width // cell_w)
     out_h = max(1, height // cell_h)
-    # Adaptive contrast equalisation: reuse the same CDF lookup table as the
-    # ascii/geometric renderers so braille dots track the image's brightness
-    # distribution instead of a fixed 128 midpoint. Uniform images fall back
-    # to identity (lut[luma] == luma), preserving the original behaviour.
-    lut = _adaptive_lut(img)
     dots = [
         (0, 0, 0x01), (0, 1, 0x02), (0, 2, 0x04),
         (1, 0, 0x08), (1, 1, 0x10), (1, 2, 0x20),
         (0, 3, 0x40), (1, 3, 0x80),
     ]
+    # Collect all luminance values and compute Otsu threshold
+    lum_values = []
+    for y in range(src_h):
+        for x in range(src_w):
+            r, g, b = px[x, y][:3]
+            lum_values.append(_luminance(r, g, b))
+    threshold, minority_is_bright = _otsu_threshold(lum_values)
+
     lines = []
     for by in range(out_h):
         row = []
@@ -171,8 +244,15 @@ def _render_braille(img, width, height, fg=None, bg=None):
                 if sy >= src_h:
                     sy = src_h - 1
                 r, g, b = px[sx, sy][:3]
-                if lut[_luminance(r, g, b)] < 128:
-                    bits |= mask
+                lum = _luminance(r, g, b)
+                if minority_is_bright:
+                    # Subject is bright → dots for bright pixels
+                    if lum >= threshold:
+                        bits |= mask
+                else:
+                    # Subject is dark → dots for dark pixels
+                    if lum < threshold:
+                        bits |= mask
             row.append(_emit(chr(0x2800 + bits), fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")
@@ -183,15 +263,26 @@ def _render_braille(img, width, height, fg=None, bg=None):
 def _render_geometric(img, width, height, fg=None, bg=None):
     chars = CHARSETS["geometric"]["chars"]
     n = len(chars)
-    lut = _adaptive_lut(img)
+    # Use direct linear luminance → index mapping (NOT adaptive LUT).
+    # The adaptive LUT pre-stretches the histogram so dark always maps to 0
+    # and bright to 255, which breaks the mib inversion (double-inversion).
+    # Direct linear mapping: bright pixels → low idx (dense ■),
+    # dark pixels → high idx (sparse □).  Then mib flips it when the
+    # subject is dark-on-light so the dark subject still gets dense chars.
+    mib = _minority_is_bright_for_img(img)
     px = img.load()
     lines = []
     for y in range(height):
         row = []
         for x in range(width):
             r, g, b = px[x, y][:3]
-            gray = lut[_luminance(r, g, b)]
-            idx = gray * (n - 1) // 255
+            lum = _luminance(r, g, b)
+            if mib:
+                # Bright subject: bright → dense, dark → sparse
+                idx = (n - 1) - lum * (n - 1) // 255
+            else:
+                # Dark subject: dark → dense, bright → sparse
+                idx = lum * (n - 1) // 255
             row.append(_emit(chars[idx], fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")
@@ -201,12 +292,28 @@ def _render_geometric(img, width, height, fg=None, bg=None):
 
 def _render_binary(img, width, height, fg=None, bg=None):
     px = img.load()
+    src_w, src_h = img.size
+    # Otsu threshold + minority-is-subject (same logic as braille)
+    lum_values = []
+    for y in range(src_h):
+        for x in range(src_w):
+            r, g, b = px[x, y][:3]
+            lum_values.append(_luminance(r, g, b))
+    threshold, minority_is_bright = _otsu_threshold(lum_values)
+
     lines = []
     for y in range(height):
         row = []
         for x in range(width):
             r, g, b = px[x, y][:3]
-            row.append(_emit("█" if _luminance(r, g, b) < 128 else " ", fg, bg))
+            lum = _luminance(r, g, b)
+            if minority_is_bright:
+                # Subject is bright → █ for bright pixels
+                ch = "█" if lum >= threshold else " "
+            else:
+                # Subject is dark → █ for dark pixels
+                ch = "█" if lum < threshold else " "
+            row.append(_emit(ch, fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")
         lines.append("".join(row))
