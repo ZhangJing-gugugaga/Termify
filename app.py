@@ -142,6 +142,106 @@ def upload_batch():
     return jsonify({"task_ids": results, "errors": errors})
 
 
+@app.route("/api/upload-video", methods=["POST"])
+def upload_video():
+    """Upload a video (MP4/WEBM), extract frames via ffmpeg, convert."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"error": "No filename"}), 400
+
+    # Save video to temp path
+    ext = os.path.splitext(file.filename)[1].lower()
+    from termify.video import VALID_VIDEO_EXTS, validate_video, extract_frames, frames_dir_to_images, VideoError
+    if ext not in VALID_VIDEO_EXTS:
+        # Allow but flag — let validate reject
+        pass
+
+    video_tmp = os.path.join("uploads", f"video_{uuid.uuid4().hex[:12]}{ext}")
+    file.save(video_tmp)
+
+    try:
+        validate_video(video_tmp)
+    except VideoError as exc:
+        os.remove(video_tmp)
+        return jsonify({"error": str(exc)}), 400
+
+    # Extract frames via ffmpeg
+    try:
+        frames_dir, fps = extract_frames(video_tmp)
+    except VideoError as exc:
+        os.remove(video_tmp)
+        return jsonify({"error": str(exc)}), 422
+
+    # Process each frame through the engine
+    from termify.engine import render_frame, scale_frame
+    from termify.charset import CHARSETS
+    from PIL import Image
+
+    task_id = uuid.uuid4().hex[:12]
+    frame_paths = frames_dir_to_images(frames_dir)
+    charset = "ascii"
+    width, height = 80, 24
+
+    lines_per_frame = []
+    try:
+        for fpath in frame_paths:
+            img = Image.open(fpath).convert("RGB")
+            if charset == "blocks":
+                sw, sh = width, height * 2
+            elif charset == "braille":
+                sw, sh = width * 2, height * 4
+            else:
+                sw, sh = width, height
+            scaled = scale_frame(img, sw, sh)
+            lines = render_frame(scaled, charset, sw, sh)
+            lines_per_frame.append(lines)
+    except Exception as exc:  # noqa: BLE001
+        os.remove(video_tmp)
+        import shutil
+        shutil.rmtree(frames_dir, ignore_errors=True)
+        return jsonify({"error": f"Frame conversion failed: {exc}"}), 500
+
+    # Cleanup
+    os.remove(video_tmp)
+    import shutil
+    shutil.rmtree(frames_dir, ignore_errors=True)
+
+    interval = 1.0 / fps  # fps=10 from ffmpeg extraction
+    with TASKS_LOCK:
+        TASKS[task_id] = {
+            "filepath": None,
+            "original_size": {"type": "video", "frame_count": len(frame_paths)},
+            "target_size": {"width": width, "height": height},
+            "frames_count": len(lines_per_frame),
+            "interval": interval,
+            "cache": {f"{charset}:80x24": None},  # placeholder; preview re-converts
+        }
+
+    # Store full sequence in cache for preview
+    from termify.engine import FrameSequence
+    seq = FrameSequence(
+        lines_per_frame=lines_per_frame,
+        interval=interval,
+        width=width,
+        height=height,
+        charset=charset,
+    )
+    with TASKS_LOCK:
+        if task_id in TASKS:
+            TASKS[task_id]["cache"][f"{charset}:80x24"] = seq
+
+    return jsonify({
+        "task_id": task_id,
+        "filename": file.filename,
+        "frames_count": len(lines_per_frame),
+        "original_size": {"type": "video", "frame_count": len(frame_paths)},
+        "target_size": {"width": width, "height": height},
+    })
+
+
 @app.route("/api/fetch-url", methods=["POST"])
 def fetch_url():
     """Download an image URL server-side and create a conversion task.
