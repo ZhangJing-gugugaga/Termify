@@ -81,10 +81,13 @@ def test_generated_py_outputs_blocks_chars(tmp_path):
 
 
 def test_generated_py_script_contains_detection(tmp_path):
-    """blocks 风格含终端能力检测函数（B3 修复）。"""
+    """blocks 风格含终端能力检测函数（B3 修复）。
+
+    断言行为（稳定函数名契约），不再断言具体局部变量名。
+    """
     src = _gen_py("blocks", 8, 4, tmp_path)
     assert "_detect_terminal_capabilities" in src
-    assert "ansi_enabled" in src
+    assert "_enable_windows_ansi" in src
 
 
 def test_generated_py_contains_utf8_header(tmp_path):
