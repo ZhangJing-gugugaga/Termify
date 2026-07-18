@@ -84,10 +84,12 @@ def test_html_self_contained_no_cdn(tmp_path):
 
 
 def test_html_pre_has_max_height(tmp_path):
-    """高分辨率下有 max-height CSS 防溢出（B4 修复）。"""
+    """高分辨率下有动态字体计算防溢出（B4 修复）。"""
     src = _gen_html("ascii", 200, 60, tmp_path)
-    assert "max-height" in src
-    assert "80vh" in src
+    # Check for dynamic font-size calculation function
+    assert "fitTerminalFontSize" in src
+    # Check for proper line-height
+    assert "line-height:1.3" in src
 
 
 def test_html_frames_parseable_as_json(tmp_path):
