@@ -64,3 +64,11 @@ _*.py
 # Allow documentation images
 !images/
 !images/*.png
+
+# Tool config and session data (personal, not part of the product)
+.mimocode/
+.workbuddy/
+
+# Test artifacts (temporary, regenerable)
+test_*.json
+static/geometric_preview.html
