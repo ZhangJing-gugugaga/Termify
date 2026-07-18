@@ -282,6 +282,7 @@
     setTitleMeta();
     renderFrame(0);
     syncTerminalHeight();
+    fitTerminalFontSize();
     if (S.wasPlaying) { S.wasPlaying = false; startPlayer(); }
   }
 
@@ -297,7 +298,31 @@
     if (h > 0) term.style.height = h + "px";
   }
 
-  window.addEventListener("resize", function () { syncTerminalHeight(); });
+  /* ── Fit terminal font-size to fill the window (quality changes, not size) ── */
+  function fitTerminalFontSize() {
+    var tb = document.querySelector(".animation-terminal .terminal-body");
+    if (!tb) return;
+    // Skip for blocks charset (uses canvas, not text)
+    if (S.charset === "blocks") return;
+
+    var style = getComputedStyle(tb);
+    var padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+    var padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    var availW = tb.clientWidth - padX;
+    var availH = tb.clientHeight - padY;
+    if (availW <= 0 || availH <= 0 || !S.width || !S.height) return;
+
+    // Monospace: char width ≈ 0.6 * font-size, line-height = 1.3 * font-size
+    var charRatio = 0.6;
+    var lineHeightRatio = 1.3;
+    var fsW = availW / (S.width * charRatio);
+    var fsH = availH / (S.height * lineHeightRatio);
+    var fs = Math.min(fsW, fsH);
+    fs = Math.max(2, Math.min(fs, 30));  // clamp to sane range
+    tb.style.fontSize = fs + "px";
+  }
+
+  window.addEventListener("resize", function () { syncTerminalHeight(); fitTerminalFontSize(); });
 
   /* ── Build color query params ── */
   function colorParams() {
