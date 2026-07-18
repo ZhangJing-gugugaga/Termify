@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台 — Termify</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+<div id="toast"></div>
+
+    <!-- ═══════════ NAVIGATION ═══════════ -->
+    <nav>
+        <div class="container">
+            <a href="/" class="logo">
+                <div class="logo-icon">T</div>
+                <div class="logo-text">Termi<span>fy</span></div>
+            </a>
+            <ul class="nav-links">
+                <li><a href="/gallery">画廊</a></li>
+                <li><a href="/admin">管理</a></li>
+            </ul>
+            <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                GitHub
+            </a>
+        </div>
+    </nav>
+
+    <!-- ═══════════ LOGIN ═══════════ -->
+    <section class="admin-login" id="adminLogin">
+        <div class="container">
+            <div class="admin-login-box">
+                <h1>管理后台</h1>
+                <p class="admin-login-hint">请输入管理员密码</p>
+                <input type="password" class="admin-login-input" id="adminPwd" placeholder="密码" autofocus>
+                <button class="admin-login-btn" id="adminLoginBtn">登录</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ ADMIN PANEL ═══════════ -->
+    <section class="admin-panel" id="adminPanel" style="display:none;">
+        <div class="container">
+            <div class="admin-tabs">
+                <button class="admin-tab active" data-tab="works">作品列表</button>
+                <button class="admin-tab" data-tab="reports">举报队列</button>
+            </div>
+
+            <!-- Works tab -->
+            <div class="admin-tab-content active" id="tab-works">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>标题</th>
+                            <th>作者</th>
+                            <th>❤</th>
+                            <th>👁</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminWorksBody"></tbody>
+                </table>
+                <div class="admin-empty" id="adminWorksEmpty" style="display:none;">暂无作品</div>
+            </div>
+
+            <!-- Reports tab -->
+            <div class="admin-tab-content" id="tab-reports">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>作品</th>
+                            <th>原因</th>
+                            <th>描述</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminReportsBody"></tbody>
+                </table>
+                <div class="admin-empty" id="adminReportsEmpty" style="display:none;">暂无举报</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ FOOTER ═══════════ -->
+    <footer>
+        <div class="container">
+            <p class="footer-text"><a href="https://github.com/ZhangJing-gugugaga/Termify">Termify</a> — 万物皆可终端 · MIT License</p>
+        </div>
+    </footer>
+
+    <script>
+        var toastTimer = null;
+        function toast(msg) {
+            var el = document.getElementById("toast"); if (!el) return;
+            el.textContent = msg; el.classList.add("show");
+            if (toastTimer !== null) clearTimeout(toastTimer);
+            toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2200);
+        }
+
+        var ADMIN_PWD = "";
+
+        // Check if pwd already in URL
+        (function () {
+            var m = location.search.match(/[?&]pwd=([^&]*)/);
+            if (m) {
+                ADMIN_PWD = decodeURIComponent(m[1]);
+                showAdmin();
+            }
+        })();
+
+        // Login
+        document.getElementById("adminLoginBtn").addEventListener("click", doLogin);
+        document.getElementById("adminPwd").addEventListener("keydown", function (e) {
+            if (e.key === "Enter") doLogin();
+        });
+
+        function doLogin() {
+            var pwd = document.getElementById("adminPwd").value;
+            if (!pwd) { toast("请输入密码"); return; }
+            ADMIN_PWD = pwd;
+            showAdmin();
+        }
+
+        function showAdmin() {
+            document.getElementById("adminLogin").style.display = "none";
+            document.getElementById("adminPanel").style.display = "block";
+            loadData();
+        }
+
+        function loadData() {
+            fetch("/api/gallery/admin?pwd=" + encodeURIComponent(ADMIN_PWD))
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.error) { toast(d.error); return; }
+                    renderWorks(d.works);
+                    renderReports(d.reports);
+                })
+                .catch(function () { toast("加载失败"); });
+        }
+
+        function renderWorks(works) {
+            var tbody = document.getElementById("adminWorksBody");
+            var empty = document.getElementById("adminWorksEmpty");
+            if (!works.length) { tbody.innerHTML = ""; empty.style.display = "block"; return; }
+            empty.style.display = "none";
+            tbody.innerHTML = works.map(function (w) {
+                return '<tr>' +
+                    '<td><a href="/v/' + w.id + '" target="_blank">' + w.id + '</a></td>' +
+                    '<td>' + w.title + '</td>' +
+                    '<td>' + (w.author || '匿名') + '</td>' +
+                    '<td>' + w.like_count + '</td>' +
+                    '<td>' + w.view_count + '</td>' +
+                    '<td><button class="admin-del-btn" data-id="' + w.id + '">删除</button></td>' +
+                    '</tr>';
+            }).join("");
+        }
+
+        function renderReports(reports) {
+            var tbody = document.getElementById("adminReportsBody");
+            var empty = document.getElementById("adminReportsEmpty");
+            if (!reports.length) { tbody.innerHTML = ""; empty.style.display = "block"; return; }
+            empty.style.display = "none";
+            tbody.innerHTML = reports.map(function (r) {
+                return '<tr>' +
+                    '<td>' + r.id + '</td>' +
+                    '<td><a href="/v/' + r.work_id + '" target="_blank">' + r.work_id + '</a></td>' +
+                    '<td>' + r.reason + '</td>' +
+                    '<td class="admin-report-desc">' + (r.description || '') + '</td>' +
+                    '<td>' +
+                    '<button class="admin-resolve-btn" data-id="' + r.id + '">处理</button> ' +
+                    '<button class="admin-dismiss-btn" data-id="' + r.id + '">忽略</button>' +
+                    '</td>' +
+                    '</tr>';
+            }).join("");
+        }
+
+        // Tab switching
+        document.querySelectorAll(".admin-tab").forEach(function (tab) {
+            tab.addEventListener("click", function () {
+                document.querySelectorAll(".admin-tab").forEach(function (t) { t.classList.remove("active"); });
+                tab.classList.add("active");
+                var which = tab.dataset.tab;
+                document.getElementById("tab-works").classList.toggle("active", which === "works");
+                document.getElementById("tab-reports").classList.toggle("active", which === "reports");
+            });
+        });
+
+        // Delete work (delegation)
+        document.getElementById("adminWorksBody").addEventListener("click", function (e) {
+            var btn = e.target.closest(".admin-del-btn");
+            if (!btn) return;
+            if (!confirm("确定删除该作品？")) return;
+            var id = btn.dataset.id;
+            fetch("/api/gallery/admin/" + id + "?pwd=" + encodeURIComponent(ADMIN_PWD), { method: "DELETE" })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.error) { toast(d.error); return; }
+                    toast("已删除");
+                    loadData();
+                }).catch(function () { toast("删除失败"); });
+        });
+
+        // Resolve / dismiss report (delegation)
+        document.getElementById("adminReportsBody").addEventListener("click", function (e) {
+            var btn = e.target.closest(".admin-resolve-btn, .admin-dismiss-btn");
+            if (!btn) return;
+            var id = btn.dataset.id;
+            var status = btn.classList.contains("admin-resolve-btn") ? "resolved" : "dismissed";
+            fetch("/api/gallery/admin/report/" + id + "?pwd=" + encodeURIComponent(ADMIN_PWD), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: status })
+            }).then(function (r) { return r.json(); }).then(function (d) {
+                if (d.error) { toast(d.error); return; }
+                toast("已处理");
+                loadData();
+            }).catch(function () { toast("操作失败"); });
+        });
+    </script>
+</body>
+</html>

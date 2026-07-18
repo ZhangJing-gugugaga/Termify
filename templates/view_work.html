@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ work.title }} — Termify</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+<div id="toast"></div>
+
+    <!-- ═══════════ NAVIGATION ═══════════ -->
+    <nav>
+        <div class="container">
+            <a href="/" class="logo">
+                <div class="logo-icon">T</div>
+                <div class="logo-text">Termi<span>fy</span></div>
+            </a>
+            <ul class="nav-links">
+                <li><a href="/#upload">上传</a></li>
+                <li><a href="/#styles">风格</a></li>
+                <li><a href="/#preview">预览</a></li>
+                <li><a href="/gallery">画廊</a></li>
+            </ul>
+            <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                GitHub
+            </a>
+        </div>
+    </nav>
+
+    <!-- ═══════════ VIEW BANNER ═══════════ -->
+    <div class="view-banner" id="viewBanner">
+        <div class="container">
+            <button class="view-banner-close" id="viewBannerClose">×</button>
+            <div class="view-banner-head">
+                <h1 class="view-banner-title">{{ work.title }}</h1>
+                <div class="view-banner-author">by {{ work.author or '匿名创作者' }}</div>
+            </div>
+            {% if work.description %}
+            <p class="view-banner-desc">{{ work.description }}</p>
+            {% endif %}
+            <div class="view-banner-tags" id="viewBannerTags"></div>
+            <div class="view-banner-stats">
+                <span>❤ <strong id="bannerLikes">{{ work.like_count }}</strong></span>
+                <span>👁 <strong>{{ work.view_count }}</strong></span>
+                <span>⬇ <strong>{{ work.download_count }}</strong></span>
+            </div>
+            <div class="view-banner-actions">
+                <button class="view-action-btn view-action-like" id="likeBtn">❤ 点赞</button>
+                <button class="view-action-btn" id="copyLinkBtn">复制链接</button>
+                <button class="view-action-btn" id="downloadPyBtn">下载 .py</button>
+                <button class="view-action-btn" id="downloadHtmlBtn">下载 .html</button>
+                <button class="view-action-btn view-action-report" id="reportBtn">举报</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ WORKSPACE (same as index.html) ═══════════ -->
+    <section class="upload-section" id="upload">
+        <div class="container">
+            <div class="section-label">继续创作</div>
+            <h2 class="section-title">重新渲染这张图片</h2>
+            <div class="upload-zone" id="uploadZone">
+                <div class="upload-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                </div>
+                <div class="upload-text">
+                    <h3>拖拽文件到这里，或 <span class="browse-link">点击选择</span></h3>
+                    <p>已自动加载画廊图片 — 可直接切换风格预览</p>
+                </div>
+            </div>
+            <div class="file-list" id="fileList"></div>
+        </div>
+    </section>
+
+    <section class="preview-section" id="styles">
+        <div class="container">
+            <div class="section-label">选择风格</div>
+            <div class="style-grid">
+                <div class="style-card selected" data-style="ascii">
+                    <div class="style-preview ascii">@@@####@@@@
+@@##%%**##@@
+@#%*++=*#%@
+@#%+  +*#%@
+@##*    *##@
+@#%*    *#%@
+@#%*++=*#%@
+@@##%%**##@@
+@@@####@@@@</div>
+                    <div class="style-info"><div class="style-name">经典ASCII灰度</div><div class="style-desc">最复古，任何终端可显示</div></div>
+                </div>
+                <div class="style-card" data-style="blocks">
+                    <div class="style-preview blocks">████████████
+████▓▓▓▓████
+██▓▓▒▒▒▒▓▓██
+██▓▒░░░░▒▓██
+██▓▒    ▒▓██
+██▓▒░░░░▒▓██
+██▓▓▒▒▒▒▓▓██
+████▓▓▓▓████
+████████████</div>
+                    <div class="style-info"><div class="style-name">Unicode色块</div><div class="style-desc">视觉冲击力最强</div></div>
+                </div>
+                <div class="style-card" data-style="braille">
+                    <div class="style-preview braille">⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
+⣿⣿⣶⣶⣶⣶⣿⣿⣿
+⣿⣶⣤⣤⣤⣤⣶⣿⣿
+⣿⣶⣤⣀⣀⣤⣶⣿⣿
+⣿⣶⣤⣀⣀⣤⣶⣿⣿
+⣿⣶⣤⣤⣤⣤⣶⣿⣿
+⣿⣿⣶⣶⣶⣶⣿⣿⣿
+⣿⣿⣿⣿⣿⣿⣿⣿⣿</div>
+                    <div class="style-info"><div class="style-name">Braille点阵</div><div class="style-desc">高分辨率，科技感</div></div>
+                </div>
+                <div class="style-card" data-style="geometric">
+                    <div class="style-preview geometric">■■■■■■■■■■
+■■◆◆◆◆■■■■
+■◆◇◇◇◇◆■■
+■◆◇  ◇◆■■
+■◆◇  ◇◆■■
+■◆◇◇◇◇◆■■
+■■◆◆◆◆■■■■
+■■■■■■■■■■</div>
+                    <div class="style-info"><div class="style-name">几何图形</div><div class="style-desc">现代设计感</div></div>
+                </div>
+                <div class="style-card" data-style="binary">
+                    <div class="style-preview binary">██████████████
+████      ████
+██      █████
+██  ████  ███
+██  ████  ███
+██      █████
+████      ████
+██████████████</div>
+                    <div class="style-info"><div class="style-name">极简二值</div><div class="style-desc">纯黑白，复古印刷</div></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="animation-section" id="preview">
+        <div class="container">
+            <div class="section-label">预览 & 下载</div>
+            <div class="animation-layout">
+                <div class="animation-terminal">
+                    <div class="terminal">
+                        <div class="terminal-header">
+                            <div class="terminal-dot red"></div>
+                            <div class="terminal-dot amber"></div>
+                            <div class="terminal-dot green"></div>
+                            <div class="terminal-title">animation preview — blocks style</div>
+                        </div>
+                        <div class="terminal-body" id="animPreview">加载中...</div>
+                        <div class="animation-controls">
+                            <button class="control-btn active" title="Play"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
+                            <button class="control-btn" title="Pause"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
+                            <div class="progress-bar"><div class="progress-fill"></div></div>
+                            <span class="frame-counter">0 / 0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="output-panel">
+                    <div class="output-card">
+                        <div class="output-card-title">输出格式</div>
+                        <div class="format-options">
+                            <div class="format-option selected"><div class="format-radio"></div><div class="format-label"><div class="format-label-name">Python 脚本</div><div class="format-label-desc">python play.py 直接运行</div></div><div class="format-icon">.py</div></div>
+                            <div class="format-option"><div class="format-radio"></div><div class="format-label"><div class="format-label-name">HTML 页面</div><div class="format-label-desc">浏览器打开即播放</div></div><div class="format-icon">.html</div></div>
+                        </div>
+                    </div>
+                    <div class="output-card">
+                        <div class="output-card-title">终端尺寸</div>
+                        <div class="size-options">
+                            <button class="size-btn">40×20</button>
+                            <button class="size-btn selected">80×24</button>
+                            <button class="size-btn">120×36</button>
+                            <button class="size-btn">160×48 <small>高清</small></button>
+                            <button class="size-btn">200×60 <small>超清</small></button>
+                        </div>
+                    </div>
+                    <button class="download-btn" id="viewDownloadBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        下载动画文件
+                    </button>
+                    <button class="gallery-share-btn" id="galleryShareBtn" disabled>已发布 ✓</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════ REPORT MODAL ═══════════ -->
+    <div class="gallery-modal-backdrop" id="reportModal">
+        <div class="gallery-modal-content report-modal">
+            <button class="gallery-modal-close" id="reportModalClose">×</button>
+            <h3>举报作品</h3>
+            <div class="gallery-form-row">
+                <label class="gallery-report-reason"><input type="radio" name="reportReason" value="spam" checked> 垃圾内容</label>
+                <label class="gallery-report-reason"><input type="radio" name="reportReason" value="nsfw"> 不当内容</label>
+                <label class="gallery-report-reason"><input type="radio" name="reportReason" value="copyright"> 侵权</label>
+                <label class="gallery-report-reason"><input type="radio" name="reportReason" value="other"> 其他</label>
+            </div>
+            <div class="gallery-form-row">
+                <textarea class="gallery-form-textarea" id="reportDesc" placeholder="补充说明（可选）" maxlength="300"></textarea>
+            </div>
+            <button class="gallery-submit-btn" id="reportSubmitBtn">提交举报</button>
+        </div>
+    </div>
+
+    <!-- ═══════════ FOOTER ═══════════ -->
+    <footer>
+        <div class="container">
+            <p class="footer-text"><a href="https://github.com/ZhangJing-gugugaga/Termify">Termify</a> — 万物皆可终端 · MIT License</p>
+            <p class="footer-cta">字符集不够用？<a href="https://github.com/ZhangJing-gugugaga/Termify/issues">来提 Issue →</a></p>
+        </div>
+    </footer>
+
+    <!-- ═══════════ TWEAKS PANEL ═══════════ -->
+    <button class="tweaks-toggle" id="tweaksToggle" title="Tweaks">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    <div class="tweaks-panel" id="tweaksPanel">
+        <div class="tweaks-header"><span class="tweaks-title">Tweaks</span><button class="tweaks-close" id="tweaksClose">×</button></div>
+        <div class="tweak-group"><div class="tweak-label">背景网格</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="grid-on">显示</button><button class="tweak-opt" data-tweak="grid-off">隐藏</button></div></div>
+        <div class="tweak-group"><div class="tweak-label">扫描线</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="scan-on">显示</button><button class="tweak-opt" data-tweak="scan-off">隐藏</button></div></div>
+        <div class="tweak-group"><div class="tweak-label">主题色</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button><button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button><button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button></div></div>
+    </div>
+
+    <script>
+        // ═══════════ Embedded work data ═══════════
+        window.TERMIFY_GALLERY_WORK = {
+            id: "{{ work.id }}",
+            title: "{{ work.title }}",
+            source_url: "{{ url_for('gallery_source', work_id=work.id) }}",
+            params: {{ work.params_json | safe if work.params_json else '{}' }},
+            tags: {{ work.tags | safe if work.tags else '[]' }}
+        };
+        // Render tags
+        (function () {
+            var tags = window.TERMIFY_GALLERY_WORK.tags;
+            var el = document.getElementById("viewBannerTags");
+            if (tags && tags.length && el) {
+                el.innerHTML = tags.map(function (t) {
+                    return '<span class="view-banner-tag">' + t + '</span>';
+                }).join("");
+            }
+        })();
+    </script>
+    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+    <script>
+        // ═══════════ View-page specific JS ═══════════
+        (function () {
+            var work = window.TERMIFY_GALLERY_WORK;
+            var WORK_ID = work.id;
+
+            // Toast (local, in case app.js hasn't loaded yet)
+            function localToast(msg) {
+                var el = document.getElementById("toast"); if (!el) return;
+                el.textContent = msg; el.classList.add("show");
+                clearTimeout(window.__vw_toast_t);
+                window.__vw_toast_t = setTimeout(function () { el.classList.remove("show"); }, 2200);
+            }
+
+            // ── Banner dismiss ──
+            var banner = document.getElementById("viewBanner");
+            document.getElementById("viewBannerClose").addEventListener("click", function () {
+                banner.style.display = "none";
+            });
+
+            // ── Like ──
+            var likeBtn = document.getElementById("likeBtn");
+            likeBtn.addEventListener("click", function () {
+                fetch("/api/gallery/like/" + WORK_ID, { method: "POST" })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (d.error) { localToast(d.error); return; }
+                        document.getElementById("bannerLikes").textContent = d.count;
+                        likeBtn.classList.toggle("liked", d.liked);
+                        if (d.liked) localToast("已点赞 ❤");
+                    }).catch(function () { localToast("操作失败"); });
+            });
+
+            // ── Copy link ──
+            document.getElementById("copyLinkBtn").addEventListener("click", function () {
+                var url = window.location.origin + "/v/" + WORK_ID;
+                navigator.clipboard.writeText(url).then(function () {
+                    localToast("链接已复制");
+                }).catch(function () { localToast("复制失败"); });
+            });
+
+            // ── Auto-load source image into the workspace ──
+            function autoLoadSource() {
+                fetch("/gallery/file/" + WORK_ID + "/source")
+                    .then(function (r) { return r.blob(); })
+                    .then(function (blob) {
+                        var ext = (work.params && work.params.charset) ? work.params.charset : "gif";
+                        var fname = "gallery_" + WORK_ID + "." + (blob.type.indexOf("png") >= 0 ? "png" : blob.type.indexOf("jpeg") >= 0 ? "jpg" : "gif");
+                        var file = new File([blob], fname, { type: blob.type });
+                        // Wait for app.js to load, then inject
+                        function tryInject() {
+                            if (window.__termify_view_inject) {
+                                window.__termify_view_inject(file, work.params);
+                            } else {
+                                setTimeout(tryInject, 100);
+                            }
+                        }
+                        tryInject();
+                    })
+                    .catch(function () { localToast("自动加载失败"); });
+            }
+            autoLoadSource();
+
+            // ── Download buttons (use workspace task after auto-load) ──
+            function doDownload(fmt) {
+                if (!window.__termify_view_task_ready) {
+                    localToast("图片正在加载，请稍候"); return;
+                }
+                var task = window.__termify_view_task_id;
+                if (!task) { localToast("请先上传文件"); return; }
+                var params = work.params || {};
+                var body = {
+                    task_id: task, charset: params.charset || "blocks", format: fmt,
+                    width: params.width || 80, height: params.height || 24
+                };
+                fetch("/api/generate", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body)
+                }).then(function (r) { return r.json(); }).then(function (d) {
+                    if (d.error) { localToast(d.error); return; }
+                    window.location.href = d.download_url;
+                }).catch(function () { localToast("下载失败"); });
+            }
+            document.getElementById("downloadPyBtn").addEventListener("click", function () { doDownload("python"); });
+            document.getElementById("downloadHtmlBtn").addEventListener("click", function () { doDownload("html"); });
+            // Also wire the workspace download button
+            document.getElementById("viewDownloadBtn").addEventListener("click", function () {
+                var fmt = "python";
+                var opts = document.querySelectorAll(".format-option");
+                for (var i = 0; i < opts.length; i++) {
+                    if (opts[i].classList.contains("selected")) {
+                        var f = opts[i].getAttribute("data-format");
+                        fmt = f ? f : (i === 0 ? "python" : "html");
+                        break;
+                    }
+                }
+                doDownload(fmt);
+            });
+
+            // ── Report modal ──
+            var reportModal = document.getElementById("reportModal");
+            document.getElementById("reportBtn").addEventListener("click", function () {
+                reportModal.classList.add("open");
+            });
+            document.getElementById("reportModalClose").addEventListener("click", function () {
+                reportModal.classList.remove("open");
+            });
+            reportModal.addEventListener("click", function (e) {
+                if (e.target === reportModal) reportModal.classList.remove("open");
+            });
+            document.getElementById("reportSubmitBtn").addEventListener("click", function () {
+                var reason = document.querySelector('input[name="reportReason"]:checked').value;
+                var desc = document.getElementById("reportDesc").value;
+                fetch("/api/gallery/report/" + WORK_ID, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ reason: reason, description: desc })
+                }).then(function (r) { return r.json(); }).then(function (d) {
+                    if (d.error) { localToast(d.error); return; }
+                    localToast("举报已提交，感谢反馈");
+                    reportModal.classList.remove("open");
+                }).catch(function () { localToast("提交失败"); });
+            });
+
+            // ── Tweaks panel ──
+            var tweaksToggle = document.getElementById("tweaksToggle");
+            var tweaksPanel = document.getElementById("tweaksPanel");
+            var tweaksClose = document.getElementById("tweaksClose");
+            if (tweaksToggle) tweaksToggle.addEventListener("click", function () {
+                tweaksPanel.classList.toggle("open");
+                tweaksToggle.style.display = tweaksPanel.classList.contains("open") ? "none" : "flex";
+            });
+            if (tweaksClose) tweaksClose.addEventListener("click", function () {
+                tweaksPanel.classList.remove("open");
+                tweaksToggle.style.display = "flex";
+            });
+            function bindTweak(onSel, offSel, prop, onVal, offVal) {
+                document.querySelectorAll(onSel).forEach(function (btn) {
+                    btn.addEventListener("click", function () {
+                        document.body.style.setProperty(prop, onVal);
+                        document.querySelectorAll(onSel + "," + offSel).forEach(function (b) { b.classList.remove("active"); });
+                        btn.classList.add("active");
+                    });
+                });
+                document.querySelectorAll(offSel).forEach(function (btn) {
+                    btn.addEventListener("click", function () {
+                        document.body.style.setProperty(prop, offVal);
+                        document.querySelectorAll(onSel + "," + offSel).forEach(function (b) { b.classList.remove("active"); });
+                        btn.classList.add("active");
+                    });
+                });
+            }
+            bindTweak('[data-tweak="grid-on"]', '[data-tweak="grid-off"]", "--grid-opacity", "0.3", "0");
+            bindTweak('[data-tweak="scan-on"]', '[data-tweak="scan-off"]", "--scanline-opacity", "1", "0");
+            document.querySelectorAll('[data-tweak^="theme-"]').forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    document.querySelectorAll('[data-tweak^="theme-"]').forEach(function (b) { b.classList.remove("active"); });
+                    btn.classList.add("active");
+                    var theme = btn.getAttribute("data-tweak").replace("theme-", "");
+                    var colors = {
+                        green: { main: "#00ff41", dim: "#00cc33", glow: "rgba(0,255,65,0.15)" },
+                        amber: { main: "#ffb000", dim: "#cc8d00", glow: "rgba(255,176,0,0.12)" },
+                        cyan:  { main: "#00d4ff", dim: "#00a8cc", glow: "rgba(0,212,255,0.12)" }
+                    };
+                    var c = colors[theme]; if (!c) return;
+                    document.documentElement.style.setProperty("--green", c.main);
+                    document.documentElement.style.setProperty("--green-dim", c.dim);
+                    document.documentElement.style.setProperty("--green-glow", c.glow);
+                });
+            });
+        })();
+    </script>
+</body>
+</html>

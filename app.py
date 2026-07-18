@@ -3,16 +3,21 @@
 Implements PRD §6's three endpoints plus a download route and the page route.
 All heavy lifting (frame extract / charset map / bundling) is delegated to the
 Phase 1 termify APIs; this file is just HTTP glue.
+
+T1.6 Online Gallery adds /api/gallery/* + /gallery /v/<id> /admin routes.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import threading
 import re
+import time
 import uuid
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import (Flask, abort, jsonify, make_response, redirect,
+                   render_template, request, send_file, url_for)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # PRD §7.1
@@ -22,6 +27,51 @@ TASKS_LOCK = threading.Lock()
 
 VALID_EXT = {".gif", ".png", ".jpg", ".jpeg"}
 VALID_FORMATS = {"python", "html"}
+
+# --- T1.6 Gallery wiring ----------------------------------------------------
+from termify import gallery as _gallery_mod
+from termify.charset import CHARSETS
+
+GALLERY_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+os.makedirs(GALLERY_DATA_DIR, exist_ok=True)
+GALLERY_DB = _gallery_mod.GalleryDB(os.path.join(GALLERY_DATA_DIR, "termify.db"))
+GALLERY_DB.init_db()
+
+def _admin_pwd() -> str:
+    """Read TERMIFY_ADMIN_PWD on each request (so tests can monkeypatch env)."""
+    return os.environ.get("TERMIFY_ADMIN_PWD", "")
+
+# Rate limit: {ip: [(action_str, timestamp_s), ...]}
+_RL_LOCK = threading.Lock()
+_RL_LOG: dict[str, list[tuple[str, float]]] = {}
+
+
+def _client_ip() -> str:
+    """Best-effort client IP, honouring X-Forwarded-For behind a proxy."""
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.remote_addr or "127.0.0.1"
+
+
+def _rate_check(ip: str, action: str, *, per_minute: int | None = None,
+                per_day: int | None = None) -> tuple[bool, str]:
+    """Return (allowed, reason). action like 'upload', 'like', 'report'."""
+    now = time.time()
+    with _RL_LOCK:
+        entries = _RL_LOG.setdefault(ip, [])
+        # Sweep old (> 24h)
+        entries[:] = [(a, t) for a, t in entries if now - t < 86400]
+        same_action = [(a, t) for a, t in entries if a == action]
+        if per_minute is not None:
+            recent = [t for _, t in same_action if now - t < 60]
+            if len(recent) >= per_minute:
+                return False, f"{action} rate limit: {per_minute}/min exceeded"
+        if per_day is not None:
+            if len(same_action) >= per_day:
+                return False, f"{action} rate limit: {per_day}/day exceeded"
+        entries.append((action, now))
+        return True, ""
 
 def _parse_rgb(value):
     """Parse 'rgb(R,G,B)' string into (R,G,B) tuple, or None if invalid/empty."""
@@ -424,9 +474,390 @@ def download(filename):
     return send_file(path, as_attachment=True)
 
 
+# ---------------------------------------------------------------------------
+# T1.6 Online Gallery — API + pages
+# ---------------------------------------------------------------------------
+
+GALLERY_EXT = VALID_EXT  # source image extensions
+
+
+def _gallery_public_dict(work: dict, request_host: str = "") -> dict:
+    """Strip internals before returning to the client."""
+    return {
+        "id": work["id"],
+        "title": work["title"],
+        "description": work["description"],
+        "tags": json.loads(work["tags"]) if work["tags"] else [],
+        "author": work["author"],
+        "thumbnail_url": url_for("gallery_thumb", work_id=work["id"]),
+        "og_url": url_for("gallery_og", work_id=work["id"]),
+        "source_url": url_for("gallery_source", work_id=work["id"]),
+        "params": json.loads(work["params_json"]) if work["params_json"] else {},
+        "view_count": work["view_count"],
+        "like_count": work["like_count"],
+        "download_count": work["download_count"],
+        "created_at": work["created_at"],
+    }
+
+
+def _make_unique_id() -> str:
+    """Generate a short ID, retry on collision."""
+    for _ in range(64):
+        sid = _gallery_mod.make_short_id()
+        if not GALLERY_DB.id_collides(sid):
+            return sid
+    raise RuntimeError("Could not allocate unique short_id after 64 tries")
+
+
+@app.route("/api/gallery/upload", methods=["POST"])
+def gallery_upload():
+    """Accept multipart upload (source image + JSON params + form fields).
+
+    Returns {ok, id, admin_token, url, work}.
+    Rate limit: 3/min, 10/day per IP.
+    """
+    if "source" not in request.files:
+        return jsonify({"error": "No source file"}), 400
+    source_file = request.files["source"]
+    if not source_file.filename:
+        return jsonify({"error": "Empty source filename"}), 400
+
+    ext = os.path.splitext(source_file.filename)[1].lower()
+    if ext not in GALLERY_EXT:
+        return jsonify({"error": f"Unsupported file extension: {ext}"}), 400
+
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "upload", per_minute=3, per_day=10)
+    if not ok:
+        return jsonify({"error": reason}), 429
+
+    # Form fields with validation
+    title = _gallery_mod.sanitize(
+        request.form.get("title") or os.path.splitext(source_file.filename)[0],
+        _gallery_mod._TITLE_MAX,
+    )
+    description = _gallery_mod.sanitize(
+        request.form.get("description"), _gallery_mod._DESC_MAX
+    )
+    author = _gallery_mod.sanitize(
+        request.form.get("author") or "", _gallery_mod._AUTHOR_MAX
+    ) or "匿名创作者"
+    tags_raw = request.form.get("tags", "[]")
+    try:
+        tags = json.loads(tags_raw) if isinstance(tags_raw, str) else tags_raw
+        if not isinstance(tags, list):
+            tags = []
+    except (json.JSONDecodeError, TypeError):
+        tags = []
+    tags = [t for t in tags if t in _gallery_mod.VALID_TAGS][:3]
+    tags_json = json.dumps(tags, ensure_ascii=False)
+
+    is_private = 1 if (request.form.get("is_private") in ("1", "true", "on")) else 0
+
+    # Params JSON (charset / width / height / format / interval / fg / bg)
+    params_raw = request.form.get("params", "{}")
+    try:
+        params = json.loads(params_raw) if isinstance(params_raw, str) else params_raw
+        if not isinstance(params, dict):
+            params = {}
+    except (json.JSONDecodeError, TypeError):
+        params = {}
+    # Sanitize core fields
+    params.setdefault("charset", _gallery_mod.DEFAULT_CHARSET)
+    params.setdefault("width", _gallery_mod.DEFAULT_WIDTH)
+    params.setdefault("height", _gallery_mod.DEFAULT_HEIGHT)
+    if params.get("charset") not in CHARSETS:
+        params["charset"] = _gallery_mod.DEFAULT_CHARSET
+    try:
+        params["width"] = max(1, min(400, int(params["width"])))
+        params["height"] = max(1, min(400, int(params["height"])))
+    except (TypeError, ValueError):
+        params["width"] = _gallery_mod.DEFAULT_WIDTH
+        params["height"] = _gallery_mod.DEFAULT_HEIGHT
+
+    # Persist file
+    work_id = _make_unique_id()
+    base = _gallery_mod.gallery_base(GALLERY_DATA_DIR)
+    source_path = os.path.join(base, f"{work_id}{ext}")
+    source_file.save(source_path)
+
+    # Verify the file opens with Pillow
+    try:
+        from PIL import Image as _PILImage
+        with _PILImage.open(source_path) as im:
+            im.verify()
+        # Reopen after verify (verify leaves the handle unusable)
+        with _PILImage.open(source_path) as im:
+            im.load()
+    except Exception as exc:  # noqa: BLE001
+        os.remove(source_path)
+        return jsonify({"error": f"Invalid image: {exc}"}), 400
+
+    # Generate thumbnails + OG
+    thumb_path = os.path.join(base, f"{work_id}_thumb.gif")
+    og_path = os.path.join(base, f"{work_id}_og.png")
+    try:
+        _gallery_mod.make_thumbnail(source_path, thumb_path)
+        _gallery_mod.make_og_image(source_path, og_path, title, author)
+    except Exception as exc:  # noqa: BLE001
+        for p in (source_path, thumb_path, og_path):
+            if os.path.isfile(p):
+                os.remove(p)
+        return jsonify({"error": f"Thumbnail generation failed: {exc}"}), 500
+
+    # Insert into DB
+    admin_token = _gallery_mod.make_admin_token()
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    GALLERY_DB.insert_work({
+        "id": work_id,
+        "title": title,
+        "description": description,
+        "tags": tags_json,
+        "author": author,
+        "source_path": source_path,
+        "thumbnail_path": thumb_path,
+        "og_path": og_path,
+        "params_json": json.dumps(params, ensure_ascii=False),
+        "is_private": is_private,
+        "admin_token": admin_token,
+        "created_at": now_iso,
+        "ip": ip,
+    })
+
+    work = GALLERY_DB.get_work(work_id)
+    resp = make_response(jsonify({
+        "ok": True,
+        "id": work_id,
+        "admin_token": admin_token,
+        "url": url_for("gallery_view", work_id=work_id, _external=False),
+        "work": _gallery_public_dict(work),
+    }))
+    # Set admin token cookie (30 days)
+    resp.set_cookie(
+        f"termify_admin_{work_id}",
+        admin_token,
+        max_age=60 * 60 * 24 * 30,
+        httponly=True,
+        samesite="Lax",
+    )
+    return resp
+
+
+@app.route("/api/gallery/list", methods=["GET"])
+def gallery_list():
+    """Paginated list of gallery works.
+
+    Query: sort, tag, page, limit.
+    Always returns public works only (unless authenticated via cookie).
+    """
+    sort = request.args.get("sort", "latest")
+    if sort not in ("latest", "hot", "random"):
+        sort = "latest"
+    tag = request.args.get("tag") or None
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        limit = max(1, min(60, int(request.args.get("limit", 24))))
+    except (TypeError, ValueError):
+        limit = 24
+    items, total = GALLERY_DB.list_works(sort=sort, tag=tag, page=page, limit=limit)
+    # Admin cookie check: include is_authorized flag per item
+    return jsonify({
+        "items": [_gallery_public_dict(w) for w in items],
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "has_more": page * limit < total,
+    })
+
+
+@app.route("/api/gallery/work/<work_id>", methods=["GET"])
+def gallery_work(work_id):
+    """Detail for one work. Bumps view count. Returns params for pre-fill."""
+    work = GALLERY_DB.get_work(work_id)
+    if not work:
+        return jsonify({"error": "Work not found"}), 404
+    if work["is_private"]:
+        # Check admin token cookie; else allow view if URL is direct link (private only hides from list)
+        pass  # private works are still viewable at /v/<id>
+    GALLERY_DB.increment_view(work_id)
+    fresh = GALLERY_DB.get_work(work_id)
+    out = _gallery_public_dict(fresh)
+    # Omit sensitive when listing
+    out["is_authorized"] = (
+        request.cookies.get(f"termify_admin_{work_id}") == work["admin_token"]
+        or (bool(_admin_pwd()) and request.args.get("pwd") == _admin_pwd())
+    )
+    return jsonify(out)
+
+
+@app.route("/api/gallery/like/<work_id>", methods=["POST"])
+def gallery_like(work_id):
+    """Toggle like. IP + cookie double rate limit. Returns {liked, count}."""
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "like", per_day=50)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    work = GALLERY_DB.get_work(work_id)
+    if not work:
+        return jsonify({"error": "Work not found"}), 404
+    existing_cookie = request.cookies.get(f"termify_like_{work_id}", "")
+    json_cookie = request.json.get("cookie", "") if request.is_json else ""
+    cookie_val = existing_cookie or json_cookie
+    if not cookie_val:
+        cookie_val = _client_ip() + str(time.time())
+    liked, count = GALLERY_DB.toggle_like(work_id, ip, cookie_val)
+    resp = make_response(jsonify({"liked": liked, "count": count, "ok": True}))
+    if not request.cookies.get(f"termify_like_{work_id}"):
+        resp.set_cookie(f"termify_like_{work_id}", cookie_val, max_age=86400 * 365, httponly=True, samesite="Lax")
+    return resp
+
+
+@app.route("/api/gallery/report/<work_id>", methods=["POST"])
+def gallery_report(work_id):
+    """Submit a report. Rate limit 10/day per IP."""
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "report", per_day=10)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    work = GALLERY_DB.get_work(work_id)
+    if not work:
+        return jsonify({"error": "Work not found"}), 404
+    data = request.get_json(silent=True) or {}
+    reason_str = data.get("reason", "")
+    if reason_str not in _gallery_mod.VALID_REPORT_REASONS:
+        return jsonify({"error": f"Invalid reason; expected one of {_gallery_mod.VALID_REPORT_REASONS}"}), 400
+    desc = _gallery_mod.sanitize(data.get("description", ""), 300)
+    report_id = GALLERY_DB.add_report(work_id, ip, reason_str, desc)
+    return jsonify({"ok": True, "report_id": report_id})
+
+
+@app.route("/api/gallery/work/<work_id>", methods=["DELETE"])
+def gallery_delete(work_id):
+    """Delete a work. Requires valid admin token (cookie or header) or global admin pwd."""
+    work = GALLERY_DB.get_work(work_id)
+    if not work:
+        return jsonify({"error": "Work not found"}), 404
+    token = request.cookies.get(f"termify_admin_{work_id}", "")
+    hdr_token = request.headers.get("X-Termify-Admin", "")
+    input_token = hdr_token or token
+    is_admin = bool(_admin_pwd()) and (
+        request.args.get("pwd") == _admin_pwd()
+        or request.headers.get("X-Termify-Admin-Pwd") == _admin_pwd()
+    )
+    authorized = is_admin or (input_token and input_token == work["admin_token"])
+    if not authorized:
+        return jsonify({"error": "Unauthorized"}), 403
+    deleted = GALLERY_DB.delete_work(work_id)
+    if deleted:
+        for key in ("source_path", "thumbnail_path", "og_path"):
+            p = deleted.get(key)
+            if p and os.path.isfile(p):
+                os.remove(p)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/gallery/admin", methods=["GET"])
+def gallery_admin_list():
+    """Admin dashboard: list works + pending reports.
+
+    Requires ?pwd=<_admin_pwd()> or X-Termify-Admin-Pwd header.
+    """
+    pwd = request.args.get("pwd", "") or request.headers.get("X-Termify-Admin-Pwd", "")
+    if not _admin_pwd() or pwd != _admin_pwd():
+        return jsonify({"error": "Unauthorized"}), 403
+    works = GALLERY_DB.admin_list_works()
+    reports = GALLERY_DB.admin_list_reports(status="pending")
+    return jsonify({
+        "works": [_gallery_public_dict(w) for w in works],
+        "reports": reports,
+    })
+
+
+@app.route("/api/gallery/admin/<work_id>", methods=["DELETE"])
+def gallery_admin_delete(work_id):
+    """Admin hard delete."""
+    pwd = request.args.get("pwd", "") or request.headers.get("X-Termify-Admin-Pwd", "")
+    if not _admin_pwd() or pwd != _admin_pwd():
+        return jsonify({"error": "Unauthorized"}), 403
+    work = GALLERY_DB.get_work(work_id)
+    if not work:
+        return jsonify({"error": "Work not found"}), 404
+    deleted = GALLERY_DB.delete_work(work_id)
+    if deleted:
+        for key in ("source_path", "thumbnail_path", "og_path"):
+            p = deleted.get(key)
+            if p and os.path.isfile(p):
+                os.remove(p)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/gallery/admin/report/<int:report_id>", methods=["POST"])
+def gallery_admin_resolve_report(report_id):
+    """Mark a report resolved/dismissed."""
+    pwd = request.args.get("pwd", "") or request.headers.get("X-Termify-Admin-Pwd", "")
+    if not _admin_pwd() or pwd != _admin_pwd():
+        return jsonify({"error": "Unauthorized"}), 403
+    data = request.get_json(silent=True) or {}
+    status = data.get("status", "resolved")
+    if status not in ("resolved", "dismissed"):
+        return jsonify({"error": "Invalid status"}), 400
+    GALLERY_DB.admin_update_report(report_id, status)
+    return jsonify({"ok": True})
+
+
+# --- proxy routes for source/thumbnail/og (serve files outside static) ---
+
+@app.route("/gallery/file/<work_id>/source")
+def gallery_source(work_id):
+    work = GALLERY_DB.get_work(work_id)
+    if not work or not os.path.isfile(work["source_path"]):
+        abort(404)
+    return send_file(work["source_path"])
+
+
+@app.route("/gallery/file/<work_id>/thumb")
+def gallery_thumb(work_id):
+    work = GALLERY_DB.get_work(work_id)
+    if not work or not os.path.isfile(work["thumbnail_path"]):
+        abort(404)
+    return send_file(work["thumbnail_path"], mimetype="image/gif")
+
+
+@app.route("/gallery/file/<work_id>/og")
+def gallery_og(work_id):
+    work = GALLERY_DB.get_work(work_id)
+    if not work or not os.path.isfile(work["og_path"]):
+        abort(404)
+    return send_file(work["og_path"], mimetype="image/png")
+
+
+# --- page routes ---
+
+@app.route("/gallery")
+def gallery_page():
+    return render_template("gallery.html")
+
+
+@app.route("/v/<work_id>")
+def gallery_view(work_id):
+    work = GALLERY_DB.get_work(work_id)
+    if not work:
+        abort(404)
+    return render_template("view_work.html", work=work)
+
+
+@app.route("/admin")
+def gallery_admin_page():
+    return render_template("admin.html")
+
+
 if __name__ == "__main__":
     os.makedirs("uploads", exist_ok=True)
     os.makedirs("tmp", exist_ok=True)
+    os.makedirs(GALLERY_DATA_DIR, exist_ok=True)
     # ponytail: reloader off — the app stores tasks in memory, so a watchdog
     # restart (e.g. on each /api/generate writing tmp/*.py) would wipe them.
     app.run(debug=True, use_reloader=False, port=5000)
