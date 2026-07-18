@@ -151,10 +151,19 @@ A:
 - **Windows**：打开 PowerShell（Win+R 输入 `powershell`），进入下载目录，运行 `python 文件名.py`。如果提示"python 不存在"，请安装 [Python 3.10+](https://www.python.org/downloads/)。
 - **macOS / Linux**：打开 Terminal，进入下载目录，运行 `python3 文件名.py`。
 
-**Q: 为什么终端里显示绿色 / 乱码？**
-A: 你的终端可能不支持 TrueColor ANSI。解决方法：
-1. 改用 **HTML 输出格式**（推荐），浏览器打开就正常
-2. 或换用 **ASCII/Braille/几何图形/二值** 等非彩色风格 —— 它们只输出纯文本
+**Q: 为什么终端里显示绿色 / 乱码 / 方框？**
+A: 这通常有两个原因：
+
+1. **终端不支持 TrueColor ANSI**（影响 blocks 风格）：
+   - 改用 **HTML 输出格式**（推荐），浏览器打开就正常
+   - 或换用 **ASCII/几何图形/二值** 等非彩色风格
+
+2. **终端字体不支持 Unicode 字符**（影响 geometric/braille 风格）：
+   - 使用 **Windows Terminal**（已内置 Unicode 支持）
+   - 安装 Nerd Font 字体（如 [JetBrainsMono Nerd Font](https://www.nerdfonts.com/)），然后在终端设置中选用
+   - 改用 **HTML 输出格式**，浏览器对 Unicode 支持最好
+
+> 💡 **推荐配置**：Windows Terminal + JetBrainsMono Nerd Font 字体，可完美显示所有风格。
 
 **Q: 手机能打开 .html 文件吗？**
 A: 可以。通过微信/AirDrop/数据线传到手机，用浏览器打开；**横屏**观看效果更好。
