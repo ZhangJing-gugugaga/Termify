@@ -344,6 +344,8 @@ def _stop_audio():
 def play():
     ansi_ok, unicode_ok = _detect_terminal_capabilities()
     ansi_enabled = _enable_windows_ansi()
+    
+    # Warn about potential display issues
     if CHARSET == "blocks" and (not ansi_enabled or not unicode_ok):
         sys.stderr.write(
             "⚠ 终端未通过 ANSI/Unicode 检测，blocks 风格可能显示乱码。\\n"
@@ -351,6 +353,19 @@ def play():
             "  按 Ctrl+C 退出；或忽略本提示继续。\\n\\n"
         )
         sys.stderr.flush()
+    elif CHARSET in ("geometric", "braille") and os.name == 'nt':
+        # Windows terminals often lack proper Unicode font support
+        if not unicode_ok:
+            sys.stderr.write(
+                "⚠ {charset} 风格需要终端支持 Unicode 字符。\\n"
+                "  如果看到乱码或方框，请尝试以下方法：\\n"
+                "  1. 使用 Windows Terminal（推荐）\\n"
+                "  2. 安装 Nerd Font 字体（如 JetBrainsMono Nerd Font）\\n"
+                "  3. 改用 HTML 格式下载，用浏览器打开\\n"
+                "  按 Ctrl+C 退出；或忽略本提示继续。\\n\\n".format(charset=CHARSET)
+            )
+            sys.stderr.flush()
+    
     _start_audio()
 
     sys.stdout.write('\\x1b[?25l\\x1b[?1049h\\x1b[2J')
