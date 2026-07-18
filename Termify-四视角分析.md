@@ -12,7 +12,7 @@
 | 项 | 内容 |
 |---|---|
 | 定位 | 「万物皆可终端」——把 GIF/图片转成终端可播放动画，三步出活 |
-| 技术栈 | Python 3.10+ / Flask / Pillow 后端；原生 HTML/CSS/JS 前端；pytest（实测 41 个测试） |
+| 技术栈 | Python 3.10+ / Flask / Pillow 后端；原生 HTML/CSS/JS 前端；pytest（实测 123 个测试） |
 | 功能 | Web + CLI 双形态；5 种渲染风格；输出 `.py`/`.html`；全屏自适应；`music.mp3` 音频；5 个 API |
 | 架构 | 引擎层 `termify/`（charset/frames/engine/output）与 Web 层 `app.py` 解耦，内存任务存储，无数据库，20MB 上限 |
 | 协议 | MIT |
