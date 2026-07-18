@@ -758,40 +758,6 @@
     _origHandleFiles(fileList);
   };
 
-  /* ── View-page hook: inject gallery source as uploaded file ── */
-  window.__termify_view_inject = function (file, params) {
-    var charset = (params && params.charset) || "blocks";
-    var width = (params && params.width) || 80;
-    var height = (params && params.height) || 24;
-    S.sourceFile = file;
-    var fd = new FormData();
-    fd.append("files", file);
-    uploadZone.classList.add("uploading");
-    fetch("/api/upload-batch", { method: "POST", body: fd })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        uploadZone.classList.remove("uploading");
-        if (d.error) { toast(d.error); return; }
-        if (d.task_ids && d.task_ids.length) {
-          var newFiles = d.task_ids.map(function (t) {
-            return { task_id: t.task_id, filename: t.filename, frames_count: t.frames_count,
-                     charset: charset, width: width, height: height };
-          });
-          S.fileList = newFiles;
-          S.selIdx = 0;
-          S.charset = charset;
-          S.width = width;
-          S.height = height;
-          markSelected(".style-card", '[data-style="' + charset + '"]');
-          selectFile(0);
-          renderFileList();
-          window.__termify_view_task_id = newFiles[0].task_id;
-          window.__termify_view_task_ready = true;
-        }
-      })
-      .catch(function () { uploadZone.classList.remove("uploading"); toast("auto-load failed"); });
-  };
-
   /* ── Gallery share: open/close modal + submit ── */
   var shareBtn = byId("shareToGalleryBtn");
   var galleryModal = byId("galleryModal");

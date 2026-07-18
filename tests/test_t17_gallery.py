@@ -551,5 +551,117 @@ def test_real_cat_gif_upload_and_list(isolated_env):
     assert resp3.status_code == 200
 
 
+# ----------------------------------------------------------------------------
+# 14. Preview API
+# ----------------------------------------------------------------------------
+
+def test_gallery_preview_returns_frames(isolated_env):
+    """Upload → GET /api/gallery/preview/<id> → 200 + non-empty frames."""
+    b = _upload(isolated_env, params={"charset": "blocks", "width": 80, "height": 24})
+    resp = isolated_env.get(f"/api/gallery/preview/{b['id']}")
+    assert resp.status_code == 200
+    body = json.loads(resp.data)
+    assert "frames" in body
+    assert len(body["frames"]) >= 1
+    assert body["charset"] == "blocks"
+    assert body["width"] == 80
+    assert body["height"] == 24
+    assert "interval" in body
+
+
+def test_gallery_preview_invalid_charset(isolated_env):
+    b = _upload(isolated_env)
+    resp = isolated_env.get(f"/api/gallery/preview/{b['id']}?charset=invalid")
+    assert resp.status_code == 400
+
+
+def test_gallery_preview_unknown_work(isolated_env):
+    resp = isolated_env.get("/api/gallery/preview/nonexist")
+    assert resp.status_code == 404
+
+
+def test_gallery_preview_switch_charset(isolated_env):
+    """Upload as blocks → switch to ascii → frames should differ."""
+    b = _upload(isolated_env, params={"charset": "blocks", "width": 40, "height": 20})
+    r_blocks = isolated_env.get(f"/api/gallery/preview/{b['id']}?charset=blocks&width=40&height=20")
+    r_ascii = isolated_env.get(f"/api/gallery/preview/{b['id']}?charset=ascii&width=40&height=20")
+    assert r_blocks.status_code == 200 and r_ascii.status_code == 200
+    fb = json.loads(r_blocks.data)["frames"]
+    fa = json.loads(r_ascii.data)["frames"]
+    # Different charsets should yield different rendered output
+    assert fb != fa
+
+
+# ----------------------------------------------------------------------------
+# 15. Download API
+# ----------------------------------------------------------------------------
+
+def test_gallery_download_python(isolated_env):
+    b = _upload(isolated_env, params={"charset": "blocks", "width": 80, "height": 24})
+    resp = isolated_env.get(f"/api/gallery/download/{b['id']}?format=python&charset=blocks&width=80&height=24")
+    assert resp.status_code == 200
+    text = resp.data.decode("utf-8", errors="ignore")
+    # Self-contained .py with ANSI color escapes (stored as JSON \u001b[ which the player parses at runtime)
+    assert "\\u001b[" in text
+    assert "import" in text
+    assert "def play" in text or "def render" in text
+
+
+def test_gallery_download_html(isolated_env):
+    b = _upload(isolated_env)
+    resp = isolated_env.get(f"/api/gallery/download/{b['id']}?format=html")
+    assert resp.status_code == 200
+    text = resp.data.decode("utf-8", errors="ignore")
+    assert "<!DOCTYPE" in text or "<html" in text
+    assert "</html>" in text
+
+
+def test_gallery_download_invalid_format(isolated_env):
+    b = _upload(isolated_env)
+    resp = isolated_env.get(f"/api/gallery/download/{b['id']}?format=pdf")
+    assert resp.status_code == 400
+
+
+def test_gallery_download_unknown_work(isolated_env):
+    resp = isolated_env.get("/api/gallery/download/nonexist?format=python")
+    assert resp.status_code == 404
+
+
+def test_gallery_download_count_increments(isolated_env):
+    """First download +1; same IP repeat within 24h does not double-count."""
+    b = _upload(isolated_env)
+    from app import GALLERY_DB
+    assert GALLERY_DB.get_work(b["id"])["download_count"] == 0
+    r1 = isolated_env.get(f"/api/gallery/download/{b['id']}?format=python")
+    assert r1.status_code == 200
+    assert GALLERY_DB.get_work(b["id"])["download_count"] == 1
+    # Same IP downloads again within 24h → no double count
+    r2 = isolated_env.get(f"/api/gallery/download/{b['id']}?format=python")
+    assert r2.status_code == 200
+    assert GALLERY_DB.get_work(b["id"])["download_count"] == 1
+    # Different IP → counts again
+    r3 = isolated_env.get(f"/api/gallery/download/{b['id']}?format=python",
+                         headers={"X-Forwarded-For": "10.0.0.200"})
+    assert r3.status_code == 200
+    assert GALLERY_DB.get_work(b["id"])["download_count"] == 2
+
+
+def test_view_work_page_no_upload_section(isolated_env):
+    """GET /v/<id> must NOT contain '继续创作' / 'uploadZone' / '已发布'."""
+    b = _upload(isolated_env)
+    resp = isolated_env.get(f"/v/{b['id']}")
+    assert resp.status_code == 200
+    html = resp.data.decode("utf-8", errors="ignore")
+    assert "继续创作" not in html
+    assert "uploadZone" not in html
+    assert "已发布" not in html
+    # But should still contain style selection + preview sections
+    assert "选择风格" in html
+    assert "animPreview" in html
+    assert "下载 .py" in html
+    assert "下载 .html" in html
+    assert "复制链接" in html
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

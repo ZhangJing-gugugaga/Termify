@@ -31,7 +31,7 @@
         </div>
     </nav>
 
-    <!-- ═══════════ VIEW BANNER ═══════════ -->
+    <!-- ═══════════ BANNER ═══════════ -->
     <div class="view-banner" id="viewBanner">
         <div class="container">
             <button class="view-banner-close" id="viewBannerClose">×</button>
@@ -46,45 +46,22 @@
             <div class="view-banner-stats">
                 <span>❤ <strong id="bannerLikes">{{ work.like_count }}</strong></span>
                 <span>👁 <strong>{{ work.view_count }}</strong></span>
-                <span>⬇ <strong>{{ work.download_count }}</strong></span>
+                <span>⬇ <strong id="bannerDownloads">{{ work.download_count }}</strong></span>
             </div>
             <div class="view-banner-actions">
                 <button class="view-action-btn view-action-like" id="likeBtn">❤ 点赞</button>
-                <button class="view-action-btn" id="copyLinkBtn">复制链接</button>
-                <button class="view-action-btn" id="downloadPyBtn">下载 .py</button>
-                <button class="view-action-btn" id="downloadHtmlBtn">下载 .html</button>
-                <button class="view-action-btn view-action-report" id="reportBtn">举报</button>
+                <button class="view-action-btn" id="copyLinkBtn">📋 复制链接</button>
+                <button class="view-action-btn view-action-report" id="reportBtn">🚩 举报</button>
             </div>
         </div>
     </div>
 
-    <!-- ═══════════ WORKSPACE (same as index.html) ═══════════ -->
-    <section class="upload-section" id="upload">
-        <div class="container">
-            <div class="section-label">继续创作</div>
-            <h2 class="section-title">重新渲染这张图片</h2>
-            <div class="upload-zone" id="uploadZone">
-                <div class="upload-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="17 8 12 3 7 8"/>
-                        <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                </div>
-                <div class="upload-text">
-                    <h3>拖拽文件到这里，或 <span class="browse-link">点击选择</span></h3>
-                    <p>已自动加载画廊图片 — 可直接切换风格预览</p>
-                </div>
-            </div>
-            <div class="file-list" id="fileList"></div>
-        </div>
-    </section>
-
+    <!-- ═══════════ STYLE SELECTION ═══════════ -->
     <section class="preview-section" id="styles">
         <div class="container">
             <div class="section-label">选择风格</div>
-            <div class="style-grid">
-                <div class="style-card selected" data-style="ascii">
+            <div class="style-grid view-style-grid">
+                <div class="style-card" data-style="ascii">
                     <div class="style-preview ascii">@@@####@@@@
 @@##%%**##@@
 @#%*++=*#%@
@@ -145,9 +122,17 @@
         </div>
     </section>
 
+    <!-- ═══════════ SIZE + PREVIEW + DOWNLOAD ═══════════ -->
     <section class="animation-section" id="preview">
         <div class="container">
             <div class="section-label">预览 & 下载</div>
+            <!-- Size selector -->
+            <div class="view-size-row">
+                <span class="view-size-label">尺寸:</span>
+                <button class="view-size-btn" data-size="80x24">80×24</button>
+                <button class="view-size-btn" data-size="120x36">120×36</button>
+                <button class="view-size-btn" data-size="200x60">200×60</button>
+            </div>
             <div class="animation-layout">
                 <div class="animation-terminal">
                     <div class="terminal">
@@ -155,40 +140,35 @@
                             <div class="terminal-dot red"></div>
                             <div class="terminal-dot amber"></div>
                             <div class="terminal-dot green"></div>
-                            <div class="terminal-title">animation preview — blocks style</div>
+                            <div class="terminal-title" id="previewTitle">animation preview</div>
                         </div>
-                        <div class="terminal-body" id="animPreview">加载中...</div>
+                        <div class="terminal-body" id="animPreview">
+                            <div class="view-loading"><div class="view-spinner"></div><span>加载中...</span></div>
+                        </div>
                         <div class="animation-controls">
-                            <button class="control-btn active" title="Play"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
-                            <button class="control-btn" title="Pause"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
-                            <div class="progress-bar"><div class="progress-fill"></div></div>
-                            <span class="frame-counter">0 / 0</span>
+                            <button class="control-btn active" id="playBtn" title="Play"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
+                            <button class="control-btn" id="pauseBtn" title="Pause"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
+                            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+                            <span class="frame-counter" id="frameCounter">0 / 0</span>
                         </div>
                     </div>
                 </div>
                 <div class="output-panel">
                     <div class="output-card">
                         <div class="output-card-title">输出格式</div>
-                        <div class="format-options">
-                            <div class="format-option selected"><div class="format-radio"></div><div class="format-label"><div class="format-label-name">Python 脚本</div><div class="format-label-desc">python play.py 直接运行</div></div><div class="format-icon">.py</div></div>
-                            <div class="format-option"><div class="format-radio"></div><div class="format-label"><div class="format-label-name">HTML 页面</div><div class="format-label-desc">浏览器打开即播放</div></div><div class="format-icon">.html</div></div>
+                        <div class="format-options view-format-options">
+                            <div class="format-option selected" data-format="python"><div class="format-radio"></div><div class="format-label"><div class="format-label-name">Python 脚本</div><div class="format-label-desc">python play.py 直接运行</div></div><div class="format-icon">.py</div></div>
+                            <div class="format-option" data-format="html"><div class="format-radio"></div><div class="format-label"><div class="format-label-name">HTML 页面</div><div class="format-label-desc">浏览器打开即播放</div></div><div class="format-icon">.html</div></div>
                         </div>
                     </div>
-                    <div class="output-card">
-                        <div class="output-card-title">终端尺寸</div>
-                        <div class="size-options">
-                            <button class="size-btn">40×20</button>
-                            <button class="size-btn selected">80×24</button>
-                            <button class="size-btn">120×36</button>
-                            <button class="size-btn">160×48 <small>高清</small></button>
-                            <button class="size-btn">200×60 <small>超清</small></button>
-                        </div>
-                    </div>
-                    <button class="download-btn" id="viewDownloadBtn">
+                    <button class="download-btn" id="downloadPyBtn">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        下载动画文件
+                        ⬇ 下载 .py
                     </button>
-                    <button class="gallery-share-btn" id="galleryShareBtn" disabled>已发布 ✓</button>
+                    <button class="download-btn" id="downloadHtmlBtn" style="margin-top:8px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        ⬇ 下载 .html
+                    </button>
                 </div>
             </div>
         </div>
@@ -236,192 +216,233 @@
         window.TERMIFY_GALLERY_WORK = {
             id: "{{ work.id }}",
             title: "{{ work.title }}",
-            source_url: "{{ url_for('gallery_source', work_id=work.id) }}",
             params: {{ work.params_json | safe if work.params_json else '{}' }},
             tags: {{ work.tags | safe if work.tags else '[]' }}
         };
-        // Render tags
-        (function () {
-            var tags = window.TERMIFY_GALLERY_WORK.tags;
-            var el = document.getElementById("viewBannerTags");
-            if (tags && tags.length && el) {
-                el.innerHTML = tags.map(function (t) {
-                    return '<span class="view-banner-tag">' + t + '</span>';
-                }).join("");
-            }
-        })();
     </script>
-    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
     <script>
-        // ═══════════ View-page specific JS ═══════════
+        // ═══════════ View page: simplified viewer ═══════════
         (function () {
             var work = window.TERMIFY_GALLERY_WORK;
             var WORK_ID = work.id;
+            var params = work.params || {};
+            var curCharset = params.charset || "blocks";
+            var curWidth = params.width || 80;
+            var curHeight = params.height || 24;
+            var curFormat = "python";
 
-            // Toast (local, in case app.js hasn't loaded yet)
-            function localToast(msg) {
+            var frames = [], htmlFrames = [], interval = 0.1, totalFrames = 0;
+            var currentFrame = 0, playing = false, rafId = null, lastFrameTime = 0;
+            var preview = document.getElementById("animPreview");
+            var progressFill = document.getElementById("progressFill");
+            var frameCounter = document.getElementById("frameCounter");
+            var playBtn = document.getElementById("playBtn");
+            var pauseBtn = document.getElementById("pauseBtn");
+            var previewTitle = document.getElementById("previewTitle");
+            var latestReq = 0;
+
+            // ── helpers ──
+            function toast(msg) {
                 var el = document.getElementById("toast"); if (!el) return;
                 el.textContent = msg; el.classList.add("show");
-                clearTimeout(window.__vw_toast_t);
-                window.__vw_toast_t = setTimeout(function () { el.classList.remove("show"); }, 2200);
+                clearTimeout(window.__vw_tt);
+                window.__vw_tt = setTimeout(function () { el.classList.remove("show"); }, 2200);
             }
-
-            // ── Banner dismiss ──
-            var banner = document.getElementById("viewBanner");
-            document.getElementById("viewBannerClose").addEventListener("click", function () {
-                banner.style.display = "none";
-            });
-
-            // ── Like ──
-            var likeBtn = document.getElementById("likeBtn");
-            likeBtn.addEventListener("click", function () {
-                fetch("/api/gallery/like/" + WORK_ID, { method: "POST" })
-                    .then(function (r) { return r.json(); })
-                    .then(function (d) {
-                        if (d.error) { localToast(d.error); return; }
-                        document.getElementById("bannerLikes").textContent = d.count;
-                        likeBtn.classList.toggle("liked", d.liked);
-                        if (d.liked) localToast("已点赞 ❤");
-                    }).catch(function () { localToast("操作失败"); });
-            });
-
-            // ── Copy link ──
-            document.getElementById("copyLinkBtn").addEventListener("click", function () {
-                var url = window.location.origin + "/v/" + WORK_ID;
-                navigator.clipboard.writeText(url).then(function () {
-                    localToast("链接已复制");
-                }).catch(function () { localToast("复制失败"); });
-            });
-
-            // ── Auto-load source image into the workspace ──
-            function autoLoadSource() {
-                fetch("/gallery/file/" + WORK_ID + "/source")
-                    .then(function (r) { return r.blob(); })
-                    .then(function (blob) {
-                        var ext = (work.params && work.params.charset) ? work.params.charset : "gif";
-                        var fname = "gallery_" + WORK_ID + "." + (blob.type.indexOf("png") >= 0 ? "png" : blob.type.indexOf("jpeg") >= 0 ? "jpg" : "gif");
-                        var file = new File([blob], fname, { type: blob.type });
-                        // Wait for app.js to load, then inject
-                        function tryInject() {
-                            if (window.__termify_view_inject) {
-                                window.__termify_view_inject(file, work.params);
-                            } else {
-                                setTimeout(tryInject, 100);
-                            }
-                        }
-                        tryInject();
-                    })
-                    .catch(function () { localToast("自动加载失败"); });
+            function escapeHtml(t) {
+                return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
             }
-            autoLoadSource();
-
-            // ── Download buttons (use workspace task after auto-load) ──
-            function doDownload(fmt) {
-                if (!window.__termify_view_task_ready) {
-                    localToast("图片正在加载，请稍候"); return;
+            function ansiToHtml(text) {
+                var fg = null, bg = null, out = "";
+                var toks = text.split(/(\x1b\[[0-9;]*m)/);
+                var buf = "", bufFg = null, bufBg = null;
+                function flush() {
+                    if (!buf) return;
+                    var esc = escapeHtml(buf);
+                    if (bufFg || bufBg) {
+                        var st = [];
+                        if (bufFg) st.push("color:" + bufFg);
+                        if (bufBg) st.push("background-color:" + bufBg);
+                        out += '<span style="' + st.join(";") + '">' + esc + "</span>";
+                    } else { out += esc; }
+                    buf = "";
                 }
-                var task = window.__termify_view_task_id;
-                if (!task) { localToast("请先上传文件"); return; }
-                var params = work.params || {};
-                var body = {
-                    task_id: task, charset: params.charset || "blocks", format: fmt,
-                    width: params.width || 80, height: params.height || 24
-                };
-                fetch("/api/generate", {
-                    method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(body)
-                }).then(function (r) { return r.json(); }).then(function (d) {
-                    if (d.error) { localToast(d.error); return; }
-                    window.location.href = d.download_url;
-                }).catch(function () { localToast("下载失败"); });
+                for (var i = 0; i < toks.length; i++) {
+                    var t = toks[i]; if (!t) continue;
+                    if (/^\x1b\[[0-9;]*m$/.test(t)) {
+                        var inner = t.slice(2, -1);
+                        if (inner === "0") { fg = null; bg = null; }
+                        else if (inner === "39") { fg = "#c9d1d9"; }
+                        else if (inner === "49") { bg = "#0a0e14"; }
+                        else if (inner.indexOf("38;2;") === 0) { var p = inner.split(";"); fg = "rgb(" + p[2] + "," + p[3] + "," + p[4] + ")"; }
+                        else if (inner.indexOf("48;2;") === 0) { var p = inner.split(";"); bg = "rgb(" + p[2] + "," + p[3] + "," + p[4] + ")"; }
+                    } else { buf += t; flush(); }
+                }
+                flush();
+                return out;
+            }
+            function renderFrame(idx) {
+                if (!frames.length) return;
+                var lines = frames[idx];
+                var joined = lines.join("\n");
+                if (joined.indexOf("\x1b") !== -1) {
+                    if (!htmlFrames[idx]) htmlFrames[idx] = lines.map(ansiToHtml).join("\n");
+                    preview.innerHTML = htmlFrames[idx];
+                } else {
+                    preview.textContent = joined;
+                }
+                currentFrame = idx;
+                if (progressFill) progressFill.style.width = ((idx + 1) / frames.length) * 100 + "%";
+                if (frameCounter) frameCounter.textContent = (idx + 1) + " / " + frames.length;
+            }
+            function tick() {
+                if (!frames.length) return;
+                renderFrame((currentFrame + 1) % frames.length);
+            }
+            function rafLoop(ts) {
+                if (!playing) return;
+                if (!lastFrameTime) { lastFrameTime = ts; }
+                else if (ts - lastFrameTime >= interval * 1000) { lastFrameTime = ts; tick(); }
+                rafId = requestAnimationFrame(rafLoop);
+            }
+            function startPlayer() {
+                if (playing || frames.length < 2) return;
+                playing = true;
+                if (playBtn) playBtn.classList.add("active");
+                if (pauseBtn) pauseBtn.classList.remove("active");
+                lastFrameTime = 0;
+                rafId = requestAnimationFrame(rafLoop);
+            }
+            function pausePlayer() {
+                playing = false;
+                if (playBtn) playBtn.classList.remove("active");
+                if (pauseBtn) pauseBtn.classList.add("active");
+                if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+            }
+
+            // ── load preview ──
+            function loadPreview() {
+                var myId = ++latestReq;
+                preview.innerHTML = '<div class="view-loading"><div class="view-spinner"></div><span>加载中...</span></div>';
+                var url = "/api/gallery/preview/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight;
+                fetch(url).then(function (r) { return r.json(); }).then(function (d) {
+                    if (myId !== latestReq) return;
+                    if (d.error) { preview.textContent = "错误: " + d.error; return; }
+                    frames = d.frames || [];
+                    interval = d.interval || 0.1;
+                    htmlFrames = [];
+                    totalFrames = frames.length;
+                    if (previewTitle) previewTitle.textContent = "animation preview — " + curCharset + " " + curWidth + "x" + curHeight;
+                    renderFrame(0);
+                    if (frames.length >= 2) startPlayer();
+                }).catch(function () {
+                    if (myId !== latestReq) return;
+                    preview.textContent = "加载失败";
+                });
+            }
+
+            // ── style cards ──
+            document.querySelectorAll("#styles .style-card").forEach(function (card) {
+                card.addEventListener("click", function () {
+                    document.querySelectorAll("#styles .style-card").forEach(function (c) { c.classList.remove("selected"); });
+                    card.classList.add("selected");
+                    curCharset = card.getAttribute("data-style");
+                    loadPreview();
+                });
+            });
+            // ── size buttons ──
+            document.querySelectorAll(".view-size-btn").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    document.querySelectorAll(".view-size-btn").forEach(function (b) { b.classList.remove("selected"); });
+                    btn.classList.add("active");
+                    var sz = btn.getAttribute("data-size").split("x");
+                    curWidth = parseInt(sz[0]); curHeight = parseInt(sz[1]);
+                    loadPreview();
+                });
+            });
+            // ── format options ──
+            document.querySelectorAll(".view-format-options .format-option").forEach(function (opt) {
+                opt.addEventListener("click", function () {
+                    document.querySelectorAll(".view-format-options .format-option").forEach(function (o) { o.classList.remove("selected"); });
+                    opt.classList.add("selected");
+                    curFormat = opt.getAttribute("data-format");
+                });
+            });
+            // ── play / pause ──
+            if (playBtn) playBtn.addEventListener("click", startPlayer);
+            if (pauseBtn) pauseBtn.addEventListener("click", pausePlayer);
+
+            // ── downloads ──
+            function doDownload(fmt) {
+                var url = "/api/gallery/download/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight + "&format=" + fmt;
+                window.location.href = url;
             }
             document.getElementById("downloadPyBtn").addEventListener("click", function () { doDownload("python"); });
             document.getElementById("downloadHtmlBtn").addEventListener("click", function () { doDownload("html"); });
-            // Also wire the workspace download button
-            document.getElementById("viewDownloadBtn").addEventListener("click", function () {
-                var fmt = "python";
-                var opts = document.querySelectorAll(".format-option");
-                for (var i = 0; i < opts.length; i++) {
-                    if (opts[i].classList.contains("selected")) {
-                        var f = opts[i].getAttribute("data-format");
-                        fmt = f ? f : (i === 0 ? "python" : "html");
-                        break;
-                    }
-                }
-                doDownload(fmt);
-            });
 
-            // ── Report modal ──
+            // ── banner ──
+            document.getElementById("viewBannerClose").addEventListener("click", function () {
+                document.getElementById("viewBanner").style.display = "none";
+            });
+            // render tags
+            var tagsEl = document.getElementById("viewBannerTags");
+            if (work.tags && work.tags.length && tagsEl) {
+                tagsEl.innerHTML = work.tags.map(function (t) { return '<span class="view-banner-tag">' + escapeHtml(t) + '</span>'; }).join("");
+            }
+            // like
+            document.getElementById("likeBtn").addEventListener("click", function () {
+                fetch("/api/gallery/like/" + WORK_ID, { method: "POST" }).then(function (r) { return r.json(); }).then(function (d) {
+                    if (d.error) { toast(d.error); return; }
+                    document.getElementById("bannerLikes").textContent = d.count;
+                    document.getElementById("likeBtn").classList.toggle("liked", d.liked);
+                    if (d.liked) toast("已点赞");
+                }).catch(function () { toast("操作失败"); });
+            });
+            // copy link
+            document.getElementById("copyLinkBtn").addEventListener("click", function () {
+                navigator.clipboard.writeText(window.location.origin + "/v/" + WORK_ID).then(function () {
+                    toast("链接已复制");
+                }).catch(function () { toast("复制失败"); });
+            });
+            // report modal
             var reportModal = document.getElementById("reportModal");
-            document.getElementById("reportBtn").addEventListener("click", function () {
-                reportModal.classList.add("open");
-            });
-            document.getElementById("reportModalClose").addEventListener("click", function () {
-                reportModal.classList.remove("open");
-            });
-            reportModal.addEventListener("click", function (e) {
-                if (e.target === reportModal) reportModal.classList.remove("open");
-            });
+            document.getElementById("reportBtn").addEventListener("click", function () { reportModal.classList.add("open"); });
+            document.getElementById("reportModalClose").addEventListener("click", function () { reportModal.classList.remove("open"); });
+            reportModal.addEventListener("click", function (e) { if (e.target === reportModal) reportModal.classList.remove("open"); });
             document.getElementById("reportSubmitBtn").addEventListener("click", function () {
                 var reason = document.querySelector('input[name="reportReason"]:checked').value;
                 var desc = document.getElementById("reportDesc").value;
-                fetch("/api/gallery/report/" + WORK_ID, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ reason: reason, description: desc })
-                }).then(function (r) { return r.json(); }).then(function (d) {
-                    if (d.error) { localToast(d.error); return; }
-                    localToast("举报已提交，感谢反馈");
-                    reportModal.classList.remove("open");
-                }).catch(function () { localToast("提交失败"); });
+                fetch("/api/gallery/report/" + WORK_ID, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason: reason, description: desc }) })
+                    .then(function (r) { return r.json(); }).then(function (d) {
+                        if (d.error) { toast(d.error); return; }
+                        toast("举报已提交，感谢反馈"); reportModal.classList.remove("open");
+                    }).catch(function () { toast("提交失败"); });
             });
 
-            // ── Tweaks panel ──
-            var tweaksToggle = document.getElementById("tweaksToggle");
-            var tweaksPanel = document.getElementById("tweaksPanel");
-            var tweaksClose = document.getElementById("tweaksClose");
-            if (tweaksToggle) tweaksToggle.addEventListener("click", function () {
-                tweaksPanel.classList.toggle("open");
-                tweaksToggle.style.display = tweaksPanel.classList.contains("open") ? "none" : "flex";
-            });
-            if (tweaksClose) tweaksClose.addEventListener("click", function () {
-                tweaksPanel.classList.remove("open");
-                tweaksToggle.style.display = "flex";
-            });
+            // ── tweaks ──
+            var tt = document.getElementById("tweaksToggle"), tp = document.getElementById("tweaksPanel"), tc = document.getElementById("tweaksClose");
+            if (tt) tt.addEventListener("click", function () { tp.classList.toggle("open"); tt.style.display = tp.classList.contains("open") ? "none" : "flex"; });
+            if (tc) tc.addEventListener("click", function () { tp.classList.remove("open"); tt.style.display = "flex"; });
             function bindTweak(onSel, offSel, prop, onVal, offVal) {
                 document.querySelectorAll(onSel).forEach(function (btn) {
-                    btn.addEventListener("click", function () {
-                        document.body.style.setProperty(prop, onVal);
-                        document.querySelectorAll(onSel + "," + offSel).forEach(function (b) { b.classList.remove("active"); });
-                        btn.classList.add("active");
-                    });
+                    btn.addEventListener("click", function () { document.body.style.setProperty(prop, onVal); document.querySelectorAll(onSel + "," + offSel).forEach(function (b) { b.classList.remove("active"); }); btn.classList.add("active"); });
                 });
                 document.querySelectorAll(offSel).forEach(function (btn) {
-                    btn.addEventListener("click", function () {
-                        document.body.style.setProperty(prop, offVal);
-                        document.querySelectorAll(onSel + "," + offSel).forEach(function (b) { b.classList.remove("active"); });
-                        btn.classList.add("active");
-                    });
+                    btn.addEventListener("click", function () { document.body.style.setProperty(prop, offVal); document.querySelectorAll(onSel + "," + offSel).forEach(function (b) { b.classList.remove("active"); }); btn.classList.add("active"); });
                 });
             }
-            bindTweak('[data-tweak="grid-on"]', '[data-tweak="grid-off"]", "--grid-opacity", "0.3", "0");
-            bindTweak('[data-tweak="scan-on"]', '[data-tweak="scan-off"]", "--scanline-opacity", "1", "0");
-            document.querySelectorAll('[data-tweak^="theme-"]').forEach(function (btn) {
-                btn.addEventListener("click", function () {
-                    document.querySelectorAll('[data-tweak^="theme-"]').forEach(function (b) { b.classList.remove("active"); });
-                    btn.classList.add("active");
-                    var theme = btn.getAttribute("data-tweak").replace("theme-", "");
-                    var colors = {
-                        green: { main: "#00ff41", dim: "#00cc33", glow: "rgba(0,255,65,0.15)" },
-                        amber: { main: "#ffb000", dim: "#cc8d00", glow: "rgba(255,176,0,0.12)" },
-                        cyan:  { main: "#00d4ff", dim: "#00a8cc", glow: "rgba(0,212,255,0.12)" }
-                    };
-                    var c = colors[theme]; if (!c) return;
-                    document.documentElement.style.setProperty("--green", c.main);
-                    document.documentElement.style.setProperty("--green-dim", c.dim);
-                    document.documentElement.style.setProperty("--green-glow", c.glow);
-                });
+            bindTweak('[data-tweak="grid-on"]', '[data-tweak="grid-off"]', "--grid-opacity", "0.3", "0");
+            bindTweak('[data-tweak="scan-on"]', '[data-tweak="scan-off"]', "--scanline-opacity", "1", "0");
+
+            // ── initial selection highlight ──
+            document.querySelectorAll("#styles .style-card").forEach(function (c) {
+                if (c.getAttribute("data-style") === curCharset) { c.classList.add("selected"); }
             });
+            document.querySelectorAll(".view-size-btn").forEach(function (b) {
+                if (b.getAttribute("data-size") === curWidth + "x" + curHeight) { b.classList.add("active"); }
+            });
+
+            // ── kick off first preview ──
+            loadPreview();
         })();
     </script>
 </body>
