@@ -808,6 +808,111 @@ def gallery_admin_resolve_report(report_id):
     return jsonify({"ok": True})
 
 
+# --- gallery preview + download (derived from stored source) ---
+
+@app.route("/api/gallery/preview/<work_id>", methods=["GET"])
+def gallery_preview(work_id):
+    """Render a gallery work's frames in the requested charset/size.
+
+    Query params (all optional, default to the work's original params):
+      charset = ascii|blocks|braille|geometric|binary
+      width   = int (1-400)
+      height  = int (1-400)
+    Returns JSON {frames, interval, width, height, charset}.
+    """
+    work = GALLERY_DB.get_work(work_id)
+    if not work:
+        return jsonify({"error": "Work not found"}), 404
+    original = json.loads(work["params_json"]) if work["params_json"] else {}
+    charset = request.args.get("charset", original.get("charset", "blocks")).strip().lower()
+    if charset not in CHARSETS:
+        return jsonify({"error": f"Invalid charset: {charset}"}), 400
+    try:
+        width = int(request.args.get("width", original.get("width", 80)))
+        height = int(request.args.get("height", original.get("height", 24)))
+    except (TypeError, ValueError):
+        return jsonify({"error": "width/height must be integers"}), 400
+    width = max(1, min(400, width))
+    height = max(1, min(400, height))
+
+    from termify import convert
+    try:
+        seq = convert(work["source_path"], charset, width, height)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Conversion failed: {exc}"}), 500
+
+    return jsonify({
+        "frames": seq.lines_per_frame,
+        "interval": seq.interval,
+        "width": seq.width,
+        "height": seq.height,
+        "charset": charset,
+        "frame_count": len(seq.lines_per_frame),
+    })
+
+
+@app.route("/api/gallery/download/<work_id>", methods=["GET"])
+def gallery_download(work_id):
+    """Generate + serve a .py or .html download for a gallery work.
+
+    Query params:
+      charset = ascii|blocks|braille|geometric|binary (default: work's original)
+      width, height = int (default: work's original)
+      format  = python|html (required)
+    Increments download_count once per IP per 24h.
+    """
+    work = GALLERY_DB.get_work(work_id)
+    if not work:
+        return jsonify({"error": "Work not found"}), 404
+    fmt = request.args.get("format", "").lower().strip()
+    if fmt not in VALID_FORMATS:
+        return jsonify({"error": f"Invalid format: {fmt!r} (expected python or html)"}), 400
+    original = json.loads(work["params_json"]) if work["params_json"] else {}
+    charset = request.args.get("charset", original.get("charset", "blocks")).strip().lower()
+    if charset not in CHARSETS:
+        return jsonify({"error": f"Invalid charset: {charset}"}), 400
+    try:
+        width = int(request.args.get("width", original.get("width", 80)))
+        height = int(request.args.get("height", original.get("height", 24)))
+    except (TypeError, ValueError):
+        return jsonify({"error": "width/height must be integers"}), 400
+    width = max(1, min(400, width))
+    height = max(1, min(400, height))
+
+    from termify import convert
+    from termify.output import render
+    seq = convert(work["source_path"], charset, width, height)
+    content = render(seq, fmt)
+
+    ext = "py" if fmt == "python" else "html"
+    filename = f"gallery_{work_id}_{charset}.{ext}"
+    tmp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+    out_path = os.path.join(tmp_dir, filename)
+    with open(out_path, "w", encoding="utf-8") as fh:
+        fh.write(content)
+
+    # IP-based download dedup: count once per IP per 24h per work
+    ip = _client_ip()
+    _record_download(work_id, ip)
+
+    return send_file(out_path, as_attachment=True, download_name=filename)
+
+
+def _record_download(work_id: str, ip: str) -> None:
+    """Increment download_count at most once per IP per 24h."""
+    now = time.time()
+    with _RL_LOCK:
+        entry = _download_dedup.setdefault(work_id, {})
+        last = entry.get(ip, 0.0)
+        if now - last >= 86400:
+            entry[ip] = now
+            GALLERY_DB.increment_download(work_id)
+
+
+_download_dedup: dict[str, dict[str, float]] = {}
+
+
 # --- proxy routes for source/thumbnail/og (serve files outside static) ---
 
 @app.route("/gallery/file/<work_id>/source")
@@ -858,6 +963,7 @@ if __name__ == "__main__":
     os.makedirs("uploads", exist_ok=True)
     os.makedirs("tmp", exist_ok=True)
     os.makedirs(GALLERY_DATA_DIR, exist_ok=True)
+    os.makedirs("data", exist_ok=True)
     # ponytail: reloader off — the app stores tasks in memory, so a watchdog
     # restart (e.g. on each /api/generate writing tmp/*.py) would wipe them.
     app.run(debug=True, use_reloader=False, port=5000)
