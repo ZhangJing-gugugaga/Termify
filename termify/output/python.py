@@ -55,9 +55,10 @@ FRAMES = {frames}
 FRAME_INTERVAL = {interval:.4f}
 W, H = {w}, {h}
 CHARSET = "{charset}"
+_ANSI_OK = True  # set by play(); False => degrade blocks to monochrome
 
-_ANSI_RE = re.compile(r'\\033\\[[0-9;]*m')
-_STRIP_RE = re.compile(r'\\033\\[[0-9;]*m')
+_ANSI_RE = re.compile('\\x1b[^\\x1b]*?m')
+_STRIP_RE = re.compile('\\x1b[^\\x1b]*?m')
 
 
 def _count_printable(line):
@@ -68,44 +69,80 @@ def _count_printable(line):
 # ── ANSI helpers ──────────────────────────────────────────────
 
 def _parse_ansi_line(line):
-    """Parse ANSI line into [(fg_tuple_or_None, char), ...]."""
+    """Parse an ANSI line into [(fg, bg, char), ...].
+
+    Tracks both the 24-bit foreground (38;2;r;g;b) and background
+    (48;2;r;g;b) SGR colours so half-block styles keep their colours.
+    """
     chars = []
     fg = None
+    bg = None
     i = 0
-    while i < len(line):
-        if line[i] == '\\033' and i + 1 < len(line) and line[i + 1] == '[':
-            j = line.index('m', i + 2) if 'm' in line[i + 2:] else -1
+    n = len(line)
+    while i < n:
+        if line[i] == '\\033' and i + 1 < n and line[i + 1] == '[':
+            j = line.find('m', i + 2)
             if j == -1:
                 break
-            j += i + 2
-            codes = line[i + 2:j]
-            if codes == '0':
-                fg = None
-            elif codes.startswith('38;2;'):
-                parts = codes.split(';')
-                if len(parts) >= 5:
-                    try:
-                        fg = (int(parts[2]), int(parts[3]), int(parts[4]))
-                    except ValueError:
-                        pass
+            fg, bg = _apply_sgr(line[i + 2:j], fg, bg)
             i = j + 1
         else:
-            chars.append((fg, line[i]))
+            chars.append((fg, bg, line[i]))
             i += 1
     return chars
 
 
+def _apply_sgr(codes, fg, bg):
+    """Apply one SGR parameter group to (fg, bg) and return the pair."""
+    toks = codes.split(';') if codes else ['0']
+    k = 0
+    while k < len(toks):
+        t = toks[k]
+        if t == '' or t == '0':
+            fg = None
+            bg = None
+        elif t == '39':
+            fg = None
+        elif t == '49':
+            bg = None
+        elif t == '38' and k + 1 < len(toks) and toks[k + 1] == '2':
+            if k + 4 < len(toks):
+                try:
+                    fg = (int(toks[k + 2]), int(toks[k + 3]), int(toks[k + 4]))
+                except ValueError:
+                    pass
+                k += 4
+        elif t == '48' and k + 1 < len(toks) and toks[k + 1] == '2':
+            if k + 4 < len(toks):
+                try:
+                    bg = (int(toks[k + 2]), int(toks[k + 3]), int(toks[k + 4]))
+                except ValueError:
+                    pass
+                k += 4
+        k += 1
+    return fg, bg
+
+
 def _encode_ansi_line(parsed_chars):
-    """Encode [(fg, char), ...] back to ANSI string."""
+    """Encode [(fg, bg, char), ...] back to an ANSI string.
+
+    Re-emits both the 24-bit foreground and background SGR so half-block
+    glyphs (e.g. ▀) show the correct top/bottom colours.
+    """
     parts = []
     last_fg = None
-    for fg, ch in parsed_chars:
-        if fg != last_fg:
-            if fg is None:
+    last_bg = None
+    for fg, bg, ch in parsed_chars:
+        if fg != last_fg or bg != last_bg:
+            if fg is None and bg is None:
                 parts.append('\\033[0m')
             else:
-                parts.append('\\033[38;2;{{}};{{}};{{}}m'.format(fg[0], fg[1], fg[2]))
+                if fg is not None:
+                    parts.append('\\033[38;2;{{}};{{}};{{}}m'.format(fg[0], fg[1], fg[2]))
+                if bg is not None:
+                    parts.append('\\033[48;2;{{}};{{}};{{}}m'.format(bg[0], bg[1], bg[2]))
             last_fg = fg
+            last_bg = bg
         parts.append(ch)
     return ''.join(parts)
 
@@ -155,7 +192,7 @@ def _fit_frames(frames, target_cols, target_rows, charset):
         for ri in pixel_indices:
             line = frame[ri] if ri < len(frame) else ''
             parsed = _parse_ansi_line(line)
-            text_only = [(fg, ch) for fg, ch in parsed if ord(ch) > 31]
+            text_only = [(fg, bg, ch) for fg, bg, ch in parsed if ord(ch) > 31]
             new_frame.append(_scale_ansi_line(text_only, target_w))
         fitted.append(new_frame)
 
@@ -165,26 +202,40 @@ def _fit_frames(frames, target_cols, target_rows, charset):
 # ── Screen composition ────────────────────────────────────────
 
 def _compose_screen(scaled_frame, cols, rows, bg_color=None):
-    """Centre scaled_frame on a cols×rows screen with background fill."""
+    """Centre scaled_frame on a cols×rows screen with background fill.
+
+    When colour ANSI is unavailable (_ANSI_OK is False) every SGR sequence is
+    stripped and plain spaces are used, yielding a readable monochrome
+    fallback instead of garbled escape text.
+    """
+    color = _ANSI_OK
     content_rows = len(scaled_frame)
     content_cols = _count_printable(scaled_frame[0]) if scaled_frame else 0
 
     top_pad = max(0, (rows - content_rows) // 2)
     left_pad = max(0, (cols - content_cols) // 2)
 
-    blank = '\\x1b[49m' + ' ' * cols + '\\x1b[0m'
+    if color:
+        blank = '\\x1b[49m' + ' ' * cols + '\\x1b[0m'
+    else:
+        blank = ' ' * cols
     screen = []
 
     for _ in range(top_pad):
         screen.append(blank)
 
     for line in scaled_frame:
+        if not color:
+            line = _STRIP_RE.sub('', line)
         pw = _count_printable(line)
         rpad = max(0, cols - left_pad - pw)
-        screen.append(
-            '\\x1b[49m' + ' ' * left_pad + line +
-            (' ' * rpad if rpad > 0 else '') + '\\x1b[0m'
-        )
+        if color:
+            screen.append(
+                '\\x1b[49m' + ' ' * left_pad + line +
+                (' ' * rpad if rpad > 0 else '') + '\\x1b[0m'
+            )
+        else:
+            screen.append(' ' * left_pad + line + (' ' * rpad if rpad > 0 else ''))
 
     bottom_done = top_pad + content_rows
     for _ in range(rows - bottom_done):
@@ -226,19 +277,68 @@ def stdout_codepage():
 
 
 def _enable_windows_ansi():
-    """Enable VT100 processing on Windows consoles. Returns True on success."""
+    """Best-effort enable TrueColor / VT100 on the active output stream.
+
+    Returns:
+        True  - colour ANSI will be rendered. Either VT was enabled on a real
+                console, or the stream is a non-console PTY/pipe whose terminal
+                (e.g. MinTTY / git-bash) interprets ANSI natively.
+        False - a classic console was detected but VT could NOT be enabled
+                (very old Windows). Caller should degrade to monochrome.
+    """
     if os.name != 'nt':
         return True
     try:
         import ctypes
-        k32 = ctypes.windll.kernel32
-        h = k32.GetStdHandle(-11)
-        m = ctypes.c_ulong()
-        k32.GetConsoleMode(h, ctypes.byref(m))
-        k32.SetConsoleMode(h, m.value | 0x0004)
-        return True
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+        STD_OUTPUT_HANDLE = -11
+        STD_ERROR_HANDLE = -12
+        INVALID_HANDLE = 0xFFFFFFFFFFFFFFFF
+        handle = kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
+        if handle == INVALID_HANDLE:
+            handle = kernel32.GetStdHandle(STD_ERROR_HANDLE)
+        if handle == INVALID_HANDLE:
+            return False
+        mode = ctypes.c_uint32()
+        # GetConsoleMode fails for pipes/PTY streams -> the terminal itself
+        # (MinTTY, tmux, etc.) handles ANSI, so treat that as "capable".
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return True
+        if mode.value & ENABLE_VIRTUAL_TERMINAL_PROCESSING:
+            return True
+        if kernel32.SetConsoleMode(handle, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING):
+            return True
+        return False
     except Exception:
         return False
+
+
+def _setup_output_encoding():
+    """Ensure stdout/stderr use UTF-8 so Unicode glyphs (▀ etc.) render.
+
+    Setting the *encoding* only controls how characters become bytes; it does
+    NOT affect ANSI escape interpretation (ESC is ASCII). Safe on Windows
+    Terminal, conhost and PTYs alike.
+    """
+    if os.name != 'nt':
+        return
+    try:
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'reconfigure'):
+            sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        try:
+            import io
+            sys.stdout = io.TextIOWrapper(
+                sys.stdout.buffer, encoding='utf-8', errors='replace'
+            )
+            sys.stderr = io.TextIOWrapper(
+                sys.stderr.buffer, encoding='utf-8', errors='replace'
+            )
+        except Exception:
+            pass
 
 
 
@@ -335,24 +435,17 @@ def _stop_audio():
 # ── Main playback ─────────────────────────────────────────────
 
 def play():
+    _setup_output_encoding()
+    ansi_capable = _enable_windows_ansi()
+    global _ANSI_OK
+    _ANSI_OK = ansi_capable
+
     ansi_ok, unicode_ok = _detect_terminal_capabilities()
-    ansi_enabled = _enable_windows_ansi()
-    
-    # Force UTF-8 output on Windows consoles (but NOT Windows Terminal)
-    # Windows Terminal already supports UTF-8 natively, and reconfigure()
-    # interferes with ANSI escape sequence interpretation
-    if os.name == 'nt' and not os.environ.get('WT_SESSION'):
-        try:
-            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-            sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-        except Exception:
-            pass
-    
-    # Warn about potential display issues
-    if CHARSET == "blocks" and (not ansi_enabled or not unicode_ok):
+
+    if CHARSET == "blocks" and not ansi_capable:
         sys.stderr.write(
-            "⚠ 终端未通过 ANSI/Unicode 检测，blocks 风格可能显示乱码。\\n"
-            "  建议：改用 HTML 格式下载，用浏览器打开即可获得最佳效果。\\n"
+            "⚠ 终端未启用 TrueColor/ANSI 支持，blocks 风格已降级为单色显示。\\n"
+            "  建议改用 HTML 格式下载，用浏览器打开可获得完整彩色效果。\\n"
             "  按 Ctrl+C 退出；或忽略本提示继续。\\n\\n"
         )
         sys.stderr.flush()
@@ -371,7 +464,8 @@ def play():
     
     _start_audio()
 
-    sys.stdout.write('\\x1b[?25l\\x1b[?1049h\\x1b[2J')
+    if _ANSI_OK:
+        sys.stdout.write('\\x1b[?25l\\x1b[?1049h\\x1b[2J')
     sys.stdout.flush()
     try:
         cached_size = None
@@ -395,11 +489,14 @@ def play():
                 screen = _compose_screen(
                     frame, cached_size.columns, cached_size.lines
                 )
-                output = []
-                for i, line in enumerate(screen):
-                    output.append('\\x1b[{{}};1H{{}}'.format(i + 1, line))
-                sys.stdout.write(''.join(output))
-                sys.stdout.write('\\x1b[0m')
+                if _ANSI_OK:
+                    output = []
+                    for i, line in enumerate(screen):
+                        output.append('\\x1b[{{}};1H{{}}'.format(i + 1, line))
+                    sys.stdout.write(''.join(output))
+                    sys.stdout.write('\\x1b[0m')
+                else:
+                    sys.stdout.write('\\n'.join(screen) + '\\n')
                 sys.stdout.flush()
                 # Sleep in small chunks, check for 'r' key (manual refresh)
                 _elapsed = 0.0
@@ -422,7 +519,8 @@ def play():
         pass
     finally:
         _stop_audio()
-        sys.stdout.write('\\x1b[?1049l\\x1b[?25h')
+        if _ANSI_OK:
+            sys.stdout.write('\\x1b[?1049l\\x1b[?25h')
         sys.stdout.flush()
         print("Thanks for using Termify!")
 
