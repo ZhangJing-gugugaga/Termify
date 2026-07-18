@@ -195,6 +195,7 @@ A: Python 未安装或未加入 PATH。请安装 Python 3.10+ 并在安装时勾
 | `GET` | `/` | 主页 |
 | `POST` | `/api/upload` | 上传单个文件（multipart/form-data），返回 `task_id` + 元数据 |
 | `POST` | `/api/upload-batch` | 批量上传多个文件（multipart，字段名 `files[]`），返回 `task_ids[]` + `errors[]` |
+| `POST` | `/api/fetch-url` | 从 URL 下载图片并转换（`{"url":"..."}`），含 SSRF 防护 |
 | `GET` | `/api/preview/<task_id>` | 获取帧数据。参数：`charset`（风格）、`width`、`height`、`frame`（某帧）、`fg`/`bg`（颜色，形如 `rgb(255,0,0)`）。不传 `frame` 返回全部帧。 |
 | `POST` | `/api/generate` | 打包指定字符集+格式，返回 `download_url` |
 | `GET` | `/api/download/<filename>` | 下载生成的文件 |
@@ -237,7 +238,7 @@ Termify/
 ├── static/
 │   ├── css/{tokens,app}.css
 │   └── js/app.js           # 前端逻辑
-├── tests/                  # pytest 单元测试（133 tests）
+├── tests/                  # pytest 单元测试（140 tests）
 ├── ui-mockup.html          # UI 视觉唯一真相源
 └── README.md               # 本文件
 ```
@@ -246,7 +247,7 @@ Termify/
 
 - **后端**：Python 3.10+、Flask、Pillow
 - **前端**：原生 HTML/CSS/JS，无框架依赖
-- **测试**：pytest（133 tests，运行 `pytest tests/` 即可）
+- **测试**：pytest（140 tests，运行 `pytest tests/` 即可）
 - **主题**：暗色终端美学，JetBrains Mono + Space Grotesk 字体
 
 ## 参与贡献
