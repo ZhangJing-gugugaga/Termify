@@ -28,7 +28,7 @@ from termify.output import render
 PY = sys.executable
 
 # 真实猫图路径（必跑素材，不可用合成图替代）
-CAT_GIF = r"E:\Desktop\工作\SalaryCat\cat.GIF"
+CAT_GIF = os.environ.get("TERMIFY_TEST_GIF", "")
 
 
 # ── 辅助 ──────────────────────────────────────────────────────
