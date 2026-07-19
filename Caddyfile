@@ -31,7 +31,7 @@ YOUR_DOMAIN {
     # body limit is 10MB, which would silently truncate uploads. Allow 25MB
     # so there's ~5MB headroom for multipart envelope overhead.
     request_body {
-        max_size 25MB
+        max_size 50MB
     }
 
     # --- Static asset caching --------------------------------------------
