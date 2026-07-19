@@ -389,7 +389,7 @@ def test_delete_without_token_rejected(isolated_env):
 
 def test_admin_list_works(isolated_env):
     b = _upload(isolated_env)
-    resp = isolated_env.get("/api/gallery/admin?pwd=test-admin-secret")
+    resp = isolated_env.get("/api/gallery/admin", headers={"X-Termify-Admin-Pwd": "test-admin-secret"})
     assert resp.status_code == 200
     body = json.loads(resp.data)
     ids = [w["id"] for w in body["works"]]
@@ -398,7 +398,7 @@ def test_admin_list_works(isolated_env):
 
 def test_admin_rejects_wrong_pwd(isolated_env):
     _upload(isolated_env)
-    resp = isolated_env.get("/api/gallery/admin?pwd=wrong")
+    resp = isolated_env.get("/api/gallery/admin", headers={"X-Termify-Admin-Pwd": "wrong"})
     assert resp.status_code == 403
 
 
