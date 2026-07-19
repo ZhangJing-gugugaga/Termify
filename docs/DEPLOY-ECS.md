@@ -1,7 +1,7 @@
 # Termify · 阿里云 ECS 部署指南
 
 > 目标：把 Termify（Flask + Pillow 的图片转字符画服务）部署到阿里云 ECS，
-> 通过 Caddy 反代对外提供 `https://termify.moonzj.com`，由 systemd 守护进程。
+> 通过 Caddy 反代对外提供 `https://YOUR_DOMAIN`，由 systemd 守护进程。
 >
 > 适用系统：**Ubuntu 22.04+ / Debian 12+**（其他发行版把 `apt` 换成对应包管理器即可）。
 >
@@ -13,7 +13,7 @@
 
 | 项目 | 要求 | 怎么验 |
 |------|------|--------|
-| **DNS** | `termify.moonzj.com` 的 A 记录已解析到 ECS 公网 IP | `dig termify.moonzj.com +short` |
+| **DNS** | `YOUR_DOMAIN` 的 A 记录已解析到 ECS 公网 IP | `dig YOUR_DOMAIN +short` |
 | **端口** | 安全组放行 TCP 80 / 443（入方向） | 阿里云控制台 → ECS → 安全组 |
 | **Caddy** | 已安装 Caddy v2.7+ | `caddy version` |
 | **Python** | 3.10+（系统自带） | `python3 --version` |
@@ -106,14 +106,14 @@ sudo systemctl reload caddy
 
 ```bash
 sudo journalctl -u caddy -f          # 看到 "certificate obtained successfully" 就成了
-curl -I https://termify.moonzj.com   # 应返回 200/302 + 证书有效
+curl -I https://YOUR_DOMAIN   # 应返回 200/302 + 证书有效
 ```
 
 ---
 
 ## 5. 部署后验收清单
 
-打开浏览器访问 `https://termify.moonzj.com`，逐项勾选：
+打开浏览器访问 `https://YOUR_DOMAIN`，逐项勾选：
 
 - [ ] **首页加载** — Hero 区显示"图片 → 终端字符画"标题，无 502/504
 - [ ] **HTTPS 锁** — 浏览器地址栏有 🔒，证书是 Let's Encrypt / ZeroSSL
@@ -124,7 +124,7 @@ curl -I https://termify.moonzj.com   # 应返回 200/302 + 证书有效
 
 附加可选项：
 
-- [ ] 静态资源缓存头：`curl -I https://termify.moonzj.com/static/css/main.css` 应见 `cache-control: public, max-age=86400`
+- [ ] 静态资源缓存头：`curl -I https://YOUR_DOMAIN/static/css/main.css` 应见 `cache-control: public, max-age=86400`
 - [ ] X-Content-Type-Options / X-Frame-Options 响应头存在
 
 ---
@@ -134,7 +134,7 @@ curl -I https://termify.moonzj.com   # 应返回 200/302 + 证书有效
 ### 6.1 Caddy 申请证书失败：`acme: error: 403 ...`
 
 - **80 端口没开**：安全组必须放行 TCP 80 入站。
-- **DNS 没解析**：`dig termify.moonzj.com` 应返回 ECS 公网 IP，否则 Let's Encrypt 校验不通过。
+- **DNS 没解析**：`dig YOUR_DOMAIN` 应返回 ECS 公网 IP，否则 Let's Encrypt 校验不通过。
 - **被本地 nginx/apache 占了 80**：`sudo systemctl stop nginx` 再 `systemctl restart caddy`。
 - **Caddy 拿到了自签证书**：删掉 `/var/lib/caddy/.local/share/caddy` 重新申请。
 
