@@ -6,6 +6,16 @@
 
 **核心价值**：把"我会做终端动画"这件事的门槛降到零。上传文件 → 点击风格卡片 → 下载可运行文件，**三步出活**，无需注册、无需安装、下载即走。
 
+## 🌐 在线体验（零安装、直接玩）
+
+| 入口 | 链接 | 说明 |
+|------|------|------|
+| **🔗 在线 Demo** | [https://termify.moonzj.com](https://termify.moonzj.com) | 直接上传 GIF/PNG/JPG，生成终端动画 |
+| **🖼️ 作品画廊** | [https://termify.moonzj.com/gallery](https://termify.moonzj.com/gallery) | 浏览社区作品，查看别人的终端创作 |
+
+> 💡 **不懂命令行？直接点上面链接** —— 浏览器拖图进去就能玩，零安装、零配置。\
+> 📋 **想批量处理或离线用？** 继续看下面的本地安装指南。
+
 ![终端动画效果预览](images/terminal-preview.png)
 
 ## 快速体验（30 秒做出第一个动画）
@@ -49,7 +59,7 @@ python app.py
 - 把 GIF / PNG / JPG **直接拖拽**到页面上的虚线区域
 - 或者**点击上传区域选择文件**
 
-支持格式：`.gif` / `.png` / `.jpg`，最大 **20MB**。
+支持格式：`.gif` / `.png` / `.jpg` / `.mp4` / `.webm` / `.mov` / `.avi` / `.mkv`，最大 **20MB**（视频最大 30 秒）。
 
 > 💡 **静态图片（PNG/JPG）也可以上传！** Termify 会把它当作"只有一帧的动画"，输出的播放器会循环显示同一帧 —— 适合做"终端艺术字"。
 
@@ -175,7 +185,7 @@ A: 取决于尺寸和帧数：
 - 200×60 blocks 100 帧 → ~6 MB
 
 **Q: 可以上传视频吗？**
-A: 目前只支持 GIF / PNG / JPG。视频先用工具转成 GIF（推荐 [ezgif.com](https://ezgif.com/video-to-gif)）再上传。
+A: 支持 📹！上传 MP4 / WEBM / MOV / AVI / MKV（最大 30 秒、20MB），后端 ffmpeg 自动抽帧转换成动画。也支持拖入 `.gif` / `.png` / `.jpg`。超过 30 秒的视频先截取片段再上传。
 
 **Q: 200×60 超清点不了 / 播放卡怎么办？**
 A: 超清输出会自动缩放以适应视口，**下载的文件仍是全分辨率**。播放卡顿可以换浏览器（Chrome 最快）；或选小一号尺寸。
@@ -232,21 +242,52 @@ curl -X POST http://127.0.0.1:5000/api/fetch-url \
 curl -X POST http://127.0.0.1:5000/api/upload-video -F "file=@clip.mp4"
 ```
 
-## 桌面客户端（PyInstaller 一键独立包）
+## 桌面客户端（一键独立包）
 
-```bash
-# 安装构建依赖（仅打包时需要）
-pip install pyinstaller
+不想装 Python？下载打包好的独立 `.exe` 文件，**双击即用**。启动后会自动打开浏览器，访问本地 Web 界面（跟在线 Demo 功能完全一致）。
 
-# 构建单文件夹 Windows .exe
-pyinstaller termify.spec --clean --noconfirm
+> 📦 源码仓库根目录含 `termify.spec` + `termify_launcher.py` + `deploy.sh`，可在任意平台自行构建。
 
-# 输出: dist/Termify/Termify.exe（单文件夹, 双击即可运行）
+### Windows 用户
+
+从 [GitHub Releases](https://github.com/ZhangJing-gugugaga/Termify/releases) 下载最新的 `Termify-<version>.zip`，解压后：
+
+```
+Termify/
+├── Termify.exe    # 双击启动！
+├── _internal/     # 运行时依赖（不要动这个文件夹）
+└── ...
 ```
 
-构建产物启动后会自动打开浏览器访问 `http://127.0.0.1:5000`。
+> ⚠️ 首次双击时 Windows 可能弹出"已保护你的电脑"。这是正常现象（自签名未认证），点击"更多信息"→"仍要运行"即可。
 
-> 已通过 Windows 真实 build 验证：`dist/Termify/Termify.exe`（单文件夹, ~5MB）。
+### macOS / Ubuntu / Fedora 用户
+
+```bash
+# 1. 从源码构建桌面包
+git clone https://github.com/ZhangJing-gugugaga/Termify.git
+cd Termify
+pip install pyinstaller
+
+# 2. 一键构建
+pyinstaller termify.spec --clean --noconfirm
+
+# 3. 启动
+dist/Termify/Termify   # 双击或在终端中打开
+```
+
+> 🍎 macOS 用户如果遇到"无法验证开发者"，打开终端运行 `./dist/Termify/Termify` 即可。
+
+### 桌面包 vs 在线 Demo 对比
+
+| 场景 | 选哪个 |
+|------|--------|
+| 只是想试一下 | **在线 Demo**（零安装） |
+| 离线环境 / 懒得连网 | **桌面包**（本地运行） |
+| 源图太大（>20MB） | **桌面包**（可以绕过在线 20MB 上限） |
+| 想要最新功能 | **在线 Demo**（自动随 main 分支更新） |
+
+> 💡 桌面包启动后跟在线 Demo 完全一致 —— 上传、选风格、预览、下载 `.py/.html`，**所有产物都在你机器上**。
 
 
 ## 项目结构
@@ -261,6 +302,11 @@ Termify/
 │   ├── frames.py           # GIF 抽帧 + 等比缩放
 │   ├── engine.py           # convert() → FrameSequence
 │   ├── ansi_to_html.py     # ANSI → HTML 颜色转换
+│   ├── taskstore.py        # SQLite 任务存储（多 worker 共享）
+│   ├── gallery.py          # 画廊功能（SQLite 元数据 + 缩略图生成）
+│   ├── share.py            # 作品分享（.termify + URL 编码）
+│   ├── video.py            # 视频接入（ffmpeg 抽帧）
+│   ├── urlfetch.py         # URL 直输（SSRF 防护下载）
 │   └── output/
 │       ├── python.py       # 生成 .py 播放脚本
 │       └── html.py         # 生成 .html 播放页
@@ -268,7 +314,7 @@ Termify/
 ├── static/
 │   ├── css/{tokens,app}.css
 │   └── js/app.js           # 前端逻辑
-├── tests/                  # pytest 单元测试（157 tests）
+├── tests/                  # pytest 单元测试（217 tests）
 ├── ui-mockup.html          # UI 视觉唯一真相源
 └── README.md               # 本文件
 ```
@@ -277,14 +323,115 @@ Termify/
 
 - **后端**：Python 3.10+、Flask、Pillow
 - **前端**：原生 HTML/CSS/JS，无框架依赖
-- **测试**：pytest（157 tests，运行 `pytest tests/` 即可）
+- **测试**：pytest（217 tests，运行 `pytest -q` 即可）
 - **主题**：暗色终端美学，JetBrains Mono + Space Grotesk 字体
+
+## 🐛 反馈与 ISSUE
+
+使用过程中遇到任何问题，欢迎提 [GitHub Issue](https://github.com/ZhangJing-gugugaga/Termify/issues/new/choose)。
+
+### Issue 提交流程
+
+| 步骤 | 说明 |
+|------|------|
+| 1. **搜索已有 Issue** | 确认没人报过同样的问题 → 避免重复 |
+| 2. **选择模板** | Bug Report / Feature Request / 问题求助，选最匹配的 |
+| 3. **填够信息** | 见下方模板 |
+
+### 🐞 Bug Report 模板
+
+```markdown
+### 版本信息
+- Termify 来源: 在线 Demo / 桌面包 / 本地 git clone
+- 操作系统: Windows 11 / macOS 14 / Ubuntu 22.04
+- 浏览器: Chrome 126 / Firefox 128 / Safari 17
+- Python 版本（如适用）: 3.13.2
+
+### 重现步骤
+1. 打开 https://termify.moonzj.com（或桌面包）
+2. 上传 [具体文件，最好附截图或链接]
+3. 选择 [风格名 + 尺寸]
+4. 点 [具体按钮]
+5. 看到 [期望 vs 实际]
+
+### 期望行为
+清晰的一句话。
+
+### 实际行为
+附上截图、报错原文（不要截取部分）、浏览器控制台输出（F12 → Console）。
+```
+
+### 💡 Feature Request 模板
+
+```markdown
+### 场景描述
+我遇到的问题是……（一句话说清真实场景）
+
+### 期望方案
+我希望 Termify 提供 [具体功能] —— 它应该 [做什么]、[对用户有什么好处]
+
+### 替代方案
+A. 我先用 [workaround] 工作，但不够好
+B. 也可以 [备选方案]，但代价是……
+```
+
+> 💡 **小技巧**：附带一张截图或 5 秒 GIF 演示你遇到的问题，维护者能更快理解。
+
+### 社区讨论与问答
+
+- **Discussions**：看 Issue 列表旁边有个 [Discussions](https://github.com/ZhangJing-gugugaga/Termify/discussions) 标签，适合"怎么用 / 做了什么 / 我有个想法但还没想清楚"类问题
+- **提交前 Checklist**：
+  - [ ] 已经读过 [FAQ](#常见问题) + [画质优化贴士](#画质优化贴士)
+  - [ ] 已搜索过已有 [Issue](https://github.com/ZhangJing-gugugaga/Termify/issues?q=is%3Aissue)
+  - [ ] 已注明 Termify 来源（在线 / 桌面 / 本地）
 
 ## 参与贡献
 
-1. Fork + clone 仓库
-2. 新建分支 `git checkout -b feat/your-feature`
-3. 改代码 + 跑测试 `pytest tests/ -v`
-4. 提交 Pull Request
+欢迎 Pull Request！无论你是修一个 typo 还是加一个新字符集。
 
-遇到问题？先查 [FAQ](#常见问题) → 再开 [Issue](https://github.com/ZhangJing-gugugaga/Termify/issues)。
+### 开发流程
+
+```bash
+# 1. Fork + clone 仓库
+git clone https://github.com/<你的用户名>/Termify.git
+cd Termify
+
+# 2. 新建分支（分支名为 type/scope，如 fix/typo 或 feat/new-charset）
+git checkout -b feat/your-feature
+
+# 3. 改代码 + 跑全量测试
+pip install -r requirements.txt
+pytest -q                    # 基线 217 tests，必须全绿
+```
+
+### 代码规范
+
+| 约定 | 说明 |
+|------|------|
+| **分支命名** | `type/scope`，如 `feat/new-charset` / `fix/memory-leak` / `docs/readme` / `test/regression` |
+| **Commit 消息** | [Conventional Commits](https://www.conventionalcommits.org/) 中文，如 `feat(charset): 新增 emoji 字符集` |
+| **PR 标题** | 同 commit 格式，注明关闭哪个 Issue（如 `Closes #42`） |
+| **测试** | 新功能必须在 `tests/` 里补对应的 pytest（`git add -f` 因为 .gitignore 会吞 `test_*.py`） |
+| **不破主分支** | main 受保护，只在 feature/fix 分支开发，PR 合并后不直接推 main |
+
+### 当前技术栈
+
+- Python 3.10+, Flask, Pillow
+- 前端原生 HTML/CSS/JS，无框架依赖（Jinja2 模板）
+- pytests（**217** tests，跑 `pytest -q`）
+- PyInstaller 做桌面包
+
+### 我能贡献什么？
+
+| 技能 | 能做什么 |
+|------|---------|
+| Python | 新增字符集、优化转换速度、修 bug |
+| 前端 | 优化 Web UI、加动画效果、改善无障碍 |
+| 设计 | UI/UX 改版、Logo 重塑、网站样式 |
+| 文档 | 翻译 README、写教程、修拼写错 |
+| 测试 | 补端到端测试、性能回退测试 |
+| 运维 | 改进部署脚本、加 CI/CD、Docker 化 |
+
+> 💬 **不确定从哪开始？** 找标签 `good first issue` 的 Issue，或到 [Discussions](https://github.com/ZhangJing-gugugaga/Termify/discussions) 开一个帖子问。
+
+遇到问题？先查 [FAQ](#常见问题) → 再开 [Issue](https://github.com/ZhangJing-gugugaga/Termify/issues/new/choose)。
