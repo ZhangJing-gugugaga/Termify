@@ -459,11 +459,18 @@
   }
 
   function uploadVideo(file) {
+    var MAX_VIDEO = 50 * 1024 * 1024;
+    if (file.size > MAX_VIDEO) { toast("视频过大 (最大 50MB): " + (file.size / 1024 / 1024).toFixed(1) + "MB"); return; }
     var fd = new FormData();
     fd.append("file", file);
     if (uploadZone) uploadZone.classList.add("uploading");
     fetch("/api/upload-video", { method: "POST", body: fd })
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (!r.ok) { throw new Error("HTTP " + r.status + (r.status === 413 ? " (文件过大)" : "")); }
+        var ct = r.headers.get("content-type") || "";
+        if (ct.indexOf("application/json") === -1) { throw new Error("服务器返回非 JSON (HTTP " + r.status + ")"); }
+        return r.json();
+      })
       .then(function (d) {
         if (uploadZone) uploadZone.classList.remove("uploading");
         if (d.error) { toast(d.error); return; }
