@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import json
 import os
-import threading
 import re
+import threading
 import time
 import uuid
 
@@ -22,11 +22,50 @@ from flask import (Flask, abort, jsonify, make_response, redirect,
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # PRD §7.1
 
-TASKS: dict[str, dict] = {}  # task_id -> metadata + conversion cache
-TASKS_LOCK = threading.Lock()
+# --- T1.9 Task metadata store ------------------------------------------------
+# Production bug fix (L1): under gunicorn 4 workers, a module-level TASKS dict
+# lived in each worker's private memory, so a task created in worker A was
+# invisible to B/C/D. Metadata is now persisted in a SQLite table; the
+# per-worker conversion cache is still in-memory (cache misses just trigger
+# a re-convert, which is harmless). See ``termify.taskstore``.
+from termify.taskstore import (
+    CACHE,
+    get_store,
+    cache_key as _cache_key,
+    cache_get as _cache_get,
+    cache_put as _cache_put,
+)
 
 VALID_EXT = {".gif", ".png", ".jpg", ".jpeg"}
 VALID_FORMATS = {"python", "html"}
+
+
+def _task_put(task_id: str, *, filepath, original_size, target_size,
+              frames_count, interval) -> None:
+    """Persist task metadata to the shared SQLite store."""
+    get_store().put(
+        task_id,
+        filepath=filepath,
+        original_size=original_size,
+        target_size=target_size,
+        frames_count=frames_count,
+        interval=interval,
+    )
+
+
+def _task_get(task_id: str):
+    """Return task metadata dict, or None if not found / unknown id."""
+    if not task_id:
+        return None
+    return get_store().get(task_id)
+
+
+def _task_get_or_404(task_id: str):
+    """Return ``(task, None)`` if found, else ``(None, (json_resp, 404))``."""
+    task = _task_get(task_id)
+    if task is None:
+        return None, (jsonify({"error": "Task not found"}), 404)
+    return task, None
 
 # --- T1.6 Gallery wiring ----------------------------------------------------
 from termify import gallery as _gallery_mod
@@ -123,21 +162,24 @@ def upload():
         os.remove(save_path)
         return jsonify({"error": f"Conversion failed: {exc}"}), 500
 
-    with TASKS_LOCK:
-        TASKS[task_id] = {
-            "filepath": save_path,
-            "original_size": _original_size(save_path),
-            "target_size": {"width": seq.width, "height": seq.height},
-            "frames_count": len(seq.lines_per_frame),
-            "interval": seq.interval,
-            "cache": {"ascii:80x24": seq},
-        }
+    original_size = _original_size(save_path)
+    target_size = {"width": seq.width, "height": seq.height}
+    _task_put(
+        task_id,
+        filepath=save_path,
+        original_size=original_size,
+        target_size=target_size,
+        frames_count=len(seq.lines_per_frame),
+        interval=seq.interval,
+    )
+    # Seed per-worker cache so a same-worker preview hits.
+    _cache_put(task_id, _cache_key(task_id, "ascii", 80, 24), seq)
 
     return jsonify({
         "task_id": task_id,
         "frames_count": len(seq.lines_per_frame),
-        "original_size": TASKS[task_id]["original_size"],
-        "target_size": TASKS[task_id]["target_size"],
+        "original_size": original_size,
+        "target_size": target_size,
     })
 
 
@@ -171,22 +213,24 @@ def upload_batch():
             errors.append({"filename": file.filename, "error": str(exc)})
             continue
 
-        with TASKS_LOCK:
-            TASKS[task_id] = {
-                "filepath": save_path,
-                "original_size": {"width": seq.width, "height": seq.height},
-                "target_size": {"width": seq.width, "height": seq.height},
-                "frames_count": len(seq.lines_per_frame),
-                "interval": seq.interval,
-                "cache": {"ascii:80x24": seq},
-            }
+        original_size = {"width": seq.width, "height": seq.height}
+        target_size = {"width": seq.width, "height": seq.height}
+        _task_put(
+            task_id,
+            filepath=save_path,
+            original_size=original_size,
+            target_size=target_size,
+            frames_count=len(seq.lines_per_frame),
+            interval=seq.interval,
+        )
+        _cache_put(task_id, _cache_key(task_id, "ascii", 80, 24), seq)
 
         results.append({
             "task_id": task_id,
             "filename": file.filename,
             "frames_count": len(seq.lines_per_frame),
-            "original_size": TASKS[task_id]["original_size"],
-            "target_size": TASKS[task_id]["target_size"],
+            "original_size": original_size,
+            "target_size": target_size,
         })
 
     return jsonify({"task_ids": results, "errors": errors})
@@ -260,17 +304,18 @@ def upload_video():
     shutil.rmtree(frames_dir, ignore_errors=True)
 
     interval = 1.0 / fps  # fps=10 from ffmpeg extraction
-    with TASKS_LOCK:
-        TASKS[task_id] = {
-            "filepath": None,
-            "original_size": {"type": "video", "frame_count": len(frame_paths)},
-            "target_size": {"width": width, "height": height},
-            "frames_count": len(lines_per_frame),
-            "interval": interval,
-            "cache": {f"{charset}:80x24": None},  # placeholder; preview re-converts
-        }
+    target_size = {"width": width, "height": height}
+    _task_put(
+        task_id,
+        filepath=None,  # video frames already cleaned up; cache holds the seq
+        original_size=None,  # shape differs from image; use local var in response
+        target_size=target_size,
+        frames_count=len(lines_per_frame),
+        interval=interval,
+    )
 
-    # Store full sequence in cache for preview
+    # Store full sequence in cache for preview (cross-worker-safe metadata
+    # is in SQLite; this per-worker cache is just an optimisation).
     from termify.engine import FrameSequence
     seq = FrameSequence(
         lines_per_frame=lines_per_frame,
@@ -279,16 +324,14 @@ def upload_video():
         height=height,
         charset=charset,
     )
-    with TASKS_LOCK:
-        if task_id in TASKS:
-            TASKS[task_id]["cache"][f"{charset}:80x24"] = seq
+    _cache_put(task_id, _cache_key(task_id, charset, width, height), seq)
 
     return jsonify({
         "task_id": task_id,
         "filename": file.filename,
         "frames_count": len(lines_per_frame),
         "original_size": {"type": "video", "frame_count": len(frame_paths)},
-        "target_size": {"width": width, "height": height},
+        "target_size": target_size,
     })
 
 
@@ -319,45 +362,52 @@ def fetch_url():
         os.remove(tmp_path)
         return jsonify({"error": f"Conversion failed: {exc}"}), 500
 
-    with TASKS_LOCK:
-        TASKS[task_id] = {
-            "filepath": tmp_path,
-            "original_size": {"width": seq.width, "height": seq.height},
-            "target_size": {"width": seq.width, "height": seq.height},
-            "frames_count": len(seq.lines_per_frame),
-            "interval": seq.interval,
-            "cache": {"ascii:80x24": seq},
-        }
+    target_size = {"width": seq.width, "height": seq.height}
+    _task_put(
+        task_id,
+        filepath=tmp_path,
+        original_size=target_size,
+        target_size=target_size,
+        frames_count=len(seq.lines_per_frame),
+        interval=seq.interval,
+    )
+    _cache_put(task_id, _cache_key(task_id, "ascii", 80, 24), seq)
 
     return jsonify({
         "task_id": task_id,
         "filename": os.path.basename(tmp_path),
         "frames_count": len(seq.lines_per_frame),
-        "original_size": {"width": seq.width, "height": seq.height},
-        "target_size": {"width": seq.width, "height": seq.height},
+        "original_size": target_size,
+        "target_size": target_size,
     })
 
 
 def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=None, bg_color=None):
-    """Return a converted FrameSequence, converting+caching on first miss."""
-    with TASKS_LOCK:
-        task = TASKS.get(task_id)
+    """Return a converted FrameSequence, converting+caching on first miss.
+
+    The metadata fetch is shared across workers (SQLite); the cache is
+    per-worker — a cache miss is non-fatal: we re-convert from the
+    persisted ``filepath`` and re-populate the cache.
+    """
+    task = _task_get(task_id)
     if task is None:
         return None
+    filepath = task.get("filepath")
+    key = _cache_key(task_id, charset, width, height, fg_color, bg_color)
 
-    fg_part = f"rgb({fg_color[0]},{fg_color[1]},{fg_color[2]})" if fg_color else "none"
-    bg_part = f"rgb({bg_color[0]},{bg_color[1]},{bg_color[2]})" if bg_color else "none"
-    key = f"{charset}:{width}x{height}:{fg_part}:{bg_part}"
-    seq = task.get("cache", {}).get(key)
+    if not filepath:
+        # No backing file (e.g. video task whose temp frames were cleaned
+        # up). Only serve from this worker's cache, if any.
+        return _cache_get(task_id, key)
+
+    seq = _cache_get(task_id, key)
     if seq is not None:
         return seq
 
     from termify import convert
 
-    seq = convert(task["filepath"], charset, width, height, fg_color=fg_color, bg_color=bg_color)
-    with TASKS_LOCK:
-        if task_id in TASKS:
-            TASKS[task_id].setdefault("cache", {})[key] = seq
+    seq = convert(filepath, charset, width, height, fg_color=fg_color, bg_color=bg_color)
+    _cache_put(task_id, key, seq)
     return seq
 
 
@@ -423,7 +473,7 @@ def generate():
 
     from termify.charset import CHARSETS
 
-    if not task_id or task_id not in TASKS:
+    if not task_id or not get_store().exists(task_id):
         return jsonify({"error": "Task not found"}), 404
     if charset not in CHARSETS:
         return jsonify({"error": f"Unknown charset: {charset}"}), 400
@@ -964,11 +1014,19 @@ def gallery_admin_page():
     return render_template("admin.html")
 
 
+# --- T1.9 Task store bootstrap ------------------------------------------------
+# Initialise the SQLite-backed task store once at import time. This creates
+# the ``tasks`` table, sweeps any rows that expired while we were down, and
+# starts the background TTL cleanup thread. The same code runs under both
+# ``python app.py`` (single process) and ``gunicorn --workers 4`` (4 procs).
+get_store()
+
 if __name__ == "__main__":
     os.makedirs("uploads", exist_ok=True)
     os.makedirs("tmp", exist_ok=True)
     os.makedirs(GALLERY_DATA_DIR, exist_ok=True)
     os.makedirs("data", exist_ok=True)
-    # ponytail: reloader off — the app stores tasks in memory, so a watchdog
-    # restart (e.g. on each /api/generate writing tmp/*.py) would wipe them.
+    # ponytail: reloader off — the task cache is process-local, so a watchdog
+    # restart (e.g. on each /api/generate writing tmp/*.py) would just trigger
+    # a cache miss. The metadata is durable in SQLite.
     app.run(debug=False, use_reloader=False, port=5000)
