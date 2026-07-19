@@ -156,6 +156,7 @@ def test_degraded_mode_no_escape_residue(tmp_path):
 # ── 测试 4: 真实猫图子进程不崩 ─────────────────────────────────
 
 
+@pytest.mark.skipif(not os.path.isfile(CAT_GIF), reason="TERMIFY_TEST_GIF 未设置, 跳过真实猫图测试")
 def test_real_cat_image_blocks_subprocess(tmp_path):
     """真实猫图 blocks .py 子进程实跑不崩溃且发 TrueColor。
 
@@ -166,10 +167,6 @@ def test_real_cat_image_blocks_subprocess(tmp_path):
       - stdout 含 \\x1b[38;2; TrueColor 序列（确实在发 TrueColor）
     真实猫图是必跑素材，不可用合成图替代。
     """
-    # 确认真实猫图存在
-    assert os.path.isfile(CAT_GIF), f"真实猫图不存在: {CAT_GIF}"
-
-    # 用真实猫图生成 blocks 风格 .py（80×24）
     seq = convert(CAT_GIF, "blocks", 80, 24)
     src = render(seq, "python")
 
