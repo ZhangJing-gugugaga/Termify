@@ -1,0 +1,70 @@
+[Unit]
+# Termify — 把图片转成终端字符画 / 几何 ASCII 块的 Flask Web 服务
+# 部署位置：/opt/termify（参见 ../deploy.sh）
+# 启动顺序：在 caddy 之后即可（Caddy 反代到本服务的 127.0.0.1:5000）
+
+Description=Termify — image-to-ASCII web service
+Documentation=https://github.com/ZhangJing-gugugaga/Termify
+After=network.target
+
+[Service]
+# --- 类型 ---------------------------------------------------------------
+# 用 simple 是因为我们不打算启用 gunicorn 的 sd_notify 集成。
+# 如果未来引入 Type=notify，ExecStart 需要加 --notify 参数并安装
+# `gunicorn[setproctitle]`，此处保持 simple 简单可靠。
+
+Type=simple
+
+# --- 身份 ---------------------------------------------------------------
+# 首版用 root 简化部署（避免 data/ uploads/ 权限问题）。
+# 生产环境建议新建专用用户 termify 并把 /opt/termify 改属主：
+#   useradd -r -s /usr/sbin/nologin -d /opt/termify termify
+#   chown -R termify:termify /opt/termify
+User=root
+Group=root
+
+# --- 工作目录与启动 -----------------------------------------------------
+WorkingDirectory=/opt/termify
+
+# 优先用 gunicorn（4 worker 足够 1-2k 日活单实例）。
+# 注意：gunicorn 是在 deploy.sh 里额外 pip install 的，不在 requirements.txt
+# 里——保持生产依赖最小化，方便本地开发时不必安装。
+#
+# 如果暂时没装 gunicorn，把下面一行注释掉，反注释下面那行
+# `python app.py` 即可（Flask 自带 dev server，单线程只够试玩）。
+ExecStart=/opt/termify/venv/bin/gunicorn \
+    --workers 4 \
+    --bind 127.0.0.1:5000 \
+    --access-logfile /opt/termify/logs/access.log \
+    --error-logfile  /opt/termify/logs/error.log \
+    --timeout 300 \
+    app:app
+
+# Fallback（无 gunicorn 时使用，注释掉上一行启用本行）：
+# ExecStart=/opt/termify/venv/bin/python app.py
+
+# --- 失败重启策略 -------------------------------------------------------
+# 任何非零退出码都会触发重启；3 秒间隔避免快速打满 journal。
+Restart=always
+RestartSec=3
+
+# --- 环境变量 -----------------------------------------------------------
+# PYTHONUNBUFFERED=1 让 print/log 立刻 flush，否则 systemd journal 看不到
+# 实时日志，调试时会很痛苦。
+Environment=PYTHONUNBUFFERED=1
+# Flask debug 永远关闭（生产环境）
+Environment=FLASK_ENV=production
+
+# --- 资源限制（可选，生产可调） -----------------------------------------
+# 大 GIF 转换可能瞬时吃满 CPU；先不限制，让 systemd 自行调度。
+# LimitNOFILE=65535
+
+# --- 硬化（可选） -------------------------------------------------------
+# 防止派生进程获得比父进程更多的权限
+NoNewPrivileges=true
+# /opt/termify 之外的写权限：能进一步收紧文件系统访问
+# ProtectSystem=strict
+# ReadWritePaths=/opt/termify/data /opt/termify/uploads /opt/termify/logs
+
+[Install]
+WantedBy=multi-user.target
