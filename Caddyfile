@@ -1,0 +1,69 @@
+# Caddy reverse proxy + auto HTTPS for Termify.
+# Drop into /etc/caddy/Caddyfile (or include from the main one), then:
+#   sudo systemctl reload caddy
+#
+# Auto HTTPS: Caddy will request a Let's Encrypt cert on first start.
+# Make sure DNS A/AAAA for termify.moonzj.com points to this server's public IP
+# and TCP 80/443 are open in the security group before the first `systemctl start caddy`.
+
+termify.moonzj.com {
+    # --- Reverse proxy to the local Flask/gunicorn instance ---------------
+    # Flask is bound to 127.0.0.1:5000 in app.py; keep it loopback-only.
+    reverse_proxy 127.0.0.1:5000 {
+        # Termify converts large GIF/PNG into terminal blocks; big frames can
+        # take a while. Lift the default 30s read timeout to 5 minutes.
+        transport http {
+            dial_timeout 30s
+            response_header_timeout 300s
+            read_timeout 300s
+            write_timeout 300s
+        }
+
+        # Forward real client IP to Flask (app.py honours X-Forwarded-For
+        # for rate-limiting).
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # --- Upload size limit ------------------------------------------------
+    # Flask's MAX_CONTENT_LENGTH is 20MB (app.py). Caddy's default request
+    # body limit is 10MB, which would silently truncate uploads. Allow 25MB
+    # so there's ~5MB headroom for multipart envelope overhead.
+    request_body {
+        max_size 25MB
+    }
+
+    # --- Static asset caching --------------------------------------------
+    # Flask serves /static/* from the static/ dir. Cache aggressively — file
+    # names are content-hashed in production deployments, and for Termify
+    # the assets rarely change between deploys.
+    @static path /static/*
+    header @static Cache-Control "public, max-age=86400"
+
+    # --- Security headers -------------------------------------------------
+    header {
+        # Mitigate the usual browser attacks; Termify doesn't need iframes
+        # or 3rd-party scripts.
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # HSTS only makes sense once the cert is confirmed working; comment
+        # out for the first deploy to avoid lockout if HTTPS is mis-configured.
+        # Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        # Hide Caddy version.
+        -Server
+    }
+
+    # --- Logging ----------------------------------------------------------
+    log {
+        output file /var/log/caddy/termify.log {
+            roll_size 50MiB
+            roll_keep 5
+        }
+        level INFO
+    }
+
+    # --- Compression ------------------------------------------------------
+    encode zstd gzip
+}
