@@ -153,8 +153,36 @@ python demo.py my_cat.gif --charset all --out my_outputs
 
 ## 常见问题
 
+**Q: 必须装 Python 才能用吗？**
+A: 不必须！三种方式都能玩：
+
+| 方式 | 适合 | 要装什么 |
+|------|------|---------|
+| [在线 Demo](https://termify.moonzj.com) | 只是想试试 | **零安装**，浏览器直接拖图 |
+| [桌面 .exe](#桌面客户端一键独立包) | 离线/大文件 | 下载 `Termify.exe`，双击即用 |
+| 本地 `python app.py` | 开发者/批量处理 | Python 3.10+ |
+
+> 💡 90% 的人直接点在线 Demo 就够了。
+
 **Q: 我没有编程经验，能玩吗？**
-A: 完全可以。启动 `python app.py` → 浏览器里拖图片 → 点卡片 → 点下载，全程不用写一行代码。
+A: 完全可以。点 [termify.moonzj.com](https://termify.moonzj.com) → 浏览器里拖图片进去 → 点风格卡片 → 点下载，三步出活。
+
+**Q: 怎么分享我的终端动画给朋友？**
+A: 三种方式：
+
+| 方式 | 朋友看到什么 | 朋友要装什么 |
+|------|-------------|-------------|
+| **发 .html 文件** | 浏览器打开直接播放动画 | 零 |
+| **分享画廊链接** | 点 `/v/<id>` 短链，直接预览 + 下载 | 零 |
+| **发 .py 脚本** | 终端播放动画 | Python 3.10+ |
+
+> 💡 推荐用 `.html`：朋友双击就能看，跨平台、零依赖。发微信群/AirDrop/邮件都行。
+
+**Q: 画廊是什么？**
+A: [termify.moonzj.com/gallery](https://termify.moonzj.com/gallery) — 上传作品到公共画廊，获得一个短链（如 `/v/aBcDeFgH`），朋友点开就能看到你转的动画。支持点赞、标签筛选。
+
+**Q: 有桌面版吗？**
+A: 有。从 [Releases](https://github.com/ZhangJing-gugugaga/Termify/releases) 下载 `Termify.exe`，双击启动后自动打开浏览器访问本地 Web 界面，功能跟在线 Demo 完全一致，适合离线环境或大文件处理。
 
 **Q: 下载的 .py 文件怎么跑？**
 A:
@@ -176,7 +204,10 @@ A: 这通常有两个原因：
 > 💡 **推荐配置**：Windows Terminal + JetBrainsMono Nerd Font 字体，可完美显示所有风格。
 
 **Q: 手机能打开 .html 文件吗？**
-A: 可以。通过微信/AirDrop/数据线传到手机，用浏览器打开；**横屏**观看效果更好。
+A: 可以。通过微信/AirDrop/数据线传到手机，用浏览器打开；**横屏**观看效果更好。也可以直接发画廊链接，手机浏览器点开即看。
+
+**Q: 我上传的文件去哪了？安全吗？**
+A: 上传的文件仅用于临时转换，任务完成后自动清理（默认 1 小时）。不会存储你的源文件，不会用于任何其他用途。在线 Demo 使用 HTTPS 加密传输。
 
 **Q: 下载的文件多大？**
 A: 取决于尺寸和帧数：
@@ -194,7 +225,7 @@ A: 超清输出会自动缩放以适应视口，**下载的文件仍是全分辨
 A: 支持。Web 界面现在可以一次拖拽或多个选择多个文件（或 Ctrl/Cmd + 点击多选），每个文件独立处理。命令行批量仍可用 `python demo.py 文件 --charset all`。
 
 **Q: 错误 `ModuleNotFoundError` 或 `python 不是内部命令`？**
-A: Python 未安装或未加入 PATH。请安装 Python 3.10+ 并在安装时勾选"Add Python to PATH"。
+A: Python 未安装或未加入 PATH。请安装 Python 3.10+ 并在安装时勾选"Add Python to PATH"。或者直接用 [在线 Demo](https://termify.moonzj.com)，零安装。
 
 ## API 文档
 
