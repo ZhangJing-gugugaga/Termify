@@ -169,7 +169,7 @@ ${C_GREEN}接下来请按 docs/DEPLOY-ECS.md 完成 Caddy 反代配置：${C_RES
   3) 启动 Caddy：
        sudo systemctl enable --now caddy
 
-  4) 访问 https://termify.moonzj.com/ 验收。
+  4) 访问 https://YOUR_DOMAIN/ 验收。
 
 常用运维命令：
   - 查看服务状态：   sudo systemctl status termify

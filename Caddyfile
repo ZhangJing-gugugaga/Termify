@@ -3,10 +3,10 @@
 #   sudo systemctl reload caddy
 #
 # Auto HTTPS: Caddy will request a Let's Encrypt cert on first start.
-# Make sure DNS A/AAAA for termify.moonzj.com points to this server's public IP
+# Make sure DNS A/AAAA for YOUR_DOMAIN points to this server's public IP
 # and TCP 80/443 are open in the security group before the first `systemctl start caddy`.
 
-termify.moonzj.com {
+YOUR_DOMAIN {
     # --- Reverse proxy to the local Flask/gunicorn instance ---------------
     # Flask is bound to 127.0.0.1:5000 in app.py; keep it loopback-only.
     reverse_proxy 127.0.0.1:5000 {
