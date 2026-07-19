@@ -77,3 +77,20 @@ test_*.json
 test_*.py
 static/geometric_preview.html
 data/
+
+# Screenshots / preview images (local dev artifacts)
+*_preview.png
+main_page*.png
+*.log
+
+# Test temp images and fixtures
+_t*tmp.png
+_test_*.png
+test_bright.png
+test_dark.png
+*.json
+
+# PyInstaller artifacts
+build/
+dist/
+*.spec.bak
