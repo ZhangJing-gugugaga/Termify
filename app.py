@@ -971,4 +971,4 @@ if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
     # ponytail: reloader off — the app stores tasks in memory, so a watchdog
     # restart (e.g. on each /api/generate writing tmp/*.py) would wipe them.
-    app.run(debug=True, use_reloader=False, port=5000)
+    app.run(debug=False, use_reloader=False, port=5000)
