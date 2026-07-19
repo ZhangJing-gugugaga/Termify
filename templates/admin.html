@@ -104,15 +104,6 @@
 
         var ADMIN_PWD = "";
 
-        // Check if pwd already in URL
-        (function () {
-            var m = location.search.match(/[?&]pwd=([^&]*)/);
-            if (m) {
-                ADMIN_PWD = decodeURIComponent(m[1]);
-                showAdmin();
-            }
-        })();
-
         // Login
         document.getElementById("adminLoginBtn").addEventListener("click", doLogin);
         document.getElementById("adminPwd").addEventListener("keydown", function (e) {
@@ -133,7 +124,7 @@
         }
 
         function loadData() {
-            fetch("/api/gallery/admin?pwd=" + encodeURIComponent(ADMIN_PWD))
+            fetch("/api/gallery/admin", { headers: { "X-Termify-Admin-Pwd": ADMIN_PWD } })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     if (d.error) { toast(d.error); return; }
@@ -196,7 +187,7 @@
             if (!btn) return;
             if (!confirm("确定删除该作品？")) return;
             var id = btn.dataset.id;
-            fetch("/api/gallery/admin/" + id + "?pwd=" + encodeURIComponent(ADMIN_PWD), { method: "DELETE" })
+            fetch("/api/gallery/admin/" + id, { method: "DELETE", headers: { "X-Termify-Admin-Pwd": ADMIN_PWD } })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     if (d.error) { toast(d.error); return; }
@@ -211,9 +202,9 @@
             if (!btn) return;
             var id = btn.dataset.id;
             var status = btn.classList.contains("admin-resolve-btn") ? "resolved" : "dismissed";
-            fetch("/api/gallery/admin/report/" + id + "?pwd=" + encodeURIComponent(ADMIN_PWD), {
+            fetch("/api/gallery/admin/report/" + id, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", "X-Termify-Admin-Pwd": ADMIN_PWD },
                 body: JSON.stringify({ status: status })
             }).then(function (r) { return r.json(); }).then(function (d) {
                 if (d.error) { toast(d.error); return; }

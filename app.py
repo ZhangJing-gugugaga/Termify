@@ -20,6 +20,8 @@ from flask import (Flask, abort, jsonify, make_response, redirect,
                    render_template, request, send_file, url_for)
 
 app = Flask(__name__)
+# 从环境变量加载密钥，未设置时自动生成（每次重启会变，仅轻度会话场景安全）
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24).hex())
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # PRD §7.1
 
 # --- T1.9 Task metadata store ------------------------------------------------
@@ -737,7 +739,7 @@ def gallery_work(work_id):
     out = _gallery_public_dict(fresh)
     out["is_authorized"] = (
         request.cookies.get(f"termify_admin_{work_id}") == work["admin_token"]
-        or (bool(_admin_pwd()) and request.args.get("pwd") == _admin_pwd())
+        or (bool(_admin_pwd()) and request.headers.get("X-Termify-Admin-Pwd", "") == _admin_pwd())
     )
     # Has the current visitor (IP + cookie) liked this work?
     like_cookie = request.cookies.get(f"termify_like_{work_id}", "")
@@ -791,17 +793,14 @@ def gallery_report(work_id):
 
 @app.route("/api/gallery/work/<work_id>", methods=["DELETE"])
 def gallery_delete(work_id):
-    """Delete a work. Requires valid admin token (cookie or header) or global admin pwd."""
+    """Delete a work. Requires valid admin token (cookie or header) or global admin pwd via Header."""
     work = GALLERY_DB.get_work(work_id)
     if not work:
         return jsonify({"error": "Work not found"}), 404
     token = request.cookies.get(f"termify_admin_{work_id}", "")
     hdr_token = request.headers.get("X-Termify-Admin", "")
     input_token = hdr_token or token
-    is_admin = bool(_admin_pwd()) and (
-        request.args.get("pwd") == _admin_pwd()
-        or request.headers.get("X-Termify-Admin-Pwd") == _admin_pwd()
-    )
+    is_admin = bool(_admin_pwd()) and request.headers.get("X-Termify-Admin-Pwd", "") == _admin_pwd()
     authorized = is_admin or (input_token and input_token == work["admin_token"])
     if not authorized:
         return jsonify({"error": "Unauthorized"}), 403
@@ -818,10 +817,10 @@ def gallery_delete(work_id):
 def gallery_admin_list():
     """Admin dashboard: list works + pending reports.
 
-    Requires ?pwd=<_admin_pwd()> or X-Termify-Admin-Pwd header.
+    Requires X-Termify-Admin-Pwd header.
     """
-    pwd = request.args.get("pwd", "") or request.headers.get("X-Termify-Admin-Pwd", "")
-    if not _admin_pwd() or pwd != _admin_pwd():
+    hdr_pwd = request.headers.get("X-Termify-Admin-Pwd", "")
+    if not _admin_pwd() or hdr_pwd != _admin_pwd():
         return jsonify({"error": "Unauthorized"}), 403
     works = GALLERY_DB.admin_list_works()
     reports = GALLERY_DB.admin_list_reports(status="pending")
@@ -834,8 +833,8 @@ def gallery_admin_list():
 @app.route("/api/gallery/admin/<work_id>", methods=["DELETE"])
 def gallery_admin_delete(work_id):
     """Admin hard delete."""
-    pwd = request.args.get("pwd", "") or request.headers.get("X-Termify-Admin-Pwd", "")
-    if not _admin_pwd() or pwd != _admin_pwd():
+    hdr_pwd = request.headers.get("X-Termify-Admin-Pwd", "")
+    if not _admin_pwd() or hdr_pwd != _admin_pwd():
         return jsonify({"error": "Unauthorized"}), 403
     work = GALLERY_DB.get_work(work_id)
     if not work:
@@ -852,8 +851,8 @@ def gallery_admin_delete(work_id):
 @app.route("/api/gallery/admin/report/<int:report_id>", methods=["POST"])
 def gallery_admin_resolve_report(report_id):
     """Mark a report resolved/dismissed."""
-    pwd = request.args.get("pwd", "") or request.headers.get("X-Termify-Admin-Pwd", "")
-    if not _admin_pwd() or pwd != _admin_pwd():
+    hdr_pwd = request.headers.get("X-Termify-Admin-Pwd", "")
+    if not _admin_pwd() or hdr_pwd != _admin_pwd():
         return jsonify({"error": "Unauthorized"}), 403
     data = request.get_json(silent=True) or {}
     status = data.get("status", "resolved")
