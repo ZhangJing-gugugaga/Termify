@@ -611,7 +611,7 @@
   // Hidden file input (multi-select)
   var fileInput = (function () {
     var f = document.createElement("input"); f.type = "file"; f.multiple = true;
-    f.accept = "image/gif,image/png,image/jpeg"; f.style.display = "none";
+    f.accept = "image/gif,image/png,image/jpeg,video/mp4,video/webm,video/quicktime,video/x-msvideo,video/x-matroska"; f.style.display = "none";
     document.body.appendChild(f); return f;
   })();
 
