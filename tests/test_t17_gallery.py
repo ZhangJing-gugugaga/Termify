@@ -523,7 +523,7 @@ def test_thumbnail_created_on_upload(isolated_env):
 # 13. Real Image ([REDACTED] cat.GIF) end-to-end
 # ----------------------------------------------------------------------------
 
-REAL_GIF = r"[REDACTED-PATH]\cat.GIF"
+REAL_GIF = os.environ.get("TERMIFY_TEST_GIF", "")
 
 
 @pytest.mark.skipif(not os.path.isfile(REAL_GIF), reason="[REDACTED] cat.GIF not on disk")

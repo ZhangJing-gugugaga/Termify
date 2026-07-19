@@ -10,7 +10,7 @@ import os
 
 import pytest
 
-CAT_GIF = r"[REDACTED-PATH]\cat.GIF"
+CAT_GIF = os.environ.get("TERMIFY_TEST_GIF", "")
 
 
 pytestmark = pytest.mark.skipif(
