@@ -12,7 +12,7 @@
   - 路径 traversal 防护
   - SQL 注入防护
   - OG 图 + 缩略图生成
-  - 真实 [REDACTED] 猫图端到端
+  - 真实猫图端到端
 """
 
 from __future__ import annotations
@@ -520,20 +520,20 @@ def test_thumbnail_created_on_upload(isolated_env):
 
 
 # ----------------------------------------------------------------------------
-# 13. Real Image ([REDACTED] cat.GIF) end-to-end
+# 13. Real Image (real cat GIF) end-to-end
 # ----------------------------------------------------------------------------
 
 REAL_GIF = os.environ.get("TERMIFY_TEST_GIF", "")
 
 
-@pytest.mark.skipif(not os.path.isfile(REAL_GIF), reason="[REDACTED] cat.GIF not on disk")
+@pytest.mark.skipif(not os.path.isfile(REAL_GIF), reason="real cat GIF not on disk")
 def test_real_cat_gif_upload_and_list(isolated_env):
-    """Full round-trip with real [REDACTED] cat.GIF."""
+    """Full round-trip with a real cat GIF."""
     with open(REAL_GIF, "rb") as fh:
         raw = fh.read()
     buf = io.BytesIO(raw)
-    body = _upload(isolated_env, title="真实猫图", desc="来自 [REDACTED] 的真实测试猫",
-                   author="[REDACTED]", tags=["动画"], fname="cat.GIF",
+    body = _upload(isolated_env, title="真实猫图", desc="真实测试猫图",
+                   author="cat", tags=["动画"], fname="cat.GIF",
                    file_bytes=buf)
     assert body["ok"]
     assert body["work"]["title"] == "真实猫图"
