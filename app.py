@@ -49,6 +49,26 @@ _VIDEO_PROC_SLOTS = threading.Semaphore(2)
 _VIDEO_IMPORT_SLOTS = threading.Semaphore(2)
 
 
+def _sweep_stale_frame_dirs(max_age_hours: int = 24) -> None:
+    """Best-effort removal of persisted video frame dirs past their TTL."""
+    import shutil as _shutil
+
+    cutoff = time.time() - max_age_hours * 3600
+    try:
+        entries = os.listdir("uploads")
+    except OSError:
+        return
+    for name in entries:
+        if not name.startswith("frames_"):
+            continue
+        path = os.path.join("uploads", name)
+        try:
+            if os.path.isdir(path) and os.path.getmtime(path) < cutoff:
+                _shutil.rmtree(path, ignore_errors=True)
+        except OSError:
+            continue
+
+
 def _video_tmp_path(ext: str) -> str:
     """Server-side temp path for an uploaded video, containment-checked.
 
@@ -300,8 +320,8 @@ def upload_video():
     if not allowed:
         return jsonify({"error": "视频上传太频繁，请稍后再试 (限 4 次/分钟)"}), 429
 
-    from termify.video import (VALID_VIDEO_EXTS, validate_video, extract_frames,
-                               frames_dir_to_images, VideoError)
+    from termify.video import (VALID_VIDEO_EXTS, validate_video,
+                               convert_video_file, VideoError)
 
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in VALID_VIDEO_EXTS:
@@ -322,71 +342,40 @@ def upload_video():
         os.remove(video_tmp)
         return jsonify({"error": "服务器转换繁忙，请稍后再试"}), 429
     try:
-        # Extract frames via ffmpeg — whole timeline, adaptive fps sampling
-        try:
-            frames_dir, fps = extract_frames(video_tmp)
-        except VideoError as exc:
-            os.remove(video_tmp)
-            return jsonify({"error": str(exc)}), 422
-
-        # Process each frame through the engine
-        from termify.engine import render_frame, scale_frame
-        from PIL import Image
-
         task_id = uuid.uuid4().hex[:12]
-        frame_paths = frames_dir_to_images(frames_dir)
         charset = "ascii"
         width, height = 80, 24
-
-        lines_per_frame = []
+        # Persist frames under uploads/ so every charset/size can be
+        # re-rendered on demand (fixes "Task not found" on style switch).
+        _sweep_stale_frame_dirs()
+        frames_dir = f"uploads/frames_{task_id}"
         try:
-            for fpath in frame_paths:
-                img = Image.open(fpath).convert("RGB")
-                sw, sh = width, height
-                scaled = scale_frame(img, sw, sh)
-                lines = render_frame(scaled, charset, sw, sh)
-                lines_per_frame.append(lines)
+            seq = convert_video_file(video_tmp, charset=charset, width=width,
+                                     height=height, delete_source=True,
+                                     frames_out_dir=frames_dir)
+        except VideoError as exc:
+            return jsonify({"error": str(exc)}), 422
         except Exception as exc:  # noqa: BLE001
-            os.remove(video_tmp)
-            import shutil
-            shutil.rmtree(frames_dir, ignore_errors=True)
             return jsonify({"error": f"Frame conversion failed: {exc}"}), 500
     finally:
         _VIDEO_IMPORT_SLOTS.release()
 
-    # Cleanup
-    os.remove(video_tmp)
-    import shutil
-    shutil.rmtree(frames_dir, ignore_errors=True)
-
-    interval = 1.0 / fps
     target_size = {"width": width, "height": height}
     _task_put(
         task_id,
-        filepath=None,  # video frames already cleaned up; cache holds the seq
-        original_size=None,  # shape differs from image; use local var in response
+        filepath=frames_dir,  # persisted frames dir → charset/size switchable
+        original_size=None,
         target_size=target_size,
-        frames_count=len(lines_per_frame),
-        interval=interval,
-    )
-
-    # Store full sequence in cache for preview (cross-worker-safe metadata
-    # is in SQLite; this per-worker cache is just an optimisation).
-    from termify.engine import FrameSequence
-    seq = FrameSequence(
-        lines_per_frame=lines_per_frame,
-        interval=interval,
-        width=width,
-        height=height,
-        charset=charset,
+        frames_count=len(seq.lines_per_frame),
+        interval=seq.interval,
     )
     _cache_put(task_id, _cache_key(task_id, charset, width, height), seq)
 
     return jsonify({
         "task_id": task_id,
         "filename": file.filename,
-        "frames_count": len(lines_per_frame),
-        "original_size": {"type": "video", "frame_count": len(frame_paths)},
+        "frames_count": len(seq.lines_per_frame),
+        "original_size": {"type": "video", "frame_count": len(seq.lines_per_frame)},
         "target_size": target_size,
     })
 
@@ -435,10 +424,13 @@ def fetch_video_url():
     if not _VIDEO_IMPORT_SLOTS.acquire(blocking=False):
         return jsonify({"error": "服务器转换繁忙，请稍后再试"}), 429
     try:
+        task_id = uuid.uuid4().hex[:12]
+        frames_dir = f"uploads/frames_{task_id}"
+        _sweep_stale_frame_dirs()
         try:
             seq = convert_video_file(video_tmp, charset="ascii", width=80,
-                                     height=24, delete_source=True)
-            task_id = uuid.uuid4().hex[:12]
+                                     height=24, delete_source=True,
+                                     frames_out_dir=frames_dir)
             frames_count = len(seq.lines_per_frame)
         except VideoError as exc:
             return jsonify({"error": str(exc)}), 422
@@ -449,7 +441,7 @@ def fetch_video_url():
 
     _task_put(
         task_id,
-        filepath=None,  # source video deleted; the cache holds the sequence
+        filepath=frames_dir,  # persisted frames dir → charset/size switchable
         original_size=None,
         target_size={"width": seq.width, "height": seq.height},
         frames_count=frames_count,
@@ -535,6 +527,19 @@ def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=
 
     seq = _cache_get(task_id, key)
     if seq is not None:
+        return seq
+
+    if os.path.isdir(filepath):
+        # Video task: persisted per-task frame directory — re-render any
+        # charset/size locally (no ffmpeg re-extraction).
+        from termify.video import sequence_from_frames_dir
+
+        seq = sequence_from_frames_dir(
+            filepath, charset, width, height,
+            interval=task.get("interval") or 0.1,
+            charset_ramp=charset_ramp,
+        )
+        _cache_put(task_id, key, seq)
         return seq
 
     from termify import convert

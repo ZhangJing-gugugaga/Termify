@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 
 import pytest
@@ -90,7 +91,8 @@ def client(tmp_path, monkeypatch):
     (tmp_path / "uploads").mkdir(exist_ok=True)
     (tmp_path / "tmp").mkdir(exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    from app import app
+    from app import app, _RL_LOG
+    _RL_LOG.clear()  # 同 IP 连续用例不互相顶到 429
     app.config["TESTING"] = True
     return app.test_client()
 
@@ -149,3 +151,73 @@ def test_convert_video_file_end_to_end(tmp_path):
     seq2 = convert_video_file(str(video_path), delete_source=True)
     assert len(seq2.lines_per_frame) > 0
     assert not video_path.exists()
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg 未安装")
+def test_video_task_charset_switching(client, tmp_path):
+    """回归 bug2：视频任务切风格/尺寸/自定义字符不得再报 Task not found。
+
+    上传视频后帧目录持久化在 uploads/frames_<id>/，_get_sequence 命中
+    目录分支本地重渲染（不再依赖单键缓存）。
+    """
+    import subprocess
+    import os
+
+    video_path = tmp_path / "in.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+         "-i", "testsrc=duration=1:size=128x64:rate=10",
+         "-pix_fmt", "yuv420p", str(video_path)],
+        check=True, capture_output=True,
+    )
+    with open(video_path, "rb") as fh:
+        resp = client.post("/api/upload-video",
+                           data={"file": (fh, "in.mp4")},
+                           content_type="multipart/form-data")
+    assert resp.status_code == 200, resp.data[:300]
+    task_id = json.loads(resp.data)["task_id"]
+
+    # 任务 metadata 应指向持久化帧目录
+    from app import get_store
+    task = get_store().get(task_id)
+    assert task["filepath"] and os.path.isdir(task["filepath"])
+
+    from urllib.parse import quote
+
+    # 1) 默认 ascii（缓存命中）
+    r1 = client.get(f"/api/preview/{task_id}?charset=ascii&frame=0")
+    assert r1.status_code == 200, r1.data[:200]
+    # 2) 切 blocks（不同缩放维度 → 新缓存键 → 走帧目录重渲染）
+    r2 = client.get(f"/api/preview/{task_id}?charset=blocks&width=40&height=20")
+    assert r2.status_code == 200, r2.data[:200]
+    # 3) 切 shades
+    r3 = client.get(f"/api/preview/{task_id}?charset=shades&frame=0")
+    assert r3.status_code == 200, r3.data[:200]
+    # 4) 切 custom + 自定义梯
+    r4 = client.get(
+        f"/api/preview/{task_id}?charset=custom&chars={quote('@# ')}&frame=0")
+    assert r4.status_code == 200, r4.data[:200]
+    joined = "".join(json.loads(r4.data)["lines"])
+    assert set(joined) <= {"@", "#", " "}
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg 未安装")
+def test_extract_frames_out_dir_caller_owned(tmp_path):
+    """out_dir 由调用方持有：失败/成功都不清掉该目录本身。"""
+    import subprocess
+
+    video_path = tmp_path / "in.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+         "-i", "testsrc=duration=1:size=64x32:rate=10",
+         "-pix_fmt", "yuv420p", str(video_path)],
+        check=True, capture_output=True,
+    )
+    from termify.video import extract_frames
+
+    out_dir = str(tmp_path / "persisted_frames")
+    frames_dir, fps = extract_frames(str(video_path), out_dir=out_dir)
+    assert frames_dir == out_dir
+    assert os.path.isdir(out_dir)
+    assert len([f for f in os.listdir(out_dir) if f.endswith(".png")]) >= 5
+    assert fps > 0

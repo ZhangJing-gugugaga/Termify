@@ -459,8 +459,29 @@
       });
   }
 
+  function probeVideoDuration(file, cb) {
+    // 本地解码视频元数据拿时长（不产生上传流量），用于诚实估算转换耗时
+    try {
+      var v = document.createElement("video");
+      v.preload = "metadata";
+      v.onloadedmetadata = function () {
+        var d = v.duration;
+        URL.revokeObjectURL(v.src);
+        cb(isFinite(d) ? d : null);
+      };
+      v.onerror = function () { URL.revokeObjectURL(v.src); cb(null); };
+      v.src = URL.createObjectURL(file);
+    } catch (e) { cb(null); }
+  }
+
   function uploadVideo(file) {
-    // 无大小上限（后端 TERMIFY_MAX_VIDEO_MB 兜底），改为展示真实上传进度 + ETA
+    probeVideoDuration(file, function (d) {
+      file.__durationSec = d;
+      startVideoUpload(file);
+    });
+  }
+
+  function startVideoUpload(file) {
     var fd = new FormData();
     fd.append("file", file);
     if (uploadZone) uploadZone.classList.add("uploading");
@@ -483,10 +504,13 @@
         (e.total / 1024 / 1024).toFixed(1) + "MB · 预计剩余 " + eta + " 秒";
     });
     xhr.upload.addEventListener("load", function () {
-      // 上传完成，进入服务器抽帧/转换阶段（预计时间按体积粗估）
-      var est = Math.max(3, Math.round(file.size / 1024 / 1024 * 0.8) + 3);
+      // 上传完成 → 服务器抽帧+渲染。转换耗时主要由"视频时长"决定
+      //（ffmpeg 解码 + 帧渲染），用本地探测到的时长做诚实估计。
+      var dur = file.__durationSec;
+      var est = dur ? Math.max(8, Math.round(dur * 0.5) + 5)
+                    : Math.max(10, Math.round(file.size / 1024 / 1024 * 3) + 8);
       modalTitle.textContent = "正在转换视频";
-      modalText.textContent = "抽帧 + 渲染中，预计约 " + est + " 秒…";
+      modalText.textContent = "抽帧 + 渲染中，预计约 " + est + " 秒（视频越长越久，请耐心等待）…";
       setModalProgress(100);
     });
     xhr.addEventListener("load", function () {
@@ -870,12 +894,16 @@
 
   setTitleMeta();
 
-  /* ── Gallery share: store source file on upload ── */
+  /* ── Gallery share: store source file on upload (images only) ── */
   var _origHandleFiles = handleFiles;
   handleFiles = function (fileList) {
     var files = Array.prototype.slice.call(fileList);
-    var first = files[0];
-    if (first) S.sourceFile = first;
+    var firstImage = files.filter(function (f) { return isImage(f); })[0];
+    if (firstImage) {
+      S.sourceFile = firstImage;
+    } else if (files.length && files.every(function (f) { return isVideo(f); })) {
+      S.sourceFile = null;  // 视频任务暂不支持分享画廊
+    }
     _origHandleFiles(fileList);
   };
 
@@ -900,11 +928,13 @@
     if (e.target === galleryModal) closeGalleryModal();
   });
 
-  /* ── Show share button when upload succeeds ── */
+  /* ── Show share button when an image upload succeeds ── */
   var _origSelectFile = selectFile;
   selectFile = function (idx) {
     _origSelectFile(idx);
-    if (shareBtn && S.sourceFile) shareBtn.style.display = "flex";
+    var cur = S.fileList[idx];
+    var curIsVideo = cur && VIDEO_EXTS.indexOf(extOf(cur.filename || "")) >= 0;
+    if (shareBtn) shareBtn.style.display = (S.sourceFile && !curIsVideo) ? "flex" : "none";
   };
 
   /* ── Character counters ── */
@@ -957,12 +987,11 @@
         if (d.error) { toast(d.error); return; }
         closeGalleryModal();
         var url = window.location.origin + d.url;
-        toast("已发布！");
-        setTimeout(function () {
-          if (confirm("已发布到画廊！\n链接: " + url + "\n\n是否前往查看？")) {
-            window.open(url, "_blank");
-          }
-        }, 500);
+        // termify 弹窗展示链接（不用浏览器原生 confirm）
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).catch(function () {});
+        }
+        showModal("已发布到画廊！", "短链：" + url + "\n已复制到剪贴板，可直接分享。");
       }.bind(this))
       .catch(function () { this.disabled = false; this.textContent = "发布到画廊"; toast("发布失败"); }.bind(this));
   });

@@ -66,11 +66,14 @@ def probe_duration(video_path: str) -> float | None:
 def extract_frames(
     video_path: str,
     max_duration: int | None = None,
+    out_dir: str | None = None,
 ) -> tuple[str, float]:
-    """Extract frames from a video file into a temp directory.
+    """Extract frames from a video file into a directory.
 
-    Returns (frames_dir, fps). The caller is responsible for cleaning up
-    frames_dir when done. Raises VideoError on failure.
+    Returns (frames_dir, fps). When ``out_dir`` is given, frames are written
+    there (created if missing) and it is NOT removed on failure — the caller
+    owns that directory. Otherwise a fresh temp dir is used and removed on
+    failure. Raises VideoError on failure.
 
     Duration is unbounded; the sampling fps adapts so long videos yield
     ~TARGET_MAX_FRAMES spread across the whole timeline. ``max_duration``
@@ -90,8 +93,16 @@ def extract_frames(
     duration = probe_duration(video_path)
     fps = adaptive_fps(duration)
 
-    # Create temp dir for frames
-    frames_dir = tempfile.mkdtemp(prefix="termify_frames_")
+    caller_owned = out_dir is not None
+    if caller_owned:
+        frames_dir = out_dir
+        os.makedirs(frames_dir, exist_ok=True)
+    else:
+        frames_dir = tempfile.mkdtemp(prefix="termify_frames_")
+
+    def _cleanup_frames_dir() -> None:
+        if not caller_owned:
+            shutil.rmtree(frames_dir, ignore_errors=True)
 
     # Extract frames with ffmpeg: optional -t window, adaptive -r sampling
     # -an = no audio, -sn = no subtitles
@@ -116,14 +127,16 @@ def extract_frames(
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
+        _cleanup_frames_dir()
         raise VideoError("ffmpeg timed out")
     except OSError as exc:
+        _cleanup_frames_dir()
         raise VideoError(f"ffmpeg execution failed: {exc}")
 
     if result.returncode != 0:
         # Clean up and report
         stderr = result.stderr.decode("utf-8", errors="replace")[-500:]
-        shutil.rmtree(frames_dir, ignore_errors=True)
+        _cleanup_frames_dir()
         raise VideoError(f"ffmpeg failed (rc={result.returncode}): {stderr}")
 
     # Count extracted frames
@@ -131,7 +144,7 @@ def extract_frames(
         f for f in os.listdir(frames_dir) if f.startswith("frame_") and f.endswith(".png")
     )
     if not frames:
-        shutil.rmtree(frames_dir, ignore_errors=True)
+        _cleanup_frames_dir()
         raise VideoError("ffmpeg produced no frames (corrupt or empty video)")
 
     return frames_dir, fps
@@ -148,17 +161,22 @@ def frames_dir_to_images(frames_dir: str) -> list[str]:
 
 def convert_video_file(video_path: str, charset: str = "ascii",
                        width: int = 80, height: int = 24,
-                       delete_source: bool = False):
-    """Extract frames + render every frame + clean up, in one call.
+                       delete_source: bool = False,
+                       frames_out_dir: str | None = None):
+    """Extract frames + render every frame, in one call.
 
     Returns a FrameSequence. When ``delete_source`` is set the temp video
-    file is removed along with the extracted frames, whatever the outcome.
-    Raises VideoError for extraction problems; other exceptions propagate.
+    file is removed, whatever the outcome. When ``frames_out_dir`` is given,
+    frames are extracted there and KEPT after return (so a video task can
+    re-render any charset/size later); otherwise a temp dir is used and
+    removed. Raises VideoError for extraction problems; other exceptions
+    propagate.
     """
     from termify.engine import FrameSequence, render_frame, scale_frame
     from PIL import Image
 
-    frames_dir, fps = extract_frames(video_path)
+    caller_owned_frames = frames_out_dir is not None
+    frames_dir, fps = extract_frames(video_path, out_dir=frames_out_dir)
     try:
         lines_per_frame = []
         for fpath in frames_dir_to_images(frames_dir):
@@ -166,7 +184,8 @@ def convert_video_file(video_path: str, charset: str = "ascii",
             scaled = scale_frame(img, width, height)
             lines_per_frame.append(render_frame(scaled, charset, width, height))
     finally:
-        shutil.rmtree(frames_dir, ignore_errors=True)
+        if not caller_owned_frames:
+            shutil.rmtree(frames_dir, ignore_errors=True)
         if delete_source and os.path.isfile(video_path):
             os.remove(video_path)
 
@@ -174,6 +193,41 @@ def convert_video_file(video_path: str, charset: str = "ascii",
     return FrameSequence(
         lines_per_frame=lines_per_frame,
         interval=interval,
+        width=width,
+        height=height,
+        charset=charset,
+    )
+
+
+def _scale_dims(charset: str, width: int, height: int) -> tuple[int, int]:
+    """Per-charset source scaling (mirrors engine.convert's rules)."""
+    if charset == "blocks":
+        return width, height * 2
+    if charset == "braille":
+        return width * 2, height * 4
+    return width, height
+
+
+def sequence_from_frames_dir(frames_dir: str, charset: str, width: int, height: int,
+                             interval: float, charset_ramp=None):
+    """Rebuild a FrameSequence from a persisted per-task frames directory.
+
+    Used for video tasks: no ffmpeg re-extraction, just PIL re-rendering, so
+    switching charset / size after upload stays fast.
+    """
+    from termify.engine import FrameSequence, render_frame, scale_frame
+    from PIL import Image
+
+    sw, sh = _scale_dims(charset, width, height)
+    lines_per_frame = []
+    for fpath in frames_dir_to_images(frames_dir):
+        img = Image.open(fpath).convert("RGB")
+        scaled = scale_frame(img, sw, sh)
+        lines_per_frame.append(render_frame(scaled, charset, sw, sh,
+                                            charset_ramp=charset_ramp))
+    return FrameSequence(
+        lines_per_frame=lines_per_frame,
+        interval=interval if interval and interval > 0 else 0.1,
         width=width,
         height=height,
         charset=charset,

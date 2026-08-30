@@ -25,7 +25,8 @@ def client(tmp_path, monkeypatch):
     (tmp_path / "uploads").mkdir(exist_ok=True)
     (tmp_path / "tmp").mkdir(exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    from app import app
+    from app import app, _RL_LOG
+    _RL_LOG.clear()  # 同 IP 连续用例不互相顶到 429
     app.config["TESTING"] = True
     return app.test_client()
 
@@ -86,7 +87,7 @@ def test_upload_video_rejects_oversize(client, tmp_path):
 
 def test_upload_video_ffmpeg_failure(client, tmp_path):
     """ffmpeg 抽帧失败应返回 422。"""
-    def mock_extract(path):
+    def mock_extract(path, max_duration=None, out_dir=None):
         from termify.video import VideoError
         raise VideoError("ffmpeg is not installed or not on PATH")
 
