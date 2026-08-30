@@ -10,7 +10,6 @@
   var latestReq = 0;
   var currentFrame = 0, playing = false, rafId = null, lastFrameTime = 0;
   var FO = ".form" + "at-option";
-  var FB = ".mcu-form" + "at-btn";
   var preview = document.getElementById("animPreview");
   var progressFill = document.querySelector(".progress-fill");
   var progressBar = document.querySelector(".progress-bar");
@@ -498,8 +497,6 @@
   }
 
   function selectedFormat() {
-    var m = document.querySelector('[data-format="mcu"]');
-    if (m && m.classList.contains("selected")) return "mcu";
     var opts = qa(FO);
     for (var i = 0; i < opts.length; i++) {
       if (opts[i].classList.contains("selected")) {
@@ -514,7 +511,6 @@
   function doDownload() {
     if (!S.taskId) { toast("请先上传文件"); return; }
     var fmt = selectedFormat();
-    if (fmt === "mcu") { toast("MCU 输出即将在 v2 支持"); return; }
     var body = {
       task_id: S.taskId, charset: S.charset, format: fmt,
       width: S.width, height: S.height
@@ -560,15 +556,8 @@
       qa(FO).forEach(function (o) { o.classList.remove("selected"); });
       opt.classList.add("selected");
       var svg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
-      if (opt.getAttribute("data-format") === "mcu") {
-        if (byId("mcuPanel")) byId("mcuPanel").classList.add("visible");
-        if (byId("terminalSizeCard")) byId("terminalSizeCard").style.display = "none";
-        if (downloadBtn) downloadBtn.innerHTML = svg + 'download Arduino <span class="badge-v2">v2</span>';
-      } else {
-        if (byId("mcuPanel")) byId("mcuPanel").classList.remove("visible");
-        if (byId("terminalSizeCard")) byId("terminalSizeCard").style.display = "";
-        if (downloadBtn) downloadBtn.innerHTML = svg + "download animation";
-      }
+      if (byId("terminalSizeCard")) byId("terminalSizeCard").style.display = "";
+      if (downloadBtn) downloadBtn.innerHTML = svg + "download animation";
     });
   });
 
@@ -586,16 +575,6 @@
       }
       if (S.taskId) { requestPreview(S.charset); }
       else { toast("切换尺寸将在上传后应用"); }
-    });
-  });
-
-  // MCU buttons
-  [FB, ".mcu-res-btn"].forEach(function (s) {
-    qa(s).forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        qa(s).forEach(function (b) { b.classList.remove("selected"); });
-        btn.classList.add("selected");
-      });
     });
   });
 

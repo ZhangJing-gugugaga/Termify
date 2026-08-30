@@ -272,79 +272,6 @@
                                 </div>
                                 <div class="format-icon">.html</div>
                             </div>
-                            <div class="format-option" data-format="mcu">
-                                <div class="format-radio"></div>
-                                <div class="format-label">
-                                    <div class="format-label-name">嵌入式设备 <span class="badge-v2">v2 即将支持</span></div>
-                                    <div class="format-label-desc">Arduino / ESP32 / 单片机液晶屏</div>
-                                </div>
-                                <div class="format-icon" style="color: var(--amber); border-color: rgba(255,176,0,0.3);">.ino</div>
-                            </div>
-                        </div>
-
-                        <!-- MCU sub-panel (shown when embedded device is selected) -->
-                        <div class="mcu-panel" id="mcuPanel">
-                            <div class="mcu-chip-badge">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
-                                MCU Output
-                            </div>
-
-                            <div>
-                                <div class="mcu-label">屏幕分辨率</div>
-                                <div class="mcu-resolution-grid" style="margin-top: var(--space-2);">
-                                    <button class="mcu-res-btn selected" data-res="128x64">
-                                        <span class="res-label">128 × 64</span>
-                                        <span class="res-device">SSD1306 OLED</span>
-                                    </button>
-                                    <button class="mcu-res-btn" data-res="160x128">
-                                        <span class="res-label">160 × 128</span>
-                                        <span class="res-device">ST7735 TFT</span>
-                                    </button>
-                                    <button class="mcu-res-btn" data-res="128x128">
-                                        <span class="res-label">128 × 128</span>
-                                        <span class="res-device">GC9106 TFT</span>
-                                    </button>
-                                    <button class="mcu-res-btn" data-res="240x240">
-                                        <span class="res-label">240 × 240</span>
-                                        <span class="res-device">ST7789 TFT</span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div>
-                                <div class="mcu-label">自定义分辨率</div>
-                                <div class="mcu-custom-row" style="margin-top: var(--space-2);">
-                                    <input class="mcu-custom-input" type="text" placeholder="宽" style="max-width: 70px;">
-                                    <span style="color: var(--text-dim);">×</span>
-                                    <input class="mcu-custom-input" type="text" placeholder="高" style="max-width: 70px;">
-                                    <span style="color: var(--text-dim); font-size: 11px; font-family: var(--font-mono);">px</span>
-                                </div>
-                            </div>
-
-                            <div>
-                                <div class="mcu-label">输出格式</div>
-                                <div class="mcu-format-toggle" style="margin-top: var(--space-2);">
-                                    <button class="mcu-format-btn selected" data-mcu-fmt="ino">Arduino .ino</button>
-                                    <button class="mcu-format-btn" data-mcu-fmt="header">C 头文件 .h</button>
-                                </div>
-                            </div>
-
-                            <div>
-                                <div class="mcu-label">代码预览</div>
-                                <div class="mcu-code-preview" style="margin-top: var(--space-2);"><span class="comment">// frame_001 — 128×64 bitmap</span>
-<span class="kw">const</span> <span class="type">uint8_t</span> frame_001[] <span class="kw">PROGMEM</span> = {
-  <span class="type">0xFF</span>, <span class="type">0xFF</span>, <span class="type">0x80</span>, <span class="type">0x01</span>, <span class="type">0x7F</span>, <span class="type">0xFE</span>,
-  <span class="type">0xC0</span>, <span class="type">0x03</span>, <span class="type">0x3F</span>, <span class="type">0xFC</span>, <span class="type">0x1F</span>, <span class="type">0xF8</span>,
-  <span class="comment">/* ... 1024 bytes total ... */</span>
-};
-
-<span class="kw">void</span> <span class="type">loop</span>() {
-  display.clearDisplay();
-  display.drawBitmap(<span class="type">0</span>, <span class="type">0</span>,
-    frame_001, <span class="type">128</span>, <span class="type">64</span>, <span class="type">1</span>);
-  display.display();
-}</div>
-                            </div>
                         </div>
                     </div>
 
@@ -389,7 +316,7 @@
                 <div class="feature-card">
                     <div class="feature-icon-box">⚡</div>
                     <h3 class="feature-title">即下即玩</h3>
-                    <p class="feature-desc">Python脚本、HTML页面、Arduino代码——零依赖，双击就能播放。甚至能直接烧进单片机的OLED屏幕里。</p>
+                    <p class="feature-desc">Python脚本、HTML页面——零依赖，双击就能播放。发微信、开浏览器、进终端，随时随地播放你的动画。</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon-box">∞</div>
@@ -508,39 +435,15 @@
             });
         });
 
-        // ═══════════ Format option selection (with MCU panel toggle) ═══════════
-        const mcuPanel = document.getElementById('mcuPanel');
+        // ═══════════ Format option selection ═══════════
         const terminalSizeCard = document.getElementById('terminalSizeCard');
         const downloadBtn = document.querySelector('.download-btn');
         document.querySelectorAll('.format-option').forEach(opt => {
             opt.addEventListener('click', () => {
                 document.querySelectorAll('.format-option').forEach(o => o.classList.remove('selected'));
                 opt.classList.add('selected');
-                if (opt.dataset.format === 'mcu') {
-                    mcuPanel.classList.add('visible');
-                    terminalSizeCard.style.display = 'none';
-                    downloadBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>下载 Arduino 代码';
-                } else {
-                    mcuPanel.classList.remove('visible');
-                    terminalSizeCard.style.display = '';
-                    downloadBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>下载动画文件';
-                }
-            });
-        });
-
-        // ═══════════ MCU resolution button selection ═══════════
-        document.querySelectorAll('.mcu-res-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.mcu-res-btn').forEach(b => b.classList.remove('selected'));
-                btn.classList.add('selected');
-            });
-        });
-
-        // ═══════════ MCU format toggle ═══════════
-        document.querySelectorAll('.mcu-format-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.mcu-format-btn').forEach(b => b.classList.remove('selected'));
-                btn.classList.add('selected');
+                terminalSizeCard.style.display = '';
+                downloadBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>下载动画文件';
             });
         });
 
