@@ -239,6 +239,7 @@
     if (n < 2 || S.interval <= 0) { rafId = requestAnimationFrame(rafLoop); return; }
     var totalSec = n * S.interval;
     var cycle = ((ts - playStartTs) / 1000) % totalSec;
+    if (cycle < 0) cycle += totalSec;  // 锚点瞬态防御
     updateProgressClock(cycle);
     var idx = Math.floor(cycle / S.interval) % n;
     if (idx !== currentFrame) renderFrame(idx);
@@ -340,10 +341,13 @@
 
   /* ── Request preview from backend ── */
   function requestPreview(charset, opts) {
-    // 方案B：本地视频 → JS 渲染，不经服务器，切换瞬时完成
+    // 方案B：本地视频 → JS 分块异步渲染，不经服务器，切换瞬时完成
     if (S.localVideo) {
-      var localFrames = localRenderFrames(charset, S.width, S.height);
-      if (localFrames) {
+      var myReq = ++latestReq;
+      if (animTerminal) animTerminal.classList.add("rendering");
+      localRenderFrames(charset, S.width, S.height, myReq).then(function (localFrames) {
+        if (myReq !== latestReq || !localFrames) return;  // 竞态或空帧
+        if (animTerminal) animTerminal.classList.remove("rendering");
         S.charset = charset;
         applyPreview({
           frames: localFrames,
@@ -351,8 +355,8 @@
           frame_count: localFrames.length,
           charset: charset
         });
-        return;
-      }
+      });
+      return;
     }
     if (!S.taskId) {
       if (!(opts && opts.silent)) toast("请先上传文件");
@@ -527,7 +531,9 @@
         }
       }
       video.onended = finish;
-      video.playbackRate = 16;
+      // rVFC 按显示器刷新率(~60Hz)呈现帧：要捕满 total 帧，
+      // 播放速率需让呈现速率 ≥ 采样率 —— 按 时长×55/目标帧数 动态设定（55 留余量）
+      video.playbackRate = Math.max(1, Math.min(16, (video.duration || 1) * 55 / total));
       var p = video.play();
       if (p && p.catch) p.catch(function (err) { clearTimeout(watchdog); reject(err); });
       if (typeof video.requestVideoFrameCallback === "function") {
@@ -820,7 +826,7 @@
     return lines;
   }
 
-  function localRenderFrames(charset, width, height) {
+  async function localRenderFrames(charset, width, height, myReq) {
     var lv = S.localVideo;
     if (!lv || !lv.bitmaps.length) return null;
     var dims;
@@ -846,6 +852,11 @@
         else if (charset === "geometric") frames.push(jsRenderGeometric(lums, dims.w, dims.h, S.fg, S.bg));
         else if (charset === "braille") frames.push(jsRenderBraille(lums, dims.w, dims.h, width, height, S.fg, S.bg));
         else frames.push(jsRenderRamp(lums, dims.w, dims.h, "@#%*+=-:. ", S.fg, S.bg));
+      }
+      // 分块让出主线程：大尺寸长视频渲染不冻结 UI（渲染中徽标可见）
+      if (i % 30 === 29) {
+        if (myReq !== undefined && myReq !== latestReq) return null;  // 竞态：已有更新的请求
+        await new Promise(function (r) { setTimeout(r, 0); });
       }
     }
     return frames;
@@ -1050,7 +1061,9 @@
         window.location.href = d.download_url;
       }).catch(function (e) { toast("download failed: " + e); });
     }
-    if (!S.taskId && S.localVideo) {
+    var needsUpload = S.localVideo &&
+      (!S.taskId || String(S.taskId).indexOf("local:") === 0);
+    if (needsUpload) {
       // 懒上传：本地视频首次下载/分享时才把源文件交给服务器
       showModal("上传源文件到服务器", "首次下载需要源视频，正在上传…", false, true);
       setModalProgress(0);
@@ -1520,9 +1533,11 @@
   /* ── Gallery share: show button for tasks that have a source ── */
   var _origSelectFile = selectFile;
   selectFile = function (idx) {
-    _origSelectFile(idx);
     var cur = S.fileList[idx];
+    // 必须在 _origSelectFile（内部会触发 requestPreview）之前设置，
+    // 否则本地分支首切永远走服务端路径 → "Task not found"
     S.localVideo = (cur && cur.localVideo) || null;
+    _origSelectFile(idx);
     var src = (cur && cur.sourceFile) || S.sourceFile;
     if (shareBtn) shareBtn.style.display = src ? "flex" : "none";
   };
