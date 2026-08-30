@@ -76,7 +76,7 @@ def test_fetch_url_success(client, tmp_path):
     mock_resp.__enter__ = MagicMock(return_value=mock_resp)
     mock_resp.__exit__ = MagicMock(return_value=False)
 
-    with patch("urllib.request.urlopen", return_value=mock_resp):
+    with patch("urllib.request.OpenerDirector.open", return_value=mock_resp):
         resp = client.post("/api/fetch-url",
                            data=json.dumps({"url": "https://example.com/cat.png"}),
                            content_type="application/json")
@@ -94,9 +94,23 @@ def test_fetch_url_wrong_content_type(client):
     mock_resp.__enter__ = MagicMock(return_value=mock_resp)
     mock_resp.__exit__ = MagicMock(return_value=False)
 
-    with patch("urllib.request.urlopen", return_value=mock_resp):
+    with patch("urllib.request.OpenerDirector.open", return_value=mock_resp):
         resp = client.post("/api/fetch-url",
                            data=json.dumps({"url": "https://example.com/page"}),
                            content_type="application/json")
 
     assert resp.status_code == 400
+
+
+def test_redirect_to_internal_blocked():
+    """重定向到内网/链路本机地址必须在 hop 校验时被拒（SSRF 纵深防御）。"""
+    from termify.urlfetch import URLFetchError, _ValidatedRedirectHandler
+
+    handler = _ValidatedRedirectHandler()
+    for target in (
+        "http://169.254.169.254/latest/meta-data/",  # cloud metadata
+        "http://127.0.0.1:5000/admin",
+        "http://10.0.0.5/internal",
+    ):
+        with pytest.raises(URLFetchError):
+            handler.redirect_request(None, None, 302, "Found", {}, target)

@@ -29,8 +29,7 @@ def _gen_py(charset: str, width: int, height: int, tmp_path) -> str:
 def _run_py(script: str, tmp_path, timeout: float = 2.0) -> tuple:
     """Write script to temp file, run, kill after timeout, return (rc, stdout, stderr)."""
     path = tmp_path / "_t1_script.py"
-    with open(str(path), "w", encoding="utf-8") as f:
-        f.write(script)
+    path.write_text(script, encoding="utf-8")
     proc = subprocess.Popen(
         [PY, str(path)],
         stdout=subprocess.PIPE,

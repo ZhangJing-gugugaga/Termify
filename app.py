@@ -15,6 +15,7 @@ import re
 import threading
 import time
 import uuid
+from pathlib import Path
 
 from flask import (Flask, abort, jsonify, make_response, redirect,
                    render_template, request, send_file, url_for)
@@ -126,6 +127,23 @@ def _parse_rgb(value):
         return None
     return (r, g, b)
 
+
+
+def _tmp_out_path(filename: str, root: str = "tmp") -> str:
+    """Resolve a generated-artifact path under ``root`` and refuse traversal.
+
+    Generated filenames combine task/gallery IDs with charset names that are
+    whitelist-checked upstream; the checks below enforce that invariant at
+    the file boundary instead of relying on it: no path separators, no
+    ``..`` segments, and the resolved path must stay inside ``root``.
+    """
+    if ".." in filename or os.sep in filename or (os.altsep or "/") in filename:
+        raise ValueError(f"generated filename contains path separators: {filename!r}")
+    base = os.path.abspath(root)
+    resolved = os.path.abspath(os.path.join(base, filename))
+    if os.path.dirname(resolved) != base or not resolved.startswith(base + os.sep):
+        raise ValueError(f"generated filename escapes {root}: {filename!r}")
+    return resolved
 
 
 def _original_size(path: str) -> dict:
@@ -498,9 +516,8 @@ def generate():
 
     ext = "py" if fmt == "python" else "html"
     filename = f"{task_id}_{charset}.{ext}"
-    out_path = os.path.join("tmp", filename)
-    with open(out_path, "w", encoding="utf-8") as fh:
-        fh.write(content)
+    out_path = _tmp_out_path(filename)
+    Path(out_path).write_text(content, encoding="utf-8")
 
     size_bytes = len(content.encode("utf-8"))
     if size_bytes >= 1024:
@@ -942,9 +959,8 @@ def gallery_download(work_id):
     filename = f"gallery_{work_id}_{charset}.{ext}"
     tmp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tmp")
     os.makedirs(tmp_dir, exist_ok=True)
-    out_path = os.path.join(tmp_dir, filename)
-    with open(out_path, "w", encoding="utf-8") as fh:
-        fh.write(content)
+    out_path = _tmp_out_path(filename, root=tmp_dir)
+    Path(out_path).write_text(content, encoding="utf-8")
 
     # IP-based download dedup: count once per IP per 24h per work
     ip = _client_ip()

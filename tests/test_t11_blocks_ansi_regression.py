@@ -34,15 +34,22 @@ CAT_GIF = os.environ.get("TERMIFY_TEST_GIF", "")
 # ── 辅助 ──────────────────────────────────────────────────────
 
 
-def _exec_player(seq):
-    """生成 .py 播放器源码并 exec 到独立命名空间，返回该命名空间。
+def _exec_player(seq, tmp_path):
+    """生成 .py 播放器源码，经 importlib 加载为独立模块，返回其命名空间。
 
-    设置 __name__ != '__main__' 防止 play() 被自动调用。
+    写入 tmp_path 后用 importlib 加载（spec __name__ != '__main__'，
+    防止 play() 被自动调用）；vars(module) 支持与旧命名空间一致的
+    ns["..."] 访问方式。
     """
+    import importlib.util
+
     src = render(seq, "python")
-    ns = {"__name__": "__test__"}
-    exec(compile(src, "<generated_player>", "exec"), ns)
-    return ns
+    p = tmp_path / "_t11_player.py"
+    p.write_text(src, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("_t11_player", p)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return vars(mod)
 
 
 def _make_blocks_seq(tmp_path, width=8, height=4, img=None):
@@ -76,7 +83,7 @@ def test_blocks_bg_retention_roundtrip(tmp_path):
     _encode_ansi_line 回写时仍含原始的 fg 和 bg TrueColor 序列。
     """
     seq = _make_colorful_blocks_seq(tmp_path, width=4, height=1)
-    ns = _exec_player(seq)
+    ns = _exec_player(seq, tmp_path)
     parse_line = ns["_parse_ansi_line"]
     encode_line = ns["_encode_ansi_line"]
 
@@ -108,7 +115,7 @@ def test_count_printable_strips_sgr(tmp_path):
     （SGR 被正确剥离，不被当可打印字符）。
     """
     seq = _make_colorful_blocks_seq(tmp_path, width=8, height=1)
-    ns = _exec_player(seq)
+    ns = _exec_player(seq, tmp_path)
     count_printable = ns["_count_printable"]
 
     line = seq.lines_per_frame[0][0]
@@ -134,7 +141,7 @@ def test_degraded_mode_no_escape_residue(tmp_path):
     无散落的 ;/m/数字（原始 bug 症状）。
     """
     seq = _make_blocks_seq(tmp_path, width=8, height=4)
-    ns = _exec_player(seq)
+    ns = _exec_player(seq, tmp_path)
 
     # 强制降级模式
     ns["_ANSI_OK"] = False
@@ -206,7 +213,7 @@ def test_enable_windows_ansi_non_windows_returns_true(tmp_path):
     不进入任何 Windows 控制台操作分支。
     """
     seq = _make_blocks_seq(tmp_path, width=4, height=4)
-    ns = _exec_player(seq)
+    ns = _exec_player(seq, tmp_path)
     enable_windows_ansi = ns["_enable_windows_ansi"]
 
     # 模拟非 Windows 环境

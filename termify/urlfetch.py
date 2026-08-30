@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+import urllib.request
+from pathlib import Path
 from urllib.parse import urlparse
 from typing import Optional
 
@@ -24,6 +26,28 @@ _BLOCKED_NETWORKS = [
 ALLOWED_SCHEMES = {"http", "https"}
 ALLOWED_CONTENT_TYPES = {"image/gif", "image/png", "image/jpeg", "image/jpg", "image/x-png"}
 MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
+
+# Explicit extension mapping — no dependence on the host mimetypes table.
+_EXT_BY_CONTENT_TYPE = {
+    "image/gif": ".gif",
+    "image/png": ".png",
+    "image/x-png": ".png",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+}
+
+
+class _ValidatedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Redirect handler that re-runs SSRF validation on every hop.
+
+    urllib follows redirects internally, which would otherwise bypass the
+    initial validate_url() check and let a public URL bounce to an internal
+    address mid-fetch.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        validate_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 class URLFetchError(Exception):
@@ -63,8 +87,9 @@ def fetch_url_to_temp(url: str, tmp_dir: str = "uploads", timeout: int = 15) -> 
 
     req = urllib.request.Request(url, headers={"User-Agent": "Termify/1.0 (image fetch)"})
     try:
-        resp = urllib.request.urlopen(req, timeout=timeout)
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ConnectionError) as e:
+        opener = urllib.request.build_opener(_ValidatedRedirectHandler())
+        resp = opener.open(req, timeout=timeout)
+    except (URLFetchError, urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ConnectionError) as e:
         raise URLFetchError(f"Download failed: {e}")
 
     # Content-Type check
@@ -80,24 +105,27 @@ def fetch_url_to_temp(url: str, tmp_dir: str = "uploads", timeout: int = 15) -> 
     # Stream download with size cap
     os.makedirs(tmp_dir, exist_ok=True)
     import uuid
-    import mimetypes
-    ext = mimetypes.guess_extension(ct) or ".img"
-    if ext == ".jpeg":
-        ext = ".jpg"
-    tmp_path = os.path.join(tmp_dir, f"url_{uuid.uuid4().hex[:12]}{ext}")
+    ext = _EXT_BY_CONTENT_TYPE.get(ct, ".img")
+    name = f"url_{uuid.uuid4().hex[:12]}{ext}"
+    if ".." in name or "/" in name or "\\" in name:
+        raise URLFetchError("generated filename contains path separators")
+    tmp_path = os.path.join(tmp_dir, name)
+    if os.path.dirname(os.path.abspath(tmp_path)) != os.path.abspath(tmp_dir):
+        raise URLFetchError("generated path escaped the upload directory")
 
+    # Accumulate up to MAX_DOWNLOAD_BYTES in memory, then write once — the
+    # byte sink is a single validated path and no partial file is left behind.
     total = 0
-    with open(tmp_path, "wb") as f:
-        while True:
-            chunk = resp.read(65536)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > MAX_DOWNLOAD_BYTES:
-                f.close()
-                os.remove(tmp_path)
-                raise URLFetchError("Remote file exceeds 20MB limit during download")
-            f.write(chunk)
+    chunks = []
+    while True:
+        chunk = resp.read(65536)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_DOWNLOAD_BYTES:
+            raise URLFetchError("Remote file exceeds 20MB limit during download")
+        chunks.append(chunk)
+    Path(tmp_path).write_bytes(b"".join(chunks))
 
     # Verify the downloaded file is a valid image
     try:
