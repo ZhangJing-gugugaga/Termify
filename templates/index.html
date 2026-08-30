@@ -278,7 +278,7 @@
                             <div class="progress-bar">
                                 <div class="progress-fill"></div>
                             </div>
-                            <span class="frame-counter">8 / 24</span>
+                            <span class="frame-counter">0.0s / 2.4s</span>
                         </div>
                     </div>
                 </div>
@@ -598,18 +598,20 @@
             });
         });
 
-        // ═══════════ Progress bar animation ═══════════
-        let progress = 35;
+        // ═══════════ Progress bar animation（秒制匀速假演示） ═══════════
         const progressFill = document.querySelector('.progress-fill');
         const frameCounter = document.querySelector('.frame-counter');
-
-        setInterval(() => {
-            progress += 0.5;
-            if (progress > 100) progress = 0;
-            progressFill.style.width = progress + '%';
-            const frame = Math.floor(progress / 100 * 24) + 1;
-            frameCounter.textContent = frame + ' / 24';
-        }, 100);
+        const DEMO_TOTAL = 2.4;  // 秒
+        let demoStart = performance.now();
+        function demoTick(ts) {
+            if (progressFill && frameCounter && !window.__termifyHasTask) {
+                const cycle = ((ts - demoStart) / 1000) % DEMO_TOTAL;
+                progressFill.style.width = (cycle / DEMO_TOTAL * 100) + '%';
+                frameCounter.textContent = cycle.toFixed(1) + 's / ' + DEMO_TOTAL.toFixed(1) + 's';
+            }
+            requestAnimationFrame(demoTick);
+        }
+        requestAnimationFrame(demoTick);
     </script>
     <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
 
@@ -625,6 +627,30 @@
                 <div class="termify-modal-progress-fill" id="termifyModalProgress"></div>
             </div>
             <div class="termify-modal-hint">关闭弹窗不会取消服务器端的处理</div>
+        </div>
+    </div>
+
+    <!-- 自定义字符集编辑器 -->
+    <div class="termify-modal" id="customCharsetModal" hidden>
+        <div class="termify-modal-backdrop" id="customCharsetBackdrop"></div>
+        <div class="termify-modal-box custom-charset-box">
+            <button class="termify-modal-close" id="customCharsetClose" title="关闭">×</button>
+            <div class="termify-modal-title">自定义字符集编辑器</div>
+            <div class="custom-charset-hint">
+                用你自己的字符表现明暗：<b>左边 = 深（暗部）</b>，<b>右边 = 浅（亮部）</b>。
+                点击下方字符库追加，或直接输入。<span class="warn">避免 emoji 等宽字符。</span>
+            </div>
+            <input type="text" id="ccRampInput" class="custom-ramp-input" maxlength="128"
+                   placeholder="如: █▓▒░  或  @%#*+=-:." autocomplete="off">
+            <div class="cc-preview-row">
+                <span class="cc-preview-label">实时预览</span>
+                <div class="cc-preview-strip" id="ccPreviewStrip"></div>
+            </div>
+            <div class="cc-palette" id="ccPalette"></div>
+            <div class="cc-actions">
+                <button class="tweak-opt" id="ccApplyBtn">应用并预览</button>
+                <button class="tweak-opt" id="ccCancelBtn">取消</button>
+            </div>
         </div>
     </div>
 </body>

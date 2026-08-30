@@ -1243,6 +1243,65 @@
             border-color: var(--green-dim);
         }
 
+        /* 自定义字符集编辑弹窗 */
+        .custom-charset-box {
+            min-width: 380px; max-width: 460px;
+            text-align: left;
+        }
+        .custom-charset-hint {
+            font-family: var(--font-mono); font-size: 11px;
+            color: var(--text-secondary); line-height: 1.7;
+            margin-bottom: var(--space-3);
+        }
+        .custom-charset-hint b { color: var(--green); }
+        .custom-charset-hint .warn { color: var(--amber); }
+        .cc-preview-row {
+            margin: var(--space-3) 0;
+        }
+        .cc-preview-label {
+            font-family: var(--font-mono); font-size: 10px;
+            color: var(--text-dim); letter-spacing: 0.5px;
+        }
+        .cc-preview-strip {
+            margin-top: 4px; padding: 6px 10px;
+            background: var(--bg-base);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono); font-size: 16px;
+            color: var(--green);
+            letter-spacing: 2px; word-break: break-all;
+            min-height: 20px;
+        }
+        .cc-palette {
+            display: flex; flex-direction: column; gap: 6px;
+            max-height: 220px; overflow-y: auto;
+            margin-bottom: var(--space-3);
+        }
+        .cc-palette-group {
+            display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+        }
+        .cc-palette-name {
+            font-family: var(--font-mono); font-size: 10px;
+            color: var(--text-dim);
+            min-width: 56px;
+        }
+        .cc-chip {
+            min-width: 26px; height: 26px; padding: 0 4px;
+            border: 1px solid var(--border-dim);
+            border-radius: 4px;
+            background: var(--bg-surface);
+            color: var(--text-primary);
+            font-family: var(--font-mono); font-size: 13px;
+            cursor: pointer;
+        }
+        .cc-chip:hover {
+            border-color: var(--green-dim);
+            color: var(--green);
+        }
+        .cc-actions {
+            display: flex; gap: var(--space-2); justify-content: flex-end;
+        }
+
         .tweak-hint {
             font-family: var(--font-mono);
             font-size: 9px;

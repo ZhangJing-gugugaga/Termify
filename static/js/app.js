@@ -192,6 +192,15 @@
       terminalTitle.textContent = "animation preview - " + S.charset + " style";
   }
 
+  /* ── Progress clock（rAF 匀速秒制，像视频播放器） ── */
+  function fmtSecs(v) { return v.toFixed(1) + "s"; }
+  function updateProgressClock(cycleSec) {
+    var n = S.frames.length;
+    var totalSec = n * S.interval;
+    if (progressFill) progressFill.style.width = (totalSec > 0 ? (cycleSec / totalSec) * 100 : 0) + "%";
+    if (frameCounter) frameCounter.textContent = fmtSecs(cycleSec) + " / " + fmtSecs(totalSec);
+  }
+
   /* ── Render a single frame into the preview terminal ── */
   function renderFrame(idx) {
     if (!preview || !S.frames.length) return;
@@ -218,27 +227,21 @@
     }
 
     currentFrame = idx;
-    var n = S.frames.length;
-    var totalSec = n * S.interval;
-    var curSec = (idx + 1) * S.interval;
-    if (progressFill) progressFill.style.width = (totalSec > 0 ? (curSec / totalSec) * 100 : 0) + "%";
-    if (frameCounter) frameCounter.textContent = curSec.toFixed(1) + "s / " + totalSec.toFixed(1) + "s";
+    if (!playing) updateProgressClock((idx + 1) * S.interval);
     setTitleMeta();
   }
 
-  function tick() {
-    if (!S.frames.length) return;
-    renderFrame((currentFrame + 1) % S.frames.length);
-  }
+  var playStartTs = 0;  // performance.now() 锚点：进度条按真实时间匀速推进
 
   function rafLoop(ts) {
     if (!playing) return;
-    if (!lastFrameTime) {
-      lastFrameTime = ts;                       // first frame: don't tick
-    } else if (ts - lastFrameTime >= S.interval * 1000) {
-      lastFrameTime = ts;
-      tick();
-    }
+    var n = S.frames.length;
+    if (n < 2 || S.interval <= 0) { rafId = requestAnimationFrame(rafLoop); return; }
+    var totalSec = n * S.interval;
+    var cycle = ((ts - playStartTs) / 1000) % totalSec;
+    updateProgressClock(cycle);
+    var idx = Math.floor(cycle / S.interval) % n;
+    if (idx !== currentFrame) renderFrame(idx);
     rafId = requestAnimationFrame(rafLoop);
   }
 
@@ -247,7 +250,7 @@
     playing = true;
     if (playBtn) playBtn.classList.add("active");
     if (pauseBtn) pauseBtn.classList.remove("active");
-    lastFrameTime = 0;
+    playStartTs = performance.now() - currentFrame * S.interval * 1000;
     rafId = requestAnimationFrame(rafLoop);
   }
 
@@ -265,6 +268,7 @@
     S.totalFrames = d.frame_count || S.frames.length;
     S.htmlFrames = [];
     S.canvasFrames = [];
+    window.__termifyHasTask = S.frames.length > 0;
 
     // Pre-compute HTML frames for all styles
     for (var i = 0; i < S.frames.length; i++) {
@@ -679,7 +683,11 @@
       card.classList.add("selected");
       var s = card.getAttribute("data-style");
       if (!S.taskId) showStyleDemo(s);
-      requestPreview(s, { silent: !S.taskId });
+      if (s === "custom" && !S.ramp) {
+        openCustomCharsetModal();  // 没填过字符 → 打开引导编辑器
+      } else {
+        requestPreview(s, { silent: !S.taskId });
+      }
       var previewEl = document.getElementById("preview");
       if (previewEl) previewEl.scrollIntoView({ behavior: "instant", block: "start" });
     });
@@ -919,9 +927,95 @@
   /* ── T20: custom charset ramp ── */
   var rampInput = byId("customRampInput");
   var rampApply = byId("customRampApply");
+
+  // 自定义字符集编辑弹窗（引导式 + 预设字符库）
+  var PALETTE_GROUPS = [
+    { name: "块元素", chars: "█▓▒░▄▀▌▐■□▪▫" },
+    { name: "盲文点", chars: "⠁⠂⠄⡀⠈⠐⠠⢀⠋⠛⣶⣿" },
+    { name: "几何", chars: "●○◉◌◆◇▲△▼▽◭◮" },
+    { name: "线条", chars: "─━│┃┌┐└┘├┤┬┴┼═║" },
+    { name: "星与花", chars: "★☆✦✧✱✲✳✴✵✶❋❀" },
+    { name: "点与圈", chars: "·•∘○◌⊙⊚⊛" },
+    { name: "箭头", chars: "←↑→↓↖↗↘↙⇐⇒" },
+    { name: "密集符号", chars: "@#%&$8BWM0O" },
+    { name: "稀疏符号", chars: "=+~-:;·^\"',." },
+  ];
+  var ccModal = byId("customCharsetModal");
+  var ccInput = byId("ccRampInput");
+  var ccStrip = byId("ccPreviewStrip");
+  var ccPalette = byId("ccPalette");
+
+  function refreshCcPreview() {
+    if (!ccStrip) return;
+    var ramp = (ccInput.value || "").replace(/\s+/g, "");
+    var dedup = [];
+    var seen = {};
+    for (var i = 0; i < ramp.length; i++) {
+      if (!seen[ramp[i]]) { seen[ramp[i]] = 1; dedup.push(ramp[i]); }
+    }
+    ccStrip.textContent = dedup.join(" ") || "（空）";
+  }
+
+  function openCustomCharsetModal() {
+    if (!ccModal) return;
+    ccInput.value = S.ramp || rampInput.value || "@%#*+=-:.";
+    refreshCcPreview();
+    modal.hidden = true;
+    ccModal.hidden = false;
+    ccInput.focus();
+  }
+  function closeCustomCharsetModal() {
+    if (ccModal) ccModal.hidden = true;
+  }
+  function applyCustomCharset() {
+    var v = (ccInput.value || "").trim();
+    if (!v) { toast("字符梯不能为空"); return; }
+    S.ramp = v;
+    if (rampInput) rampInput.value = v;
+    closeCustomCharsetModal();
+    if (S.taskId) requestPreview("custom");
+    else showStyleDemo("custom");
+  }
+  (function buildCcPalette() {
+    if (!ccPalette) return;
+    PALETTE_GROUPS.forEach(function (group) {
+      var row = document.createElement("div");
+      row.className = "cc-palette-group";
+      var label = document.createElement("span");
+      label.className = "cc-palette-name";
+      label.textContent = group.name;
+      row.appendChild(label);
+      Array.prototype.forEach.call(group.chars, function (ch) {
+        var chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "cc-chip";
+        chip.textContent = ch;
+        chip.addEventListener("click", function () {
+          if (ccInput.value.indexOf(ch) >= 0) return;  // 已在梯中，去重
+          ccInput.value += ch;
+          refreshCcPreview();
+        });
+        row.appendChild(chip);
+      });
+      ccPalette.appendChild(row);
+    });
+  })();
+  if (ccInput) ccInput.addEventListener("input", refreshCcPreview);
+  var ccApplyBtn = byId("ccApplyBtn");
+  var ccCancelBtn = byId("ccCancelBtn");
+  var ccClose = byId("customCharsetClose");
+  var ccBackdrop = byId("customCharsetBackdrop");
+  if (ccApplyBtn) ccApplyBtn.addEventListener("click", applyCustomCharset);
+  if (ccCancelBtn) ccCancelBtn.addEventListener("click", closeCustomCharsetModal);
+  if (ccClose) ccClose.addEventListener("click", closeCustomCharsetModal);
+  if (ccBackdrop) ccBackdrop.addEventListener("click", closeCustomCharsetModal);
+  if (ccInput) ccInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") applyCustomCharset();
+  });
+
   function applyRamp() {
     var v = rampInput ? rampInput.value.trim() : "";
-    if (!v) { toast("请先输入自定义字符（密→疏排列）"); return; }
+    if (!v) { openCustomCharsetModal(); return; }  // 没填过 → 打开引导弹窗
     S.ramp = v;
     var customCard = document.querySelector('[data-style="custom"]');
     if (customCard) customCard.click();
