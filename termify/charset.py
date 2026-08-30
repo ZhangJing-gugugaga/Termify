@@ -5,6 +5,8 @@ Authoritative spec: PRD.md §5.5 (CHARSETS) and §5.3 (mapping pipeline).
 
 from __future__ import annotations
 
+import re
+
 CHARSETS: dict[str, dict] = {
     "ascii": {
         "name": "经典ASCII灰度",
@@ -36,7 +38,57 @@ CHARSETS: dict[str, dict] = {
         "color": False,
         "description": "纯黑白，像老式报纸印刷",
     },
+    "shades": {
+        "name": "明暗渐变块",
+        "chars": "█▓▒░ ",  # dense -> sparse, block-element shading ramp
+        "color": False,
+        "description": "块状明暗字符的平滑灰度渐变，比标点更有质感",
+    },
+    "custom": {
+        "name": "自定义字符集",
+        "chars": None,  # per-request ramp, see charset_ramp in render_frame()
+        "color": False,
+        "description": "用你自己的字符序列做灰度映射，密->疏排列",
+    },
 }
+
+# Bounds for user-supplied custom ramps (see sanitize_ramp).
+CUSTOM_RAMP_MAX_LEN = 64
+
+
+import re
+
+# ANSI CSI sequences (e.g. ESC[31m) must die as a whole — stripping only the
+# ESC byte would leave "[31m" as bogus ramp characters.
+_ANSI_CSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def sanitize_ramp(ramp: str) -> str:
+    """Clean a user-supplied character ramp for the ``custom`` charset.
+
+    Removes ANSI escape sequences and control characters (newlines,
+    zero-width junk), collapses duplicate characters keeping first-occurrence
+    order (a ramp level repeated is meaningless and only wastes resolution),
+    and enforces a length cap. Raises ValueError when nothing usable remains.
+    """
+    if not isinstance(ramp, str):
+        raise ValueError("custom charset ramp must be a string")
+    ramp = _ANSI_CSI_RE.sub("", ramp)
+    seen = set()
+    out = []
+    for ch in ramp:
+        code = ord(ch)
+        if code < 0x20 or code == 0x7F or 0x200B <= code <= 0x200F:
+            continue
+        if ch in seen:
+            continue
+        seen.add(ch)
+        out.append(ch)
+        if len(out) >= CUSTOM_RAMP_MAX_LEN:
+            break
+    if not out:
+        raise ValueError("custom charset ramp is empty after cleaning")
+    return "".join(out)
 
 
 def _luminance(r: int, g: int, b: int) -> int:
@@ -162,8 +214,12 @@ def _emit(char: str, fg, bg) -> str:
     return "".join(parts)
 
 
-def _render_ascii(img, width, height, fg=None, bg=None):
-    chars = CHARSETS["ascii"]["chars"]
+def _render_ramp(img, width, height, fg, bg, chars):
+    """Shared grayscale-ramp renderer (ascii / shades / custom).
+
+    ``chars`` is ordered dense -> sparse (black -> white); the adaptive LUT
+    and minority-is-bright inversion decide which end a pixel maps to.
+    """
     n = len(chars)
     lut = _adaptive_lut(img)
     mib = _minority_is_bright_for_img(img)
@@ -183,6 +239,14 @@ def _render_ascii(img, width, height, fg=None, bg=None):
             row.append("\x1b[0m")
         lines.append("".join(row))
     return lines
+
+
+def _render_ascii(img, width, height, fg=None, bg=None):
+    return _render_ramp(img, width, height, fg, bg, CHARSETS["ascii"]["chars"])
+
+
+def _render_shades(img, width, height, fg=None, bg=None):
+    return _render_ramp(img, width, height, fg, bg, CHARSETS["shades"]["chars"])
 
 
 def _render_blocks(img, width, height):
@@ -326,15 +390,19 @@ _RENDERERS = {
     "braille": _render_braille,
     "geometric": _render_geometric,
     "binary": _render_binary,
+    "shades": _render_shades,
 }
 
 
-def render_frame(img, charset_name, width, height, fg_color=None, bg_color=None):
+def render_frame(img, charset_name, width, height, fg_color=None, bg_color=None,
+                 charset_ramp=None):
     """Map a PIL.Image (already scaled to width x height) to text lines.
 
     fg_color / bg_color are (R, G, B) tuples or None. When provided, non-block
     charsets wrap each character in TrueColor ANSI so the user can override
     the default look. blocks ignores these (pixel colour wins).
+    charset_ramp is the user-supplied character sequence, required when
+    charset_name is "custom" (ignored otherwise).
     """
     if charset_name not in CHARSETS:
         raise ValueError(
@@ -346,4 +414,7 @@ def render_frame(img, charset_name, width, height, fg_color=None, bg_color=None)
         )
     if charset_name == "blocks":
         return _render_blocks(img, width, height)
+    if charset_name == "custom":
+        ramp = sanitize_ramp(charset_ramp or "")
+        return _render_ramp(img, width, height, fg_color, bg_color, ramp)
     return _RENDERERS[charset_name](img, width, height, fg_color, bg_color)

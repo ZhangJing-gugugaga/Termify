@@ -9,6 +9,7 @@ T1.6 Online Gallery adds /api/gallery/* + /gallery /v/<id> /admin routes.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -402,7 +403,8 @@ def fetch_url():
     })
 
 
-def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=None, bg_color=None):
+def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=None,
+                  bg_color=None, charset_ramp=None):
     """Return a converted FrameSequence, converting+caching on first miss.
 
     The metadata fetch is shared across workers (SQLite); the cache is
@@ -413,7 +415,8 @@ def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=
     if task is None:
         return None
     filepath = task.get("filepath")
-    key = _cache_key(task_id, charset, width, height, fg_color, bg_color)
+    key = _cache_key(task_id, charset, width, height, fg_color, bg_color,
+                     charset_ramp=charset_ramp)
 
     if not filepath:
         # No backing file (e.g. video task whose temp frames were cleaned
@@ -426,9 +429,28 @@ def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=
 
     from termify import convert
 
-    seq = convert(filepath, charset, width, height, fg_color=fg_color, bg_color=bg_color)
+    seq = convert(filepath, charset, width, height, fg_color=fg_color,
+                  bg_color=bg_color, charset_ramp=charset_ramp)
     _cache_put(task_id, key, seq)
     return seq
+
+
+def _request_charset_ramp() -> str | None:
+    """Extract + validate the ``chars`` param for the custom charset.
+
+    Returns the raw ramp string (sanitised later in the renderer), or None
+    when absent. Raises ValueError when unusable — callers turn that into a
+    400 response.
+    """
+    from termify.charset import CUSTOM_RAMP_MAX_LEN
+
+    chars = request.args.get("chars")
+    if chars is None:
+        return None
+    chars = chars.strip()
+    if not chars or len(chars) > CUSTOM_RAMP_MAX_LEN * 4:
+        raise ValueError("custom charset 'chars' must be 1-64 usable characters")
+    return chars
 
 
 @app.route("/api/preview/<task_id>")
@@ -439,6 +461,15 @@ def preview(task_id):
 
     if charset not in CHARSETS:
         return jsonify({"error": f"Unknown charset: {charset}"}), 400
+
+    charset_ramp = None
+    if charset == "custom":
+        try:
+            charset_ramp = _request_charset_ramp()
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        if not charset_ramp:
+            return jsonify({"error": "custom charset requires a 'chars' ramp"}), 400
 
     try:
         width = int(request.args.get("width", 80))
@@ -454,7 +485,8 @@ def preview(task_id):
 
     fg_color = _parse_rgb(request.args.get("fg"))
     bg_color = _parse_rgb(request.args.get("bg"))
-    seq = _get_sequence(task_id, charset, width, height, fg_color=fg_color, bg_color=bg_color)
+    seq = _get_sequence(task_id, charset, width, height, fg_color=fg_color,
+                        bg_color=bg_color, charset_ramp=charset_ramp)
     if seq is None:
         return jsonify({"error": "Task not found"}), 404
 
@@ -508,7 +540,14 @@ def generate():
 
     fg_color = _parse_rgb(data.get("fg"))
     bg_color = _parse_rgb(data.get("bg"))
-    seq = _get_sequence(task_id, charset, width, height, fg_color=fg_color, bg_color=bg_color)
+    charset_ramp = None
+    if charset == "custom":
+        raw_ramp = data.get("chars")
+        if not isinstance(raw_ramp, str) or not raw_ramp.strip():
+            return jsonify({"error": "custom charset requires a 'chars' ramp"}), 400
+        charset_ramp = raw_ramp
+    seq = _get_sequence(task_id, charset, width, height, fg_color=fg_color,
+                        bg_color=bg_color, charset_ramp=charset_ramp)
 
     from termify.output import render
 
@@ -516,6 +555,10 @@ def generate():
 
     ext = "py" if fmt == "python" else "html"
     filename = f"{task_id}_{charset}.{ext}"
+    if charset == "custom":
+        # Different ramps must not overwrite each other's artifacts.
+        digest = hashlib.sha256((charset_ramp or "").encode("utf-8")).hexdigest()[:8]
+        filename = f"{task_id}_custom_{digest}.{ext}"
     out_path = _tmp_out_path(filename)
     Path(out_path).write_text(content, encoding="utf-8")
 
@@ -635,7 +678,8 @@ def gallery_upload():
     params.setdefault("charset", _gallery_mod.DEFAULT_CHARSET)
     params.setdefault("width", _gallery_mod.DEFAULT_WIDTH)
     params.setdefault("height", _gallery_mod.DEFAULT_HEIGHT)
-    if params.get("charset") not in CHARSETS:
+    if params.get("charset") not in CHARSETS or params.get("charset") == "custom":
+        # custom needs its per-request ramp which the gallery does not store.
         params["charset"] = _gallery_mod.DEFAULT_CHARSET
     try:
         params["width"] = max(1, min(400, int(params["width"])))
@@ -896,7 +940,8 @@ def gallery_preview(work_id):
         return jsonify({"error": "Work not found"}), 404
     original = json.loads(work["params_json"]) if work["params_json"] else {}
     charset = request.args.get("charset", original.get("charset", "blocks")).strip().lower()
-    if charset not in CHARSETS:
+    if charset not in CHARSETS or charset == "custom":
+        # custom is per-request (needs its ramp) and is never stored on works.
         return jsonify({"error": f"Invalid charset: {charset}"}), 400
     try:
         width = int(request.args.get("width", original.get("width", 80)))
@@ -940,7 +985,8 @@ def gallery_download(work_id):
         return jsonify({"error": f"Invalid format: {fmt!r} (expected python or html)"}), 400
     original = json.loads(work["params_json"]) if work["params_json"] else {}
     charset = request.args.get("charset", original.get("charset", "blocks")).strip().lower()
-    if charset not in CHARSETS:
+    if charset not in CHARSETS or charset == "custom":
+        # custom is per-request (needs its ramp) and is never stored on works.
         return jsonify({"error": f"Invalid charset: {charset}"}), 400
     try:
         width = int(request.args.get("width", original.get("width", 80)))

@@ -35,6 +35,7 @@ Public API
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sqlite3
 import threading
@@ -319,14 +320,19 @@ def reset_store_for_tests() -> None:
 # --- per-task helpers -------------------------------------------------------
 
 def cache_key(task_id: str, charset: str, width: int, height: int,
-              fg: Any = None, bg: Any = None) -> str:
+              fg: Any = None, bg: Any = None, charset_ramp: Any = None) -> str:
     """Build the cache key for a converted sequence.
 
     ``fg`` / ``bg`` are either an ``(r, g, b)`` 3-tuple or ``None``.
+    ``charset_ramp`` (custom charset) is hashed so different ramps of the
+    same task never collide.
     """
     fg_part = _color_part(fg)
     bg_part = _color_part(bg)
-    return f"{task_id}:{charset}:{width}x{height}:{fg_part}:{bg_part}"
+    ramp_part = "none"
+    if charset_ramp:
+        ramp_part = hashlib.sha256(str(charset_ramp).encode("utf-8")).hexdigest()[:12]
+    return f"{task_id}:{charset}:{width}x{height}:{fg_part}:{bg_part}:{ramp_part}"
 
 
 def _color_part(color: Any) -> str:

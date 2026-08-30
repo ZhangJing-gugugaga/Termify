@@ -32,7 +32,9 @@ def main() -> None:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    charsets = list(CHARSETS) if args.charset == "all" else [args.charset]
+    # "custom" is a per-request mode (needs a --ramp); not a standalone charset.
+    charsets = [cs for cs in CHARSETS if cs != "custom"] \
+        if args.charset == "all" else [args.charset]
     stem = src.stem
 
     for cs in charsets:

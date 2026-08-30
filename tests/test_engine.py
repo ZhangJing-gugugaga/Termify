@@ -41,7 +41,10 @@ def test_convert_rejects_unknown_charset(black_png):
 
 def test_convert_all_charsets_on_same_input(black_png):
     # Braille has 2x4 cell -> height collapses to 1 for an 8x4 image; skip that line-width check.
+    # "custom" is excluded: it is a per-request mode that needs a charset_ramp.
     for cs in CHARSETS:
+        if cs == "custom":
+            continue
         seq = convert(black_png, cs, 8, 4)
         assert seq.charset == cs
         assert len(seq.lines_per_frame) == 1

@@ -3,7 +3,7 @@
   var S = {
     taskId: null, frames: [], htmlFrames: [], interval: 0.1,
     charset: "ascii", totalFrames: 0, width: 80, height: 24,
-    wasPlaying: false, fg: null, bg: null,
+    wasPlaying: false, fg: null, bg: null, ramp: "",
     canvasFrames: [], canvasEl: null, canvasCtx: null,
     fileList: [], selIdx: 0, sourceFile: null
   };
@@ -335,11 +335,13 @@
   /* ── Request preview from backend ── */
   function requestPreview(charset) {
     if (!S.taskId) { toast("请先上传文件"); return; }
+    if (charset === "custom" && !S.ramp) { toast("请先在 Tweaks 面板填写自定义字符"); return; }
     var myId = ++latestReq;
     var url = "/api/preview/" + S.taskId
       + "?charset=" + charset
       + "&width=" + S.width + "&height=" + S.height
       + colorParams();
+    if (charset === "custom") url += "&chars=" + encodeURIComponent(S.ramp);
     fetch(url).then(function (r) { return r.json(); }).then(function (d) {
       if (myId !== latestReq) return;
       if (d.error) { toast(d.error); return; }
@@ -510,11 +512,13 @@
   /* ── Download ── */
   function doDownload() {
     if (!S.taskId) { toast("请先上传文件"); return; }
+    if (S.charset === "custom" && !S.ramp) { toast("请先在 Tweaks 面板填写自定义字符"); return; }
     var fmt = selectedFormat();
     var body = {
       task_id: S.taskId, charset: S.charset, format: fmt,
       width: S.width, height: S.height
     };
+    if (S.charset === "custom") body.chars = S.ramp;
     if (S.fg) body.fg = "rgb(" + S.fg[0] + "," + S.fg[1] + "," + S.fg[2] + ")";
     if (S.bg) body.bg = "rgb(" + S.bg[0] + "," + S.bg[1] + "," + S.bg[2] + ")";
     fetch("/api/generate", {
@@ -727,6 +731,37 @@
     if (fgPicker) fgPicker.value = "#00ff41";
     if (bgPicker) bgPicker.value = "#0a0e14";
     if (S.taskId) requestPreview(S.charset);
+  });
+
+  /* ── T20: palette presets ── */
+  qa(".palette-swatch").forEach(function (sw) {
+    sw.addEventListener("click", function () {
+      qa(".palette-swatch").forEach(function (b) { b.classList.remove("active"); });
+      sw.classList.add("active");
+      var fg = sw.getAttribute("data-fg");
+      var bg = sw.getAttribute("data-bg");
+      if (fgPicker) fgPicker.value = fg;
+      if (bgPicker) bgPicker.value = bg;
+      S.fg = hexToRgb(fg);
+      S.bg = hexToRgb(bg);
+      if (S.taskId) requestPreview(S.charset);
+      else toast("配色已应用，上传后生效");
+    });
+  });
+
+  /* ── T20: custom charset ramp ── */
+  var rampInput = byId("customRampInput");
+  var rampApply = byId("customRampApply");
+  function applyRamp() {
+    var v = rampInput ? rampInput.value.trim() : "";
+    if (!v) { toast("请先输入自定义字符（密→疏排列）"); return; }
+    S.ramp = v;
+    var customCard = document.querySelector('[data-style="custom"]');
+    if (customCard) customCard.click();
+  }
+  if (rampApply) rampApply.addEventListener("click", applyRamp);
+  if (rampInput) rampInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") applyRamp();
   });
 
   setTitleMeta();

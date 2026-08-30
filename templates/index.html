@@ -196,6 +196,38 @@
                     </div>
                 </div>
 
+                <!-- Shades -->
+                <div class="style-card" data-style="shades">
+                    <div class="style-preview binary">██████████████
+████▓▓▓▓  ████
+██▓▓▒▒  ░░███
+██▓▒  ░░  ▓██
+██▓▒  ░░  ▓██
+██▓▓▒▒  ░░███
+████▓▓▓▓  ████
+██████████████</div>
+                    <div class="style-info">
+                        <div class="style-name">明暗渐变块</div>
+                        <div class="style-desc">块状明暗，平滑质感</div>
+                    </div>
+                </div>
+
+                <!-- Custom -->
+                <div class="style-card" data-style="custom">
+                    <div class="style-preview ascii">@%#*+=-:.
+@#*+=-:. 
+#*+=-:.  
+*+=-:.   
++=-:.    
+*+=-:.   
+@#*+=-:. 
+@%#*+=-:.</div>
+                    <div class="style-info">
+                        <div class="style-name">自定义字符</div>
+                        <div class="style-desc">Tweaks 里填你的字符</div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </section>
@@ -310,8 +342,8 @@
             <div class="features-grid">
                 <div class="feature-card">
                     <div class="feature-icon-box">5</div>
-                    <h3 class="feature-title">5种渲染风格</h3>
-                    <p class="feature-desc">从经典ASCII到Unicode色块，从Braille点阵到极简二值。总有一款适合你的终端。</p>
+                    <h3 class="feature-title">7种渲染风格</h3>
+                    <p class="feature-desc">从经典ASCII到Unicode色块，从Braille点阵到自定义字符集。总有一款适合你的终端。</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon-box">⚡</div>
@@ -410,6 +442,30 @@
                 <button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button>
                 <button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button>
             </div>
+        </div>
+        <div class="tweak-group">
+            <div class="tweak-label">配色预设</div>
+            <div class="palette-grid">
+                <button class="palette-swatch" data-fg="#33ff66" data-bg="#0c1210" title="磷光绿" style="background:#0c1210;color:#33ff66">Aa</button>
+                <button class="palette-swatch" data-fg="#ffb000" data-bg="#1a120a" title="琥珀" style="background:#1a120a;color:#ffb000">Aa</button>
+                <button class="palette-swatch" data-fg="#00ff41" data-bg="#000000" title="Matrix" style="background:#000000;color:#00ff41">Aa</button>
+                <button class="palette-swatch" data-fg="#7869c4" data-bg="#40318d" title="C64" style="background:#40318d;color:#7869c4">Aa</button>
+                <button class="palette-swatch" data-fg="#ff71ce" data-bg="#190f2e" title="蒸汽波" style="background:#190f2e;color:#ff71ce">Aa</button>
+                <button class="palette-swatch" data-fg="#88c0d0" data-bg="#2e3440" title="Nord" style="background:#2e3440;color:#88c0d0">Aa</button>
+                <button class="palette-swatch" data-fg="#bd93f9" data-bg="#282a36" title="Dracula" style="background:#282a36;color:#bd93f9">Aa</button>
+                <button class="palette-swatch" data-fg="#00d1ff" data-bg="#04121f" title="深海" style="background:#04121f;color:#00d1ff">Aa</button>
+                <button class="palette-swatch" data-fg="#657b83" data-bg="#fdf6e3" title="Solarized 亮" style="background:#fdf6e3;color:#657b83">Aa</button>
+                <button class="palette-swatch" data-fg="#1a1a1a" data-bg="#f5f0e6" title="纸墨" style="background:#f5f0e6;color:#1a1a1a">Aa</button>
+            </div>
+            <div class="tweak-hint">点选后自动填入前景/背景色（对非 blocks 风格生效）</div>
+        </div>
+        <div class="tweak-group">
+            <div class="tweak-label">自定义字符集（密 → 疏）</div>
+            <div class="custom-ramp-row">
+                <input type="text" id="customRampInput" class="custom-ramp-input" maxlength="128" placeholder="如: @%#*+=-:.  或  █▓▒░ ">
+                <button class="tweak-opt" id="customRampApply">应用</button>
+            </div>
+            <div class="tweak-hint">应用后点击左侧"自定义字符"风格卡片预览</div>
         </div>
         <div class="tweak-group">
             <div class="tweak-label">前景色 / 背景色</div>

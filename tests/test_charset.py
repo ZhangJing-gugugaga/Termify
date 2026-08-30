@@ -88,7 +88,7 @@ def test_blocks_emits_ansi_truecolor():
 
 @pytest.mark.parametrize(
     "name",
-    [c for c in ALL_CHARSETS if c not in ("blocks", "braille")],
+    [c for c in ALL_CHARSETS if c not in ("blocks", "braille", "custom")],
 )
 def test_render_returns_right_line_count_and_width(name):
     w, h = 12, 6

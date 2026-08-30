@@ -65,7 +65,7 @@ python app.py
 
 ### Step 02 · 选择渲染风格
 
-点击 5 张风格卡片中的任意一张，预览区立即切换。试试不同风格 — 每次切换都在 100ms 内完成：
+点击 7 张风格卡片中的任意一张，预览区立即切换。试试不同风格 — 每次切换都在 100ms 内完成：
 
 | 风格 | 字符 | 适合场景 | 颜色 |
 |------|------|---------|------|
@@ -74,6 +74,8 @@ python app.py
 | **Braille 点阵** | `⠁⠂⠄⡀` | 高分辨率、科技感 | ❌ 灰度 |
 | **几何图形** | `■●◆▪▫◇○` + 透明背景 | 设计感、现代，背景完全透明 | ❌ 灰度 |
 | **极简二值** | `█ ` | 复古报纸印刷感 | ❌ 纯黑白 |
+| **明暗渐变块** | `█▓▒░ ` | 平滑灰度渐变，比标点更有质感 | ❌ 灰度 |
+| **自定义字符** | 你说了算 | 在 Tweaks 面板填任意字符序列（密→疏） | ❌ 灰度 |
 
 **我的第一张动画选什么？** 不确定就选 **Unicode 色块** —— 它的画质最接近原图，一眼就能看出效果。
 
@@ -83,7 +85,7 @@ python app.py
 - **点击进度条** — 跳转到任意帧
 - **帧计数器** — 显示"当前帧 / 总帧数"
 
-右下角有个 **⚙️ 齿轮按钮**（Tweaks 面板），可以开关背景网格、扫描线、主题色，以及自定义前景色/背景色。
+右下角有个 **⚙️ 齿轮按钮**（Tweaks 面板），可以开关背景网格、扫描线、主题色，**点选 10 种配色预设**（磷光绿/琥珀/Matrix/C64/蒸汽波/Nord/Dracula/深海/纸墨…），填**自定义字符集**，以及自定义前景色/背景色。
 
 ### Step 04 · 选择输出格式
 
@@ -118,7 +120,7 @@ python app.py
 # 转换单个图片
 python demo.py my_cat.gif --charset ascii
 
-# 生成全部 5 种字符集的输出（共 10 个文件）
+# 生成全部灰度字符集的输出（6 种 × 2 格式 = 12 个文件）
 python demo.py my_cat.gif --charset all
 
 # 指定终端尺寸
@@ -237,7 +239,7 @@ A: Python 未安装或未加入 PATH。请安装 Python 3.10+ 并在安装时勾
 | `POST` | `/api/upload-batch` | 批量上传多个文件（multipart，字段名 `files[]`），返回 `task_ids[]` + `errors[]` |
 | `POST` | `/api/fetch-url` | 从 URL 下载图片并转换（`{"url":"..."}`），含 SSRF 防护 |
 | `POST` | `/api/upload-video` | 上传视频（MP4/WEBM/MOV/AVI/MKV），后端 ffmpeg 抽帧后转换，限 30s / 20MB |
-| `GET` | `/api/preview/<task_id>` | 获取帧数据。参数：`charset`（风格）、`width`、`height`、`frame`（某帧）、`fg`/`bg`（颜色，形如 `rgb(255,0,0)`）。不传 `frame` 返回全部帧。 |
+| `GET` | `/api/preview/<task_id>` | 获取帧数据。参数：`charset`（风格，含 `shades`/`custom`）、`width`、`height`、`frame`（某帧）、`fg`/`bg`（颜色，形如 `rgb(255,0,0)`）、`chars`（custom 必填，自定义字符梯，密→疏）。不传 `frame` 返回全部帧。 |
 | `POST` | `/api/generate` | 打包指定字符集+格式，返回 `download_url` |
 | `GET` | `/api/download/<filename>` | 下载生成的文件 |
 
@@ -328,7 +330,7 @@ Termify/
 ├── demo.py                 # CLI 冒烟测试
 ├── requirements.txt        # flask / pillow / pytest
 ├── termify/                # 后端转换引擎（纯 Python 库）
-│   ├── charset.py          # 5 种字符集 + 像素→字符映射
+│   ├── charset.py          # 7 种字符集（含 shades/custom）+ 像素→字符映射
 │   ├── frames.py           # GIF 抽帧 + 等比缩放
 │   ├── engine.py           # convert() → FrameSequence
 │   ├── ansi_to_html.py     # ANSI → HTML 颜色转换

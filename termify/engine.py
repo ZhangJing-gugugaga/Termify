@@ -29,7 +29,7 @@ class FrameSequence:
 
 
 def convert(path: str, charset: str, width: int = 80, height: int = 24,
-            fg_color=None, bg_color=None) -> FrameSequence:
+            fg_color=None, bg_color=None, charset_ramp=None) -> FrameSequence:
     """Convert an image/GIF to a FrameSequence in the given charset.
 
     Pipeline (PRD §5.3):
@@ -39,6 +39,7 @@ def convert(path: str, charset: str, width: int = 80, height: int = 24,
     All frames share one interval (first frame's, default 0.1s).
     fg_color / bg_color are optional (R,G,B) tuples; passed through to
     render_frame so non-block charsets can wrap each cell in TrueColor ANSI.
+    charset_ramp is the user-supplied ramp for the "custom" charset.
     """
     if charset not in CHARSETS:
         raise ValueError(
@@ -55,7 +56,8 @@ def convert(path: str, charset: str, width: int = 80, height: int = 24,
     scaled = [scale_frame(f, scale_w, scale_h) for f, _ in frames]
     lines_per_frame = [
         render_frame(s, charset, scale_w, scale_h,
-                     fg_color=fg_color, bg_color=bg_color)
+                     fg_color=fg_color, bg_color=bg_color,
+                     charset_ramp=charset_ramp)
         for s in scaled
     ]
 
