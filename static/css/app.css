@@ -1355,6 +1355,19 @@
             font-family: var(--font-mono); font-size: 10px;
             color: var(--text-dim); opacity: 0.7;
         }
+        .termify-modal-progress {
+            margin-top: var(--space-3);
+            height: 6px;
+            background: var(--border-dim);
+            border-radius: 100px;
+            overflow: hidden;
+        }
+        .termify-modal-progress-fill {
+            height: 100%; width: 0%;
+            background: var(--green);
+            border-radius: 100px;
+            transition: width 0.2s ease-out;
+        }
 
         /* ═══════════════════════════════════════════
             GALLERY PAGES — shared helpers

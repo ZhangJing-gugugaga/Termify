@@ -43,8 +43,28 @@ from termify.taskstore import (
 VALID_EXT = {".gif", ".png", ".jpg", ".jpeg"}
 VALID_FORMATS = {"python", "html", "mp4"}
 
-# Video export: cap concurrent encodes so public-demo CPU stays responsive.
-_VIDEO_SLOTS = threading.Semaphore(2)
+# Video import/export: cap concurrent ffmpeg work so public-demo CPU stays
+# responsive under load (负载限速).
+_VIDEO_PROC_SLOTS = threading.Semaphore(2)
+_VIDEO_IMPORT_SLOTS = threading.Semaphore(2)
+
+
+def _video_tmp_path(ext: str) -> str:
+    """Server-side temp path for an uploaded video, containment-checked.
+
+    ``ext`` must be one of the whitelisted video extensions; the file name
+    itself is always server-generated (never derived from user input).
+    """
+    if ext not in (".mp4", ".webm", ".mov", ".avi", ".mkv"):
+        raise ValueError(f"unsupported video extension: {ext!r}")
+    if ".." in ext or "/" in ext or os.sep in ext:
+        raise ValueError("video extension contains path separators")
+    name = f"video_{uuid.uuid4().hex[:12]}{ext}"
+    base = os.path.abspath("uploads")
+    resolved = os.path.abspath(os.path.join(base, name))
+    if os.path.dirname(resolved) != base or not resolved.startswith(base + os.sep):
+        raise ValueError("generated video path escapes the uploads dir")
+    return resolved
 
 
 def _task_put(task_id: str, *, filepath, original_size, target_size,
@@ -262,7 +282,12 @@ def upload_batch():
 
 @app.route("/api/upload-video", methods=["POST"])
 def upload_video():
-    """Upload a video (MP4/WEBM), extract frames via ffmpeg, convert."""
+    """Upload a video (MP4/WEBM/MOV/AVI/MKV), extract frames via ffmpeg, convert.
+
+    No duration cap — long videos are sampled at an adaptive fps (see
+    termify.video.adaptive_fps). Guarded by per-IP rate limits plus a
+    global conversion-slot semaphore (负载限速).
+    """
     if "file" not in request.files:
         return jsonify({"error": "No file provided"}), 400
 
@@ -270,14 +295,21 @@ def upload_video():
     if not file.filename:
         return jsonify({"error": "No filename"}), 400
 
-    # Save video to temp path
-    ext = os.path.splitext(file.filename)[1].lower()
-    from termify.video import VALID_VIDEO_EXTS, validate_video, extract_frames, frames_dir_to_images, VideoError
-    if ext not in VALID_VIDEO_EXTS:
-        # Allow but flag — let validate reject
-        pass
+    ip = _client_ip()
+    allowed, _reason = _rate_check(ip, "video-upload", per_minute=4, per_day=40)
+    if not allowed:
+        return jsonify({"error": "视频上传太频繁，请稍后再试 (限 4 次/分钟)"}), 429
 
-    video_tmp = os.path.join("uploads", f"video_{uuid.uuid4().hex[:12]}{ext}")
+    from termify.video import (VALID_VIDEO_EXTS, validate_video, extract_frames,
+                               frames_dir_to_images, VideoError)
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in VALID_VIDEO_EXTS:
+        return jsonify({"error": f"Unsupported video format: {ext}. 支持 MP4/WEBM/MOV/AVI/MKV"}), 400
+    try:
+        video_tmp = _video_tmp_path(ext)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     file.save(video_tmp)
 
     try:
@@ -286,48 +318,48 @@ def upload_video():
         os.remove(video_tmp)
         return jsonify({"error": str(exc)}), 400
 
-    # Extract frames via ffmpeg
-    try:
-        frames_dir, fps = extract_frames(video_tmp)
-    except VideoError as exc:
+    if not _VIDEO_IMPORT_SLOTS.acquire(blocking=False):
         os.remove(video_tmp)
-        return jsonify({"error": str(exc)}), 422
-
-    # Process each frame through the engine
-    from termify.engine import render_frame, scale_frame
-    from termify.charset import CHARSETS
-    from PIL import Image
-
-    task_id = uuid.uuid4().hex[:12]
-    frame_paths = frames_dir_to_images(frames_dir)
-    charset = "ascii"
-    width, height = 80, 24
-
-    lines_per_frame = []
+        return jsonify({"error": "服务器转换繁忙，请稍后再试"}), 429
     try:
-        for fpath in frame_paths:
-            img = Image.open(fpath).convert("RGB")
-            if charset == "blocks":
-                sw, sh = width, height * 2
-            elif charset == "braille":
-                sw, sh = width * 2, height * 4
-            else:
+        # Extract frames via ffmpeg — whole timeline, adaptive fps sampling
+        try:
+            frames_dir, fps = extract_frames(video_tmp)
+        except VideoError as exc:
+            os.remove(video_tmp)
+            return jsonify({"error": str(exc)}), 422
+
+        # Process each frame through the engine
+        from termify.engine import render_frame, scale_frame
+        from PIL import Image
+
+        task_id = uuid.uuid4().hex[:12]
+        frame_paths = frames_dir_to_images(frames_dir)
+        charset = "ascii"
+        width, height = 80, 24
+
+        lines_per_frame = []
+        try:
+            for fpath in frame_paths:
+                img = Image.open(fpath).convert("RGB")
                 sw, sh = width, height
-            scaled = scale_frame(img, sw, sh)
-            lines = render_frame(scaled, charset, sw, sh)
-            lines_per_frame.append(lines)
-    except Exception as exc:  # noqa: BLE001
-        os.remove(video_tmp)
-        import shutil
-        shutil.rmtree(frames_dir, ignore_errors=True)
-        return jsonify({"error": f"Frame conversion failed: {exc}"}), 500
+                scaled = scale_frame(img, sw, sh)
+                lines = render_frame(scaled, charset, sw, sh)
+                lines_per_frame.append(lines)
+        except Exception as exc:  # noqa: BLE001
+            os.remove(video_tmp)
+            import shutil
+            shutil.rmtree(frames_dir, ignore_errors=True)
+            return jsonify({"error": f"Frame conversion failed: {exc}"}), 500
+    finally:
+        _VIDEO_IMPORT_SLOTS.release()
 
     # Cleanup
     os.remove(video_tmp)
     import shutil
     shutil.rmtree(frames_dir, ignore_errors=True)
 
-    interval = 1.0 / fps  # fps=10 from ffmpeg extraction
+    interval = 1.0 / fps
     target_size = {"width": width, "height": height}
     _task_put(
         task_id,
@@ -356,6 +388,81 @@ def upload_video():
         "frames_count": len(lines_per_frame),
         "original_size": {"type": "video", "frame_count": len(frame_paths)},
         "target_size": target_size,
+    })
+
+
+def _safe_uploads_path(name: str) -> str:
+    """Resolve a server-generated file name inside uploads/, refusing traversal."""
+    base = os.path.abspath("uploads")
+    resolved = os.path.abspath(os.path.join(base, name or ""))
+    if os.path.dirname(resolved) != base or not resolved.startswith(base + os.sep):
+        raise ValueError("path escapes the uploads dir")
+    if not name or ".." in name or "/" in name or os.sep in name:
+        raise ValueError("unsafe uploads filename")
+    return resolved
+
+
+@app.route("/api/fetch-video-url", methods=["POST"])
+def fetch_video_url():
+    """Resolve a Bilibili / Douyin / YouTube link into a conversion task.
+
+    Hosts are allowlist-restricted (termify.videofetch); yt-dlp downloads a
+    small MP4 server-side, then the same adaptive-fps extraction pipeline
+    runs as for direct uploads.
+    """
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "No url provided"}), 400
+
+    from termify.videofetch import VideoFetchError, download_video
+    from termify.video import VideoError, convert_video_file
+
+    ip = _client_ip()
+    allowed, _reason = _rate_check(ip, "video-url", per_minute=2, per_day=12)
+    if not allowed:
+        return jsonify({"error": "链接解析太频繁，请稍后再试 (限 2 次/分钟)"}), 429
+
+    try:
+        downloaded_name = download_video(url, dest_dir="uploads")
+    except VideoFetchError as exc:
+        return jsonify({"error": str(exc)}), 400
+    try:
+        video_tmp = _safe_uploads_path(downloaded_name)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    if not _VIDEO_IMPORT_SLOTS.acquire(blocking=False):
+        return jsonify({"error": "服务器转换繁忙，请稍后再试"}), 429
+    try:
+        try:
+            seq = convert_video_file(video_tmp, charset="ascii", width=80,
+                                     height=24, delete_source=True)
+            task_id = uuid.uuid4().hex[:12]
+            frames_count = len(seq.lines_per_frame)
+        except VideoError as exc:
+            return jsonify({"error": str(exc)}), 422
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": f"Frame conversion failed: {exc}"}), 500
+    finally:
+        _VIDEO_IMPORT_SLOTS.release()
+
+    _task_put(
+        task_id,
+        filepath=None,  # source video deleted; the cache holds the sequence
+        original_size=None,
+        target_size={"width": seq.width, "height": seq.height},
+        frames_count=frames_count,
+        interval=seq.interval,
+    )
+    _cache_put(task_id, _cache_key(task_id, "ascii", seq.width, seq.height), seq)
+
+    return jsonify({
+        "task_id": task_id,
+        "filename": "video-link",
+        "frames_count": frames_count,
+        "original_size": {"type": "video", "frame_count": frames_count},
+        "target_size": {"width": seq.width, "height": seq.height},
     })
 
 
@@ -609,14 +716,14 @@ def _generate_video(task_id, charset, width, height, fg_color, bg_color,
         filename = f"{task_id}_custom_{digest}.{ext}"
     out_path = _tmp_out_path(filename)
 
-    if not _VIDEO_SLOTS.acquire(blocking=False):
+    if not _VIDEO_PROC_SLOTS.acquire(blocking=False):
         return jsonify({"error": "服务器编码繁忙，请稍后再试"}), 429
     try:
         video_mod.encode_mp4(seq, out_path)
     except video_mod.VideoEncodeError as e:
         return jsonify({"error": f"视频编码失败: {e}"}), 500
     finally:
-        _VIDEO_SLOTS.release()
+        _VIDEO_PROC_SLOTS.release()
 
     size_bytes = os.path.getsize(out_path)
     if size_bytes >= 1024 * 1024:

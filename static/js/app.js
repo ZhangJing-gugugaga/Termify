@@ -460,34 +460,59 @@
   }
 
   function uploadVideo(file) {
-    var MAX_VIDEO = 50 * 1024 * 1024;
-    if (file.size > MAX_VIDEO) { toast("视频过大 (最大 50MB): " + (file.size / 1024 / 1024).toFixed(1) + "MB"); return; }
+    // 无大小上限（后端 TERMIFY_MAX_VIDEO_MB 兜底），改为展示真实上传进度 + ETA
     var fd = new FormData();
     fd.append("file", file);
     if (uploadZone) uploadZone.classList.add("uploading");
-    fetch("/api/upload-video", { method: "POST", body: fd })
-      .then(function (r) {
-        if (!r.ok) { throw new Error("HTTP " + r.status + (r.status === 413 ? " (文件过大)" : "")); }
-        var ct = r.headers.get("content-type") || "";
-        if (ct.indexOf("application/json") === -1) { throw new Error("服务器返回非 JSON (HTTP " + r.status + ")"); }
-        return r.json();
-      })
-      .then(function (d) {
-        if (uploadZone) uploadZone.classList.remove("uploading");
-        if (d.error) { toast(d.error); return; }
-        var vf = { task_id: d.task_id, filename: d.filename || file.name,
-                   frames_count: d.frames_count, charset: "ascii", width: 80, height: 24 };
-        S.fileList = S.fileList.concat([vf]);
-        S.selIdx = S.fileList.length - 1;
-        selectFile(S.selIdx);
-        renderFileList();
-        var stylesSection = document.getElementById("styles");
-        if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
-      })
-      .catch(function (e) {
-        if (uploadZone) uploadZone.classList.remove("uploading");
-        toast("video upload failed: " + e);
-      });
+    var startedAt = Date.now();
+    showModal("上传视频 " + file.name,
+      "0% · 计算预计时间…", false, true);
+    setModalProgress(0);
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload-video");
+    xhr.upload.addEventListener("progress", function (e) {
+      if (!e.lengthComputable) return;
+      var pct = e.loaded / e.total * 100;
+      setModalProgress(pct);
+      var elapsed = (Date.now() - startedAt) / 1000;
+      var speed = e.loaded / Math.max(0.1, elapsed);
+      var eta = Math.max(0, Math.round((e.total - e.loaded) / Math.max(1, speed)));
+      modalTitle.textContent = "上传视频 " + file.name;
+      modalText.textContent = pct.toFixed(0) + "% · " +
+        (e.loaded / 1024 / 1024).toFixed(1) + " / " +
+        (e.total / 1024 / 1024).toFixed(1) + "MB · 预计剩余 " + eta + " 秒";
+    });
+    xhr.upload.addEventListener("load", function () {
+      // 上传完成，进入服务器抽帧/转换阶段（预计时间按体积粗估）
+      var est = Math.max(3, Math.round(file.size / 1024 / 1024 * 0.8) + 3);
+      modalTitle.textContent = "正在转换视频";
+      modalText.textContent = "抽帧 + 渲染中，预计约 " + est + " 秒…";
+      setModalProgress(100);
+    });
+    xhr.addEventListener("load", function () {
+      if (uploadZone) uploadZone.classList.remove("uploading");
+      hideModal();
+      var d = null;
+      try { d = JSON.parse(xhr.responseText); } catch (err) { d = null; }
+      if (xhr.status !== 200 || !d || d.error) {
+        toast((d && d.error) || "视频转换失败 (HTTP " + xhr.status + ")");
+        return;
+      }
+      var vf = { task_id: d.task_id, filename: d.filename || file.name,
+                 frames_count: d.frames_count, charset: "ascii", width: 80, height: 24 };
+      S.fileList = S.fileList.concat([vf]);
+      S.selIdx = S.fileList.length - 1;
+      selectFile(S.selIdx);
+      renderFileList();
+      var stylesSection = document.getElementById("styles");
+      if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    xhr.addEventListener("error", function () {
+      if (uploadZone) uploadZone.classList.remove("uploading");
+      hideModal();
+      toast("video upload failed: 网络错误");
+    });
+    xhr.send(fd);
   }
 
   // Backward-compatible alias
@@ -554,13 +579,19 @@
   var modalTitle = byId("termifyModalTitle");
   var modalText = byId("termifyModalText");
   var modalSpinner = byId("termifyModalSpinner");
-  function showModal(title, text, isError) {
+  var modalProgressWrap = byId("termifyModalProgressWrap");
+  var modalProgress = byId("termifyModalProgress");
+  function showModal(title, text, isError, withProgress) {
     if (!modal) return;
     modal.hidden = false;
     modal.classList.toggle("error", !!isError);
     if (modalSpinner) modalSpinner.style.display = isError ? "none" : "block";
+    if (modalProgressWrap) modalProgressWrap.hidden = !withProgress;
     if (modalTitle) modalTitle.textContent = title;
     if (modalText) modalText.textContent = text || "";
+  }
+  function setModalProgress(pct) {
+    if (modalProgress) modalProgress.style.width = Math.max(0, Math.min(100, pct)) + "%";
   }
   function hideModal() {
     if (modal) modal.hidden = true;
@@ -672,9 +703,44 @@
     var urlBtn = byId("urlFetchBtn");
     if (!urlSect || !urlInput || !urlBtn) return;
     urlSect.style.display = "flex";
+    function isVideoPlatformUrl(url) {
+      try {
+        var host = (new URL(url)).hostname.toLowerCase();
+      } catch (e) { return false; }
+      var fams = ["bilibili.com", "b23.tv", "douyin.com", "iesdouyin.com",
+                  "youtube.com", "youtu.be"];
+      return fams.some(function (f) { return host === f || host.indexOf("." + f) !== -1; });
+    }
+    function finishVideoTask(d) {
+      var vf = { task_id: d.task_id, filename: d.filename || "video-link",
+                 frames_count: d.frames_count, charset: "ascii", width: 80, height: 24 };
+      S.fileList = S.fileList.concat([vf]);
+      S.selIdx = S.fileList.length - 1;
+      selectFile(S.selIdx);
+      renderFileList();
+      var stylesSection = document.getElementById("styles");
+      if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      urlInput.value = "";
+    }
+    function doFetchVideoUrl(url) {
+      showModal("解析视频链接", "正在从平台获取视频（预计 15-60 秒，取决于视频大小）…");
+      fetch("/api/fetch-video-url", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        hideModal();
+        if (d.error) { showModal("解析失败", d.error, true); return; }
+        toast("视频已解析（" + d.frames_count + " 帧）");
+        finishVideoTask(d);
+      }).catch(function (e) {
+        hideModal();
+        showModal("解析失败", "网络错误: " + e, true);
+      });
+    }
     function doFetchUrl() {
       var url = urlInput.value.trim();
       if (!url) { toast("请输入 URL"); return; }
+      if (isVideoPlatformUrl(url)) { doFetchVideoUrl(url); return; }
       urlBtn.disabled = true; urlBtn.textContent = "下载中...";
       fetch("/api/fetch-url", {
         method: "POST",

@@ -27,11 +27,11 @@ YOUR_DOMAIN {
     }
 
     # --- Upload size limit ------------------------------------------------
-    # Flask's MAX_CONTENT_LENGTH is 20MB (app.py). Caddy's default request
-    # body limit is 10MB, which would silently truncate uploads. Allow 25MB
-    # so there's ~5MB headroom for multipart envelope overhead.
+    # Video imports have no duration/size product cap (rate-limited instead).
+    # The backend guard is TERMIFY_MAX_VIDEO_MB (default 200MB); allow
+    # headroom for multipart overhead on top of that.
     request_body {
-        max_size 50MB
+        max_size 210MB
     }
 
     # --- Static asset caching --------------------------------------------

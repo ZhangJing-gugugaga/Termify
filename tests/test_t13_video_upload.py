@@ -114,6 +114,9 @@ def test_video_validate_rejects_oversize(tmp_path):
     fake = tmp_path / "big.mp4"
     fake.write_bytes(b"x" * 1024)
 
+    # 上限默认 200MB（TERMIFY_MAX_VIDEO_MB 可调），25MB 不再超限
     with patch("os.path.getsize", return_value=25 * 1024 * 1024):
+        validate_video(str(fake))  # 不应抛出
+    with patch("os.path.getsize", return_value=201 * 1024 * 1024):
         with pytest.raises(VideoError, match="exceeds"):
             validate_video(str(fake))
