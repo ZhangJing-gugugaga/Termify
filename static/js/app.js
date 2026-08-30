@@ -342,8 +342,11 @@
       + "&width=" + S.width + "&height=" + S.height
       + colorParams();
     if (charset === "custom") url += "&chars=" + encodeURIComponent(S.ramp);
+    // 渲染中状态：大尺寸/长视频首切需要数秒，让等待可见
+    if (animTerminal) animTerminal.classList.add("rendering");
     fetch(url).then(function (r) { return r.json(); }).then(function (d) {
       if (myId !== latestReq) return;
+      if (animTerminal) animTerminal.classList.remove("rendering");
       if (d.error) { toast(d.error); return; }
       S.wasPlaying = playing;
       if (playing) {
@@ -352,7 +355,11 @@
       }
       S.charset = charset;
       applyPreview(d);
-    }).catch(function () { if (myId !== latestReq) return; toast("preview failed"); });
+    }).catch(function () {
+      if (myId !== latestReq) return;
+      if (animTerminal) animTerminal.classList.remove("rendering");
+      toast("preview failed");
+    });
   }
 
   /* ── File list rendering ── */

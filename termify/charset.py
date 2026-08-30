@@ -96,21 +96,40 @@ def _luminance(r: int, g: int, b: int) -> int:
     return round(0.299 * r + 0.587 * g + 0.114 * b)
 
 
-def _adaptive_lut(img) -> list[int]:
-    """Build a CDF-based luminance lookup table for adaptive grayscale bucketing.
+def _luminance_array(img) -> list[int]:
+    """All pixel luminances in ONE pass (row-major).
 
-    Maps pixel luminance through the cumulative distribution function so that
-    the full character range is utilised regardless of the image's brightness
-    histogram. Uniform images (min == max) fall back to identity.
+    Single-pass optimization for video-length workloads: the previous code
+    walked every pixel three separate times (adaptive LUT histogram, Otsu
+    collection, render mapping), each with a _luminance() function call.
+    ``tobytes()`` extracts raw RGB at C speed; the comprehension keeps the
+    exact same rounding as _luminance so rendered output is byte-identical.
     """
-    px = img.load()
-    w, h = img.size
+    if img.mode == "RGBA":
+        buf = img.tobytes()
+        step = 4
+    elif img.mode == "RGB":
+        buf = img.tobytes()
+        step = 3
+    else:
+        img = img.convert("RGB")
+        buf = img.tobytes()
+        step = 3
+    return [round(0.299 * buf[i] + 0.587 * buf[i + 1] + 0.114 * buf[i + 2])
+            for i in range(0, len(buf), step)]
+
+
+def _hist_from_lums(lums: list[int]) -> list[int]:
     hist = [0] * 256
-    for y in range(h):
-        for x in range(w):
-            r, g, b = px[x, y][:3]
-            hist[_luminance(r, g, b)] += 1
-    total = w * h
+    for v in lums:
+        hist[v] += 1
+    return hist
+
+
+def _adaptive_lut_from_lums(lums: list[int]) -> list[int]:
+    """CDF-based adaptive LUT from a precomputed luminance array."""
+    hist = _hist_from_lums(lums)
+    total = len(lums)
     cdf = 0
     cdf_min = None
     lut = [0] * 256
@@ -125,6 +144,16 @@ def _adaptive_lut(img) -> list[int]:
         else:
             lut[i] = round((cdf - cdf_min) / (total - cdf_min) * 255)
     return lut
+
+
+def _adaptive_lut(img) -> list[int]:
+    """Build a CDF-based luminance lookup table for adaptive grayscale bucketing.
+
+    Maps pixel luminance through the cumulative distribution function so that
+    the full character range is utilised regardless of the image's brightness
+    histogram. Uniform images (min == max) fall back to identity.
+    """
+    return _adaptive_lut_from_lums(_luminance_array(img))
 
 
 def _otsu_threshold(stretched):
@@ -182,14 +211,7 @@ def _minority_is_bright_for_img(img) -> bool:
     Returns True when the bright minority is the subject (e.g. white cat on
     dark background), False otherwise.
     """
-    px = img.load()
-    w, h = img.size
-    lum_values = []
-    for y in range(h):
-        for x in range(w):
-            r, g, b = px[x, y][:3]
-            lum_values.append(_luminance(r, g, b))
-    _, mib = _otsu_threshold(lum_values)
+    _, mib = _otsu_threshold(_luminance_array(img))
     return mib
 
 
@@ -219,24 +241,27 @@ def _render_ramp(img, width, height, fg, bg, chars):
 
     ``chars`` is ordered dense -> sparse (black -> white); the adaptive LUT
     and minority-is-bright inversion decide which end a pixel maps to.
+    Single luminance pass + per-level index table (byte-identical output to
+    the per-pixel formulation).
     """
     n = len(chars)
-    lut = _adaptive_lut(img)
-    mib = _minority_is_bright_for_img(img)
-    px = img.load()
+    lums = _luminance_array(img)
+    lut = _adaptive_lut_from_lums(lums)
+    _, mib = _otsu_threshold(lums)
+    if mib:
+        cell = [chars[(n - 1) - lut[g] * (n - 1) // 255] for g in range(256)]
+    else:
+        cell = [chars[lut[g] * (n - 1) // 255] for g in range(256)]
+    colorize = fg is not None or bg is not None
     lines = []
-    for y in range(height):
-        row = []
-        for x in range(width):
-            r, g, b = px[x, y][:3]
-            gray = lut[_luminance(r, g, b)]
-            if mib:
-                idx = (n - 1) - gray * (n - 1) // 255
-            else:
-                idx = gray * (n - 1) // 255
-            row.append(_emit(chars[idx], fg, bg))
-        if fg is not None or bg is not None:
+    pos = 0
+    for _y in range(height):
+        if colorize:
+            row = [_emit(cell[lums[pos + x]], fg, bg) for x in range(width)]
             row.append("\x1b[0m")
+        else:
+            row = [cell[v] for v in lums[pos:pos + width]]
+        pos += width
         lines.append("".join(row))
     return lines
 
@@ -250,19 +275,23 @@ def _render_shades(img, width, height, fg=None, bg=None):
 
 
 def _render_blocks(img, width, height):
-    px = img.load()
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    buf = img.tobytes()
     src_w, src_h = img.size
     out_lines = []
     for y_top in range(0, src_h, 2):
         y_bot = y_top + 1 if y_top + 1 < src_h else y_top
+        row_top = y_top * src_w * 3
+        row_bot = y_bot * src_w * 3
         parts = []
         last_fg = None
         last_bg = None
         for x in range(src_w):
-            rt, gt, bt = px[x, y_top][:3]
-            rb, gb, bb = px[x, y_bot][:3]
-            fg = (rt, gt, bt)
-            bg = (rb, gb, bb)
+            o = row_top + x * 3
+            ob = row_bot + x * 3
+            fg = (buf[o], buf[o + 1], buf[o + 2])
+            bg = (buf[ob], buf[ob + 1], buf[ob + 2])
             if fg != last_fg:
                 parts.append(_ansi_fg(fg))
                 last_fg = fg
@@ -277,7 +306,6 @@ def _render_blocks(img, width, height):
 
 
 def _render_braille(img, width, height, fg=None, bg=None):
-    px = img.load()
     src_w, src_h = img.size
     cell_w, cell_h = 2, 4
     out_w = max(1, width // cell_w)
@@ -287,13 +315,9 @@ def _render_braille(img, width, height, fg=None, bg=None):
         (1, 0, 0x08), (1, 1, 0x10), (1, 2, 0x20),
         (0, 3, 0x40), (1, 3, 0x80),
     ]
-    # Collect all luminance values and compute Otsu threshold
-    lum_values = []
-    for y in range(src_h):
-        for x in range(src_w):
-            r, g, b = px[x, y][:3]
-            lum_values.append(_luminance(r, g, b))
-    threshold, minority_is_bright = _otsu_threshold(lum_values)
+    # Single luminance pass; Otsu decides which side is the subject.
+    lums = _luminance_array(img)
+    threshold, minority_is_bright = _otsu_threshold(lums)
 
     lines = []
     for by in range(out_h):
@@ -307,8 +331,7 @@ def _render_braille(img, width, height, fg=None, bg=None):
                     sx = src_w - 1
                 if sy >= src_h:
                     sy = src_h - 1
-                r, g, b = px[sx, sy][:3]
-                lum = _luminance(r, g, b)
+                lum = lums[sy * src_w + sx]
                 if minority_is_bright:
                     # Subject is bright → dots for bright pixels
                     if lum >= threshold:
@@ -333,53 +356,46 @@ def _render_geometric(img, width, height, fg=None, bg=None):
     # Direct linear mapping: bright pixels → low idx (dense ■),
     # dark pixels → high idx (sparse □).  Then mib flips it when the
     # subject is dark-on-light so the dark subject still gets dense chars.
-    mib = _minority_is_bright_for_img(img)
-    px = img.load()
+    lums = _luminance_array(img)
+    _, mib = _otsu_threshold(lums)
+    if mib:
+        cell = [chars[(n - 1) - g * (n - 1) // 255] for g in range(256)]
+    else:
+        cell = [chars[g * (n - 1) // 255] for g in range(256)]
+    colorize = fg is not None or bg is not None
     lines = []
-    for y in range(height):
-        row = []
-        for x in range(width):
-            r, g, b = px[x, y][:3]
-            lum = _luminance(r, g, b)
-            if mib:
-                # Bright subject: bright → dense, dark → sparse
-                idx = (n - 1) - lum * (n - 1) // 255
-            else:
-                # Dark subject: dark → dense, bright → sparse
-                idx = lum * (n - 1) // 255
-            row.append(_emit(chars[idx], fg, bg))
-        if fg is not None or bg is not None:
+    pos = 0
+    for _y in range(height):
+        if colorize:
+            row = [_emit(cell[v], fg, bg) for v in lums[pos:pos + width]]
             row.append("\x1b[0m")
+        else:
+            row = [cell[v] for v in lums[pos:pos + width]]
+        pos += width
         lines.append("".join(row))
     return lines
 
 
 def _render_binary(img, width, height, fg=None, bg=None):
-    px = img.load()
-    src_w, src_h = img.size
-    # Otsu threshold + minority-is-subject (same logic as braille)
-    lum_values = []
-    for y in range(src_h):
-        for x in range(src_w):
-            r, g, b = px[x, y][:3]
-            lum_values.append(_luminance(r, g, b))
-    threshold, minority_is_bright = _otsu_threshold(lum_values)
+    # Otsu threshold + minority-is-subject (same logic as braille),
+    # single luminance pass.
+    lums = _luminance_array(img)
+    threshold, minority_is_bright = _otsu_threshold(lums)
+    colorize = fg is not None or bg is not None
+    if minority_is_bright:
+        cell = ["█" if g >= threshold else " " for g in range(256)]
+    else:
+        cell = ["█" if g < threshold else " " for g in range(256)]
 
     lines = []
-    for y in range(height):
-        row = []
-        for x in range(width):
-            r, g, b = px[x, y][:3]
-            lum = _luminance(r, g, b)
-            if minority_is_bright:
-                # Subject is bright → █ for bright pixels
-                ch = "█" if lum >= threshold else " "
-            else:
-                # Subject is dark → █ for dark pixels
-                ch = "█" if lum < threshold else " "
-            row.append(_emit(ch, fg, bg))
-        if fg is not None or bg is not None:
+    pos = 0
+    for _y in range(height):
+        if colorize:
+            row = [_emit(cell[v], fg, bg) for v in lums[pos:pos + width]]
             row.append("\x1b[0m")
+        else:
+            row = [cell[v] for v in lums[pos:pos + width]]
+        pos += width
         lines.append("".join(row))
     return lines
 

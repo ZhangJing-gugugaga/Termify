@@ -1369,6 +1369,29 @@
             transition: width 0.2s ease-out;
         }
 
+        /* 预览渲染中状态（大尺寸/长视频切换需要数秒） */
+        .animation-terminal .terminal {
+            position: relative;
+        }
+        .animation-terminal .terminal.rendering .terminal-body {
+            opacity: 0.35;
+        }
+        .animation-terminal .terminal.rendering::after {
+            content: "渲染中…";
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: var(--green);
+            background: rgba(4, 6, 10, 0.75);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 8px 18px;
+            pointer-events: none;
+            z-index: 5;
+        }
+
         /* ═══════════════════════════════════════════
             GALLERY PAGES — shared helpers
             ═══════════════════════════════════════════ */
