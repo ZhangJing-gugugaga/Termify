@@ -93,6 +93,7 @@ python app.py
 
 - **Python 脚本（.py）**：在终端播放，零依赖，按 Ctrl+C 停止。
 - **HTML 页面（.html）**：浏览器打开即播放，更适合分享、手机查看。
+- **MP4 视频（.mp4）**：把字符动画渲染成真视频，微信/朋友圈/QQ 直接播放。导出在服务器同步进行，弹窗会显示预计耗时（限 6 次/分钟，服务器繁忙时会提示稍后再试）。
 
 ### Step 05 · 选择终端尺寸
 
@@ -240,7 +241,7 @@ A: Python 未安装或未加入 PATH。请安装 Python 3.10+ 并在安装时勾
 | `POST` | `/api/fetch-url` | 从 URL 下载图片并转换（`{"url":"..."}`），含 SSRF 防护 |
 | `POST` | `/api/upload-video` | 上传视频（MP4/WEBM/MOV/AVI/MKV），后端 ffmpeg 抽帧后转换，限 30s / 20MB |
 | `GET` | `/api/preview/<task_id>` | 获取帧数据。参数：`charset`（风格，含 `shades`/`custom`）、`width`、`height`、`frame`（某帧）、`fg`/`bg`（颜色，形如 `rgb(255,0,0)`）、`chars`（custom 必填，自定义字符梯，密→疏）。不传 `frame` 返回全部帧。 |
-| `POST` | `/api/generate` | 打包指定字符集+格式，返回 `download_url` |
+| `POST` | `/api/generate` | 打包指定字符集+格式（`python`/`html`/`mp4`），返回 `download_url`。`mp4` 为同步编码（限 6 次/分钟，2 路并发），需服务器安装 ffmpeg |
 | `GET` | `/api/download/<filename>` | 下载生成的文件 |
 
 ### 示例

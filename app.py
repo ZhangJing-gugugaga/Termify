@@ -41,7 +41,10 @@ from termify.taskstore import (
 )
 
 VALID_EXT = {".gif", ".png", ".jpg", ".jpeg"}
-VALID_FORMATS = {"python", "html"}
+VALID_FORMATS = {"python", "html", "mp4"}
+
+# Video export: cap concurrent encodes so public-demo CPU stays responsive.
+_VIDEO_SLOTS = threading.Semaphore(2)
 
 
 def _task_put(task_id: str, *, filepath, original_size, target_size,
@@ -546,6 +549,11 @@ def generate():
         if not isinstance(raw_ramp, str) or not raw_ramp.strip():
             return jsonify({"error": "custom charset requires a 'chars' ramp"}), 400
         charset_ramp = raw_ramp
+
+    if fmt == "mp4":
+        return _generate_video(task_id, charset, width, height,
+                               fg_color, bg_color, charset_ramp)
+
     seq = _get_sequence(task_id, charset, width, height, fg_color=fg_color,
                         bg_color=bg_color, charset_ramp=charset_ramp)
 
@@ -571,6 +579,57 @@ def generate():
     return jsonify({
         "download_url": f"/api/download/{filename}",
         "file_size": file_size,
+    })
+
+
+def _generate_video(task_id, charset, width, height, fg_color, bg_color,
+                    charset_ramp):
+    """Sync MP4 export: rasterize the FrameSequence and encode with ffmpeg."""
+    from termify.output import video as video_mod
+
+    if not video_mod.ffmpeg_available():
+        return jsonify({"error": "服务器未安装 ffmpeg，视频导出暂不可用"}), 503
+
+    ip = _client_ip()
+    if not _rate_check(ip, "video-export", per_minute=6):
+        return jsonify({"error": "视频导出太频繁，请稍后再试 (限 6 次/分钟)"}), 429
+
+    seq = _get_sequence(task_id, charset, width, height, fg_color=fg_color,
+                        bg_color=bg_color, charset_ramp=charset_ramp)
+    if seq is None:
+        return jsonify({"error": "Task not found"}), 404
+    if len(seq.lines_per_frame) > video_mod.MAX_VIDEO_FRAMES:
+        return jsonify({"error": f"帧数过多 ({len(seq.lines_per_frame)})，"
+                                 f"视频导出上限 {video_mod.MAX_VIDEO_FRAMES} 帧"}), 400
+
+    ext = "mp4"
+    filename = f"{task_id}_{charset}.{ext}"
+    if charset == "custom":
+        digest = hashlib.sha256((charset_ramp or "").encode("utf-8")).hexdigest()[:8]
+        filename = f"{task_id}_custom_{digest}.{ext}"
+    out_path = _tmp_out_path(filename)
+
+    if not _VIDEO_SLOTS.acquire(blocking=False):
+        return jsonify({"error": "服务器编码繁忙，请稍后再试"}), 429
+    try:
+        video_mod.encode_mp4(seq, out_path)
+    except video_mod.VideoEncodeError as e:
+        return jsonify({"error": f"视频编码失败: {e}"}), 500
+    finally:
+        _VIDEO_SLOTS.release()
+
+    size_bytes = os.path.getsize(out_path)
+    if size_bytes >= 1024 * 1024:
+        file_size = f"{size_bytes // (1024 * 1024)}MB"
+    elif size_bytes >= 1024:
+        file_size = f"{size_bytes // 1024}KB"
+    else:
+        file_size = f"{size_bytes}B"
+
+    return jsonify({
+        "download_url": f"/api/download/{filename}",
+        "file_size": file_size,
+        "format": "mp4",
     })
 
 

@@ -521,6 +521,25 @@
     if (S.charset === "custom") body.chars = S.ramp;
     if (S.fg) body.fg = "rgb(" + S.fg[0] + "," + S.fg[1] + "," + S.fg[2] + ")";
     if (S.bg) body.bg = "rgb(" + S.bg[0] + "," + S.bg[1] + "," + S.bg[2] + ")";
+    if (fmt === "mp4") {
+      var est = Math.max(2, Math.round((S.totalFrames || 1) * S.width * S.height / 80000));
+      showModal("正在导出 MP4 视频", "预计约 " + est + " 秒，编码在服务器进行，完成后自动下载…");
+      fetch("/api/generate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.error) {
+          showModal("导出失败", d.error, true);
+          return;
+        }
+        hideModal();
+        toast("MP4 已生成 (" + (d.file_size || "?") + ")，开始下载");
+        window.location.href = d.download_url;
+      }).catch(function (e) {
+        showModal("导出失败", "网络错误: " + e, true);
+      });
+      return;
+    }
     fetch("/api/generate", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
@@ -529,6 +548,25 @@
       window.location.href = d.download_url;
     }).catch(function (e) { toast("download failed: " + e); });
   }
+
+  /* ── T21: termify modal (no native alert/confirm) ── */
+  var modal = byId("termifyModal");
+  var modalTitle = byId("termifyModalTitle");
+  var modalText = byId("termifyModalText");
+  var modalSpinner = byId("termifyModalSpinner");
+  function showModal(title, text, isError) {
+    if (!modal) return;
+    modal.hidden = false;
+    modal.classList.toggle("error", !!isError);
+    if (modalSpinner) modalSpinner.style.display = isError ? "none" : "block";
+    if (modalTitle) modalTitle.textContent = title;
+    if (modalText) modalText.textContent = text || "";
+  }
+  function hideModal() {
+    if (modal) modal.hidden = true;
+  }
+  var modalClose = byId("termifyModalClose");
+  if (modalClose) modalClose.addEventListener("click", hideModal);
 
   /* ── Hex → RGB helper ── */
   function hexToRgb(hex) {

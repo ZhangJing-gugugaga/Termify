@@ -304,6 +304,14 @@
                                 </div>
                                 <div class="format-icon">.html</div>
                             </div>
+                            <div class="format-option" data-format="mp4">
+                                <div class="format-radio"></div>
+                                <div class="format-label">
+                                    <div class="format-label-name">MP4 视频</div>
+                                    <div class="format-label-desc">微信/手机直接播放，分享零门槛</div>
+                                </div>
+                                <div class="format-icon">.mp4</div>
+                            </div>
                         </div>
                     </div>
 
@@ -604,5 +612,17 @@
         }, 100);
     </script>
     <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+
+    <!-- Termify 自定义弹窗（替代浏览器原生 alert/confirm） -->
+    <div class="termify-modal" id="termifyModal" hidden>
+        <div class="termify-modal-backdrop"></div>
+        <div class="termify-modal-box">
+            <button class="termify-modal-close" id="termifyModalClose" title="关闭">×</button>
+            <div class="termify-modal-spinner" id="termifyModalSpinner"></div>
+            <div class="termify-modal-title" id="termifyModalTitle">处理中</div>
+            <div class="termify-modal-text" id="termifyModalText"></div>
+            <div class="termify-modal-hint">关闭弹窗不会取消服务器端的处理</div>
+        </div>
+    </div>
 </body>
 </html>
