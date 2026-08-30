@@ -129,25 +129,99 @@ def _measure_cell(font) -> tuple[int, int]:
     return char_w, char_h
 
 
+def _parse_line_cells(line: str) -> list[tuple]:
+    """Parse one ANSI line into (fg, bg, char) triples (None = default)."""
+    return parse_ansi_line(line)
+
+
 def frame_to_image(lines: list[str], font, char_w: int, char_h: int,
                    out_w: int, out_h: int,
                    default_fg=DEFAULT_FG, default_bg=DEFAULT_BG) -> Image.Image:
-    """Rasterize one ANSI frame (list of lines) onto an RGB image."""
-    img = Image.new("RGB", (out_w, out_h), default_bg)
-    draw = ImageDraw.Draw(img)
+    """Rasterize one ANSI frame (list of lines) onto an RGB image.
+
+    Fast paths dominate real workloads:
+    - blocks: every cell is "▀" (top fg / bottom bg) → byte-level composite
+      of the whole frame, no font rendering at all.
+    - "█" full-block cells (binary) → byte-level composite.
+    - uniform-color lines (ramp charsets) → one draw.text per line.
+    Anything else falls back to per-cell drawing on the composed frame.
+    """
+    buf = bytearray(out_w * out_h * 3)
+    bg_span = bytes(default_bg) * out_w
+    for yy in range(out_h):
+        off = yy * out_w * 3
+        buf[off:off + out_w * 3] = bg_span
+
+    max_cells = out_w // char_w
+    half_h = char_h // 2
+    text_lines: list[tuple[int, list[tuple]]] = []  # (row, cells) needing draw
+
     for y, line in enumerate(lines):
+        cells = _parse_line_cells(line)
+        if not cells:
+            continue
+        chars = [c for _, _, c in cells]
+        y0 = y * char_h
+        if all(c == "▀" for c in chars):
+            for yy in range(y0, min(y0 + char_h, out_h)):
+                off = yy * out_w * 3
+                if yy < y0 + half_h:
+                    row = bytearray()
+                    for fg, _bg, _c in cells:
+                        row += bytes(fg if fg is not None else default_fg) * char_w
+                else:
+                    row = bytearray()
+                    for _fg, bg, _c in cells:
+                        row += bytes(bg if bg is not None else default_bg) * char_w
+                span = bytes(row[:out_w * 3])
+                buf[off:off + len(span)] = span
+            continue
+        if all(c == "█" for c in chars):
+            row = bytearray()
+            for fg, _bg, _c in cells:
+                row += bytes(fg if fg is not None else default_fg) * char_w
+            span = bytes(row[:out_w * 3])
+            for yy in range(y0, min(y0 + char_h, out_h)):
+                off = yy * out_w * 3
+                buf[off:off + len(span)] = span
+            continue
+        text_lines.append((y, cells))
+
+    img = Image.frombytes("RGB", (out_w, out_h), bytes(buf))
+    if not text_lines:
+        return img
+    draw = ImageDraw.Draw(img)
+    for y, cells in text_lines:
+        y0 = y * char_h
+        fgs = {fg for fg, _, _ in cells}
+        bgs = {bg for _, bg, _ in cells}
+        if len(fgs) <= 1 and len(bgs) <= 1:
+            # uniform color line → single draw.text call
+            fg = next(iter(fgs)) if fgs else None
+            bg = next(iter(bgs)) if bgs else None
+            color = fg if fg is not None else default_fg
+            bg_fill = bg if bg is not None else default_bg
+            if bg_fill != default_bg:
+                draw.rectangle(
+                    [0, y0, min(len(cells), max_cells) * char_w - 1, y0 + char_h - 1],
+                    fill=bg_fill,
+                )
+            text = "".join(c for _, _, c in cells)[:max_cells]
+            draw.text((0, y0), text, fill=color, font=font)
+            continue
+        # per-cell fallback (mixed colors within the line)
         x = 0
-        for fg, bg, ch in parse_ansi_line(line):
-            if x >= out_w // char_w:
+        for fg, bg, ch in cells:
+            if x >= max_cells:
                 break
             color = fg if fg is not None else default_fg
             bg_fill = bg if bg is not None else default_bg
-            if bg != default_bg:
+            if bg_fill != default_bg:
                 draw.rectangle(
-                    [x * char_w, y * char_h, (x + 1) * char_w - 1, (y + 1) * char_h - 1],
+                    [x * char_w, y0, (x + 1) * char_w - 1, y0 + char_h - 1],
                     fill=bg_fill,
                 )
-            draw.text((x * char_w, y * char_h), ch, fill=color, font=font)
+            draw.text((x * char_w, y0), ch, fill=color, font=font)
             x += 1
     return img
 

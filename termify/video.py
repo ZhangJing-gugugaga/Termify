@@ -106,9 +106,13 @@ def extract_frames(
 
     # Extract frames with ffmpeg: optional -t window, adaptive -r sampling
     # -an = no audio, -sn = no subtitles
+    # Frames are downscaled to fit 400x240 (the largest source any terminal
+    # rendering needs: 200x60 braille = 2x4 px/cell). Full-resolution frames
+    # would make every later style/size switch pay a huge PNG-decode cost.
     cmd = [
         _ffmpeg_path(), "-y",
         "-i", video_path,
+        "-vf", "scale=w='min(iw,400)':h='min(ih,240)':force_original_aspect_ratio=decrease",
     ]
     if max_duration:
         cmd += ["-t", str(max_duration)]

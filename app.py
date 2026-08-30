@@ -18,6 +18,8 @@ import time
 import uuid
 from pathlib import Path
 
+from termify.video import VALID_VIDEO_EXTS
+
 from flask import (Flask, abort, jsonify, make_response, redirect,
                    render_template, request, send_file, url_for)
 
@@ -375,6 +377,7 @@ def upload_video():
         "task_id": task_id,
         "filename": file.filename,
         "frames_count": len(seq.lines_per_frame),
+        "interval": seq.interval,
         "original_size": {"type": "video", "frame_count": len(seq.lines_per_frame)},
         "target_size": target_size,
     })
@@ -453,6 +456,7 @@ def fetch_video_url():
         "task_id": task_id,
         "filename": "video-link",
         "frames_count": frames_count,
+        "interval": seq.interval,
         "original_size": {"type": "video", "frame_count": frames_count},
         "target_size": {"width": seq.width, "height": seq.height},
     })
@@ -806,7 +810,8 @@ def gallery_upload():
         return jsonify({"error": "Empty source filename"}), 400
 
     ext = os.path.splitext(source_file.filename)[1].lower()
-    if ext not in GALLERY_EXT:
+    is_video = ext in VALID_VIDEO_EXTS
+    if ext not in GALLERY_EXT and not is_video:
         return jsonify({"error": f"Unsupported file extension: {ext}"}), 400
 
     ip = _client_ip()
@@ -865,19 +870,50 @@ def gallery_upload():
     source_path = os.path.join(base, f"{work_id}{ext}")
     source_file.save(source_path)
 
-    # Verify the file opens with Pillow
-    try:
-        from PIL import Image as _PILImage
-        with _PILImage.open(source_path) as im:
-            im.verify()
-        # Reopen after verify (verify leaves the handle unusable)
-        with _PILImage.open(source_path) as im:
-            im.load()
-    except Exception as exc:  # noqa: BLE001
-        os.remove(source_path)
-        return jsonify({"error": f"Invalid image: {exc}"}), 400
+    frames_dir = None
+    if is_video:
+        # Video works: extract frames once server-side and keep the frames
+        # dir (the 200MB source video itself is NOT stored in the gallery).
+        from termify.video import validate_video, convert_video_file, VideoError
+        try:
+            validate_video(source_path)
+        except VideoError as exc:
+            os.remove(source_path)
+            return jsonify({"error": str(exc)}), 400
+        if not _VIDEO_IMPORT_SLOTS.acquire(blocking=False):
+            os.remove(source_path)
+            return jsonify({"error": "服务器转换繁忙，请稍后再试"}), 429
+        try:
+            frames_dir = os.path.join(base, f"{work_id}_frames")
+            try:
+                seq0 = convert_video_file(source_path, charset="ascii", width=80,
+                                          height=24, delete_source=True,
+                                          frames_out_dir=frames_dir)
+            except VideoError as exc:
+                return jsonify({"error": str(exc)}), 422
+            except Exception as exc:  # noqa: BLE001
+                return jsonify({"error": f"Frame conversion failed: {exc}"}), 500
+        finally:
+            _VIDEO_IMPORT_SLOTS.release()
+        from termify.video import frames_dir_to_images
+        first_frame = frames_dir_to_images(frames_dir)[0]
+        # source_path stays NOT NULL; it now points at the first frame so
+        # /gallery/file/<id>/source still serves something viewable.
+        source_path = first_frame
+    else:
+        # Verify the file opens with Pillow
+        try:
+            from PIL import Image as _PILImage
+            with _PILImage.open(source_path) as im:
+                im.verify()
+            # Reopen after verify (verify leaves the handle unusable)
+            with _PILImage.open(source_path) as im:
+                im.load()
+        except Exception as exc:  # noqa: BLE001
+            os.remove(source_path)
+            return jsonify({"error": f"Invalid image: {exc}"}), 400
 
-    # Generate thumbnails + OG
+    # Generate thumbnails + OG (video works: from the first frame)
     thumb_path = os.path.join(base, f"{work_id}_thumb.gif")
     og_path = os.path.join(base, f"{work_id}_og.png")
     try:
@@ -888,6 +924,11 @@ def gallery_upload():
             if os.path.isfile(p):
                 os.remove(p)
         return jsonify({"error": f"Thumbnail generation failed: {exc}"}), 500
+
+    if is_video and frames_dir:
+        params["kind"] = "video"
+        params["frames_dir"] = frames_dir
+        params["interval"] = seq0.interval
 
     # Insert into DB
     admin_token = _gallery_mod.make_admin_token()
@@ -1042,6 +1083,14 @@ def gallery_delete(work_id):
             p = deleted.get(key)
             if p and os.path.isfile(p):
                 os.remove(p)
+        try:
+            params = json.loads(deleted.get("params_json") or "{}")
+            fd = params.get("frames_dir")
+            if fd and os.path.isdir(fd):
+                import shutil
+                shutil.rmtree(fd, ignore_errors=True)
+        except (ValueError, TypeError):
+            pass
     return jsonify({"ok": True})
 
 
@@ -1077,6 +1126,14 @@ def gallery_admin_delete(work_id):
             p = deleted.get(key)
             if p and os.path.isfile(p):
                 os.remove(p)
+        try:
+            params = json.loads(deleted.get("params_json") or "{}")
+            fd = params.get("frames_dir")
+            if fd and os.path.isdir(fd):
+                import shutil
+                shutil.rmtree(fd, ignore_errors=True)
+        except (ValueError, TypeError):
+            pass
     return jsonify({"ok": True})
 
 
@@ -1123,10 +1180,21 @@ def gallery_preview(work_id):
     height = max(1, min(400, height))
 
     from termify import convert
-    try:
-        seq = convert(work["source_path"], charset, width, height)
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": f"Conversion failed: {exc}"}), 500
+    if original.get("kind") == "video":
+        from termify.video import sequence_from_frames_dir
+        fd = original.get("frames_dir") or ""
+        if not fd or not os.path.isdir(fd):
+            return jsonify({"error": "Video frames missing"}), 410
+        try:
+            seq = sequence_from_frames_dir(fd, charset, width, height,
+                                           interval=original.get("interval") or 0.1)
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": f"Conversion failed: {exc}"}), 500
+    else:
+        try:
+            seq = convert(work["source_path"], charset, width, height)
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": f"Conversion failed: {exc}"}), 500
 
     return jsonify({
         "frames": seq.lines_per_frame,
@@ -1169,7 +1237,15 @@ def gallery_download(work_id):
 
     from termify import convert
     from termify.output import render
-    seq = convert(work["source_path"], charset, width, height)
+    if original.get("kind") == "video":
+        from termify.video import sequence_from_frames_dir
+        fd = original.get("frames_dir") or ""
+        if not fd or not os.path.isdir(fd):
+            return jsonify({"error": "Video frames missing"}), 410
+        seq = sequence_from_frames_dir(fd, charset, width, height,
+                                       interval=original.get("interval") or 0.1)
+    else:
+        seq = convert(work["source_path"], charset, width, height)
     content = render(seq, fmt)
 
     ext = "py" if fmt == "python" else "html"

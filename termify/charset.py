@@ -305,33 +305,57 @@ def _render_blocks(img, width, height):
     return out_lines
 
 
-def _render_braille(img, width, height, fg=None, bg=None):
-    src_w, src_h = img.size
-    cell_w, cell_h = 2, 4
-    out_w = max(1, width // cell_w)
-    out_h = max(1, height // cell_h)
+# Cell -> (flat source offset, dot mask) tables, cached per source/output
+# geometry: the coordinates are frame-independent, so video-length workloads
+# only pay for this once per size instead of per frame.
+_BRAILLE_COORD_CACHE: dict[tuple, list[tuple[int, int]]] = {}
+
+
+def _braille_coord_table(src_w: int, src_h: int, out_w: int, out_h: int) -> list[tuple[int, int]]:
+    key = (src_w, src_h, out_w, out_h)
+    table = _BRAILLE_COORD_CACHE.get(key)
+    if table is not None:
+        return table
     dots = [
         (0, 0, 0x01), (0, 1, 0x02), (0, 2, 0x04),
         (1, 0, 0x08), (1, 1, 0x10), (1, 2, 0x20),
         (0, 3, 0x40), (1, 3, 0x80),
     ]
-    # Single luminance pass; Otsu decides which side is the subject.
-    lums = _luminance_array(img)
-    threshold, minority_is_bright = _otsu_threshold(lums)
-
-    lines = []
+    table = []
     for by in range(out_h):
-        row = []
         for bx in range(out_w):
-            bits = 0
             for dx, dy, mask in dots:
-                sx = int((bx * cell_w + dx) * src_w / (out_w * cell_w))
-                sy = int((by * cell_h + dy) * src_h / (out_h * cell_h))
+                sx = int((bx * 2 + dx) * src_w / (out_w * 2))
+                sy = int((by * 4 + dy) * src_h / (out_h * 4))
                 if sx >= src_w:
                     sx = src_w - 1
                 if sy >= src_h:
                     sy = src_h - 1
-                lum = lums[sy * src_w + sx]
+                table.append((sy * src_w + sx, mask))
+    if len(_BRAILLE_COORD_CACHE) > 8:
+        _BRAILLE_COORD_CACHE.clear()
+    _BRAILLE_COORD_CACHE[key] = table
+    return table
+
+
+def _render_braille(img, width, height, fg=None, bg=None):
+    src_w, src_h = img.size
+    cell_w, cell_h = 2, 4
+    out_w = max(1, width // cell_w)
+    out_h = max(1, height // cell_h)
+    # Single luminance pass; Otsu decides which side is the subject.
+    lums = _luminance_array(img)
+    threshold, minority_is_bright = _otsu_threshold(lums)
+    coord_table = _braille_coord_table(src_w, src_h, out_w, out_h)
+
+    lines = []
+    pos = 0
+    for _by in range(out_h):
+        row = []
+        for _bx in range(out_w):
+            bits = 0
+            for offset, mask in coord_table[pos:pos + 8]:
+                lum = lums[offset]
                 if minority_is_bright:
                     # Subject is bright → dots for bright pixels
                     if lum >= threshold:
@@ -340,6 +364,7 @@ def _render_braille(img, width, height, fg=None, bg=None):
                     # Subject is dark → dots for dark pixels
                     if lum < threshold:
                         bits |= mask
+            pos += 8
             row.append(_emit(chr(0x2800 + bits), fg, bg))
         if fg is not None or bg is not None:
             row.append("\x1b[0m")

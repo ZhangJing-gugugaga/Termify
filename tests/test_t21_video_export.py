@@ -109,6 +109,30 @@ def test_frame_to_image_draws_glyph_pixels():
     assert DEFAULT_BG not in colors or len(colors) > 1  # 至少有字形/抗锯齿像素
 
 
+def test_frame_to_image_blocks_byte_composite():
+    """blocks 字节合成快路径：上半 = fg，下半 = bg，边界像素精确。"""
+    font = pick_font(14)
+    from termify.output.video import _measure_cell
+    cw, ch = _measure_cell(font)
+    line = ("\x1b[38;2;255;0;0m\x1b[48;2;0;0;255m▀" * 4)
+    img = frame_to_image([line], font, cw, ch, 4 * cw, ch)
+    assert img.getpixel((0, 0)) == (255, 0, 0)          # 上半 = fg
+    assert img.getpixel((4 * cw - 1, 0)) == (255, 0, 0)
+    assert img.getpixel((0, ch - 1)) == (0, 0, 255)     # 下半 = bg
+    assert img.getpixel((4 * cw - 1, ch - 1)) == (0, 0, 255)
+
+
+def test_frame_to_image_full_block_composite():
+    """binary 全块快路径：整个 cell = fg。"""
+    font = pick_font(14)
+    from termify.output.video import _measure_cell
+    cw, ch = _measure_cell(font)
+    line = "\x1b[38;2;1;2;3m█" * 4
+    img = frame_to_image([line, line], font, cw, ch, 4 * cw, 2 * ch)
+    for yy in (0, ch - 1, ch, 2 * ch - 1):
+        assert img.getpixel((2 * cw, yy)) == (1, 2, 3)
+
+
 # --- 预估 / 上限 -------------------------------------------------------------------
 
 def test_estimate_seconds_clamped():

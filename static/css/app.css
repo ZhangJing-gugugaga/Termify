@@ -1373,10 +1373,10 @@
         .animation-terminal .terminal {
             position: relative;
         }
-        .animation-terminal .terminal.rendering .terminal-body {
+        .animation-terminal.rendering .terminal-body {
             opacity: 0.35;
         }
-        .animation-terminal .terminal.rendering::after {
+        .animation-terminal.rendering .terminal::after {
             content: "渲染中…";
             position: absolute;
             top: 50%; left: 50%;

@@ -219,8 +219,10 @@
 
     currentFrame = idx;
     var n = S.frames.length;
-    if (progressFill) progressFill.style.width = ((idx + 1) / n) * 100 + "%";
-    if (frameCounter) frameCounter.textContent = (idx + 1) + " / " + n;
+    var totalSec = n * S.interval;
+    var curSec = (idx + 1) * S.interval;
+    if (progressFill) progressFill.style.width = (totalSec > 0 ? (curSec / totalSec) * 100 : 0) + "%";
+    if (frameCounter) frameCounter.textContent = curSec.toFixed(1) + "s / " + totalSec.toFixed(1) + "s";
     setTitleMeta();
   }
 
@@ -333,8 +335,11 @@
   }
 
   /* ── Request preview from backend ── */
-  function requestPreview(charset) {
-    if (!S.taskId) { toast("请先上传文件"); return; }
+  function requestPreview(charset, opts) {
+    if (!S.taskId) {
+      if (!(opts && opts.silent)) toast("请先上传文件");
+      return;
+    }
     if (charset === "custom" && !S.ramp) { toast("请先在 Tweaks 面板填写自定义字符"); return; }
     var myId = ++latestReq;
     var url = "/api/preview/" + S.taskId
@@ -511,11 +516,11 @@
         (e.total / 1024 / 1024).toFixed(1) + "MB · 预计剩余 " + eta + " 秒";
     });
     xhr.upload.addEventListener("load", function () {
-      // 上传完成 → 服务器抽帧+渲染。转换耗时主要由"视频时长"决定
-      //（ffmpeg 解码 + 帧渲染），用本地探测到的时长做诚实估计。
+      // 上传完成 → 服务器抽帧+渲染。实测 50s/720p ≈ 6s（抽帧已缩放+单遍渲染），
+      // 转换耗时主要由视频时长决定，按 0.12s/秒视频 估。
       var dur = file.__durationSec;
-      var est = dur ? Math.max(8, Math.round(dur * 0.5) + 5)
-                    : Math.max(10, Math.round(file.size / 1024 / 1024 * 3) + 8);
+      var est = dur ? Math.max(3, Math.round(dur * 0.12))
+                    : Math.max(5, Math.round(file.size / 1024 / 1024 * 0.5) + 3);
       modalTitle.textContent = "正在转换视频";
       modalText.textContent = "抽帧 + 渲染中，预计约 " + est + " 秒（视频越长越久，请耐心等待）…";
       setModalProgress(100);
@@ -530,7 +535,8 @@
         return;
       }
       var vf = { task_id: d.task_id, filename: d.filename || file.name,
-                 frames_count: d.frames_count, charset: "ascii", width: 80, height: 24 };
+                 frames_count: d.frames_count, charset: "ascii", width: 80, height: 24,
+                 kind: "video", interval: d.interval || 0.1, sourceFile: file };
       S.fileList = S.fileList.concat([vf]);
       S.selIdx = S.fileList.length - 1;
       selectFile(S.selIdx);
@@ -578,7 +584,8 @@
     if (S.fg) body.fg = "rgb(" + S.fg[0] + "," + S.fg[1] + "," + S.fg[2] + ")";
     if (S.bg) body.bg = "rgb(" + S.bg[0] + "," + S.bg[1] + "," + S.bg[2] + ")";
     if (fmt === "mp4") {
-      var est = Math.max(2, Math.round((S.totalFrames || 1) * S.width * S.height / 80000));
+      // 实测 ~100k 字符格/秒（字节合成 + x264），加 3s 编码固定开销
+      var est = Math.max(5, Math.round((S.totalFrames || 1) * S.width * S.height / 100000) + 3);
       showModal("正在导出 MP4 视频", "预计约 " + est + " 秒，编码在服务器进行，完成后自动下载…");
       fetch("/api/generate", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -643,12 +650,36 @@
      ══════════════════════════════════════ */
 
   // Style cards
+  var styleDemos = {};
+  qa(".style-card").forEach(function (card) {
+    var p = card.querySelector(".style-preview");
+    if (p) styleDemos[card.getAttribute("data-style")] = p.textContent;
+  });
+  function customDemoArt() {
+    var ramp = S.ramp || "@%#*+=-:.";
+    var row = "";
+    for (var i = 0; i < 22; i++) row += ramp[i % ramp.length];
+    return row + "\n" + row + "\n " + row + "\n " + row + "\n  " + row + "\n  " + row +
+           "\n " + row + "\n " + row;
+  }
+  function showStyleDemo(style) {
+    if (!preview) return;
+    if (S.canvasEl) S.canvasEl.style.display = "none";
+    preview.style.display = "";
+    if (style === "custom") {
+      preview.textContent = customDemoArt();
+    } else if (styleDemos[style]) {
+      preview.textContent = styleDemos[style];
+    }
+    setTitleMeta();
+  }
   qa(".style-card").forEach(function (card) {
     card.addEventListener("click", function () {
       qa(".style-card").forEach(function (c) { c.classList.remove("selected"); });
       card.classList.add("selected");
       var s = card.getAttribute("data-style");
-      requestPreview(s);
+      if (!S.taskId) showStyleDemo(s);
+      requestPreview(s, { silent: !S.taskId });
       var previewEl = document.getElementById("preview");
       if (previewEl) previewEl.scrollIntoView({ behavior: "instant", block: "start" });
     });
@@ -744,7 +775,8 @@
     }
     function finishVideoTask(d) {
       var vf = { task_id: d.task_id, filename: d.filename || "video-link",
-                 frames_count: d.frames_count, charset: "ascii", width: 80, height: 24 };
+                 frames_count: d.frames_count, charset: "ascii", width: 80, height: 24,
+                 kind: "video", interval: d.interval || 0.1 };
       S.fileList = S.fileList.concat([vf]);
       S.selIdx = S.fileList.length - 1;
       selectFile(S.selIdx);
@@ -919,11 +951,13 @@
   var galleryModal = byId("galleryModal");
 
   function openGalleryModal() {
-    if (!S.sourceFile) { toast("请先上传文件"); return; }
+    var cur = S.fileList[S.selIdx] || {};
+    if (!(cur.sourceFile || S.sourceFile)) { toast("请先上传文件"); return; }
     galleryModal.classList.add("open");
     var title = byId("galleryTitle");
-    if (!title.value && S.sourceFile.name) {
-      title.value = S.sourceFile.name.replace(/\.[^.]+$/, "").slice(0, 60);
+    var srcName = ((cur.sourceFile || S.sourceFile) || {}).name || "";
+    if (!title.value && srcName) {
+      title.value = srcName.replace(/\.[^.]+$/, "").slice(0, 60);
       updateCounts();
     }
   }
@@ -935,13 +969,13 @@
     if (e.target === galleryModal) closeGalleryModal();
   });
 
-  /* ── Show share button when an image upload succeeds ── */
+  /* ── Gallery share: show button for tasks that have a source ── */
   var _origSelectFile = selectFile;
   selectFile = function (idx) {
     _origSelectFile(idx);
     var cur = S.fileList[idx];
-    var curIsVideo = cur && VIDEO_EXTS.indexOf(extOf(cur.filename || "")) >= 0;
-    if (shareBtn) shareBtn.style.display = (S.sourceFile && !curIsVideo) ? "flex" : "none";
+    var src = (cur && cur.sourceFile) || S.sourceFile;
+    if (shareBtn) shareBtn.style.display = src ? "flex" : "none";
   };
 
   /* ── Character counters ── */
@@ -967,8 +1001,10 @@
 
   /* ── Submit gallery upload ── */
   if (byId("gallerySubmitBtn")) byId("gallerySubmitBtn").addEventListener("click", function () {
-    if (!S.sourceFile) { toast("请先上传文件"); return; }
-    var title = byId("galleryTitle").value.trim() || S.sourceFile.name.replace(/\.[^.]+$/, "");
+    var cur = S.fileList[S.selIdx] || {};
+    var src = cur.sourceFile || S.sourceFile;
+    if (!src) { toast("请先上传文件"); return; }
+    var title = byId("galleryTitle").value.trim() || src.name.replace(/\.[^.]+$/, "");
     var desc = byId("galleryDesc").value.trim();
     var author = byId("galleryAuthor").value.trim();
     var isPrivate = document.querySelector('input[name="galleryVis"]:checked').value;
@@ -977,13 +1013,17 @@
       tags.push(cb.value);
     });
     var fd = new FormData();
-    fd.append("source", S.sourceFile);
+    fd.append("source", src);
     fd.append("title", title);
     fd.append("description", desc);
     fd.append("author", author);
     fd.append("tags", JSON.stringify(tags));
     fd.append("is_private", isPrivate);
     var params = { charset: S.charset, width: S.width, height: S.height };
+    if (cur.kind === "video") {
+      params.kind = "video";
+      params.interval = cur.interval || 0.1;
+    }
     fd.append("params", JSON.stringify(params));
 
     this.disabled = true; this.textContent = "发布中...";
