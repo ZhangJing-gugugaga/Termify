@@ -211,4 +211,4 @@ def test_generate_mp4_no_ffmpeg_friendly(client, tmp_path, monkeypatch):
                                         "format": "mp4"}),
                        content_type="application/json")
     assert resp.status_code == 503
-    assert "ffmpeg" in json.loads(resp.data)["error"]
+    assert "视频导出暂不可用" in json.loads(resp.data)["error"]
