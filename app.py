@@ -1153,6 +1153,50 @@ def gallery_admin_resolve_report(report_id):
 
 # --- gallery preview + download (derived from stored source) ---
 
+@app.route("/api/gallery/source-frames/<work_id>", methods=["GET"])
+def gallery_source_frames(work_id):
+    """Serve stored source frames of a VIDEO gallery work as base64 JPEGs.
+
+    Lets the viewer page render every charset/size client-side (方案B),
+    so switching is instant instead of waiting for a server re-render.
+    Shape: {ok, w, h, interval, count, frames: ["<b64>", ...]}
+    """
+    work = GALLERY_DB.get_work(work_id)
+    if not work:
+        return jsonify({"error": "Work not found"}), 404
+    original = json.loads(work["params_json"]) if work["params_json"] else {}
+    if original.get("kind") != "video":
+        return jsonify({"error": "Not a video work"}), 400
+    fd = original.get("frames_dir") or ""
+    if not fd or not os.path.isdir(fd):
+        return jsonify({"error": "Video frames missing"}), 410
+
+    from termify.video import frames_dir_to_images
+    from PIL import Image
+    import base64
+    import io as _io
+
+    paths = frames_dir_to_images(fd)
+    frames = []
+    w = h = 0
+    for p in paths:
+        with Image.open(p) as im:
+            im = im.convert("RGB")
+            if w == 0:
+                w, h = im.size
+            buf = _io.BytesIO()
+            im.save(buf, format="JPEG", quality=80)
+            frames.append(base64.b64encode(buf.getvalue()).decode("ascii"))
+    return jsonify({
+        "ok": True,
+        "w": w,
+        "h": h,
+        "interval": original.get("interval") or 0.1,
+        "count": len(frames),
+        "frames": frames,
+    })
+
+
 @app.route("/api/gallery/preview/<work_id>", methods=["GET"])
 def gallery_preview(work_id):
     """Render a gallery work's frames in the requested charset/size.

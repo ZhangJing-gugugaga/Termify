@@ -135,11 +135,13 @@
     var cols = S.width;
     var rows = pixels.length / cols;
 
-    // Each ▀ encodes 2 vertical image pixels; terminal chars are ~2:1 h:w,
-    // so cellH ≈ 2 × cellW keeps the image aspect ratio correct.
+    // 固定窗口内适配：cellW 取宽/高两个方向的较小值，画布永远装进预览框。
+    // ▀ 编码 2 个纵向像素，cellH = 2 × cellW 保持内容宽高比。
     var container = preview.parentNode;
+    var fs = fitTerminalFontSize() || 10;
     var availW = container ? container.clientWidth - 32 : 640;
-    var cellW = Math.max(4, Math.floor(availW / cols));
+    var availH = Math.round(S.height * 1.3 * fs) + 8;
+    var cellW = Math.max(2, Math.floor(Math.min(availW / cols, availH / (2 * rows))));
     var cellH = cellW * 2;
     var canvasW = cols * cellW;
     var canvasH = rows * cellH;
@@ -293,24 +295,14 @@
     if (S.wasPlaying) { S.wasPlaying = false; startPlayer(); }
   }
 
-  /* ── Sync preview terminal height to output panel ── */
+  /* ── 固定窗口：高度由 CSS 恒定（min(62vh,500px)），不再锚定侧栏面板 ── */
   function syncTerminalHeight() {
-    var term = document.querySelector(".animation-terminal");
-    var panel = document.querySelector(".output-panel");
-    if (!term || !panel) return;
-    // With align-items:start the panel keeps its natural height.
-    // Reset terminal to auto first so we get an unbiased panel measurement.
-    term.style.height = "";
-    var h = panel.getBoundingClientRect().height;
-    if (h > 0) term.style.height = h + "px";
   }
 
-  /* ── Fit terminal font-size to fill the window (quality changes, not size) ── */
+  /* ── Fit terminal font-size to fill the FIXED window (quality changes, not size) ── */
   function fitTerminalFontSize() {
     var tb = document.querySelector(".animation-terminal .terminal-body");
     if (!tb) return;
-    // Skip for blocks charset (uses canvas, not text)
-    if (S.charset === "blocks") return;
 
     var style = getComputedStyle(tb);
     var padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
@@ -327,6 +319,7 @@
     var fs = Math.min(fsW, fsH);
     fs = Math.max(2, Math.min(fs, 30));  // clamp to sane range
     tb.style.fontSize = fs + "px";
+    return fs;
   }
 
   window.addEventListener("resize", function () { syncTerminalHeight(); fitTerminalFontSize(); });
@@ -608,258 +601,17 @@
     if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  /* ── T23 JS 镜像渲染器（与 termify/charset.py 同公式，仅用于本地预览） ── */
-  function jsLuminance(imageData) {
-    var d = imageData.data;
-    var n = d.length / 4;
-    var lums = new Array(n);
-    for (var i = 0, p = 0; i < n; i++, p += 4) {
-      lums[i] = Math.round(0.299 * d[p] + 0.587 * d[p + 1] + 0.114 * d[p + 2]);
-    }
-    return lums;
-  }
-
-  function jsHistogram(lums) {
-    var hist = new Array(256);
-    for (var v = 0; v < 256; v++) hist[v] = 0;
-    for (var i = 0; i < lums.length; i++) hist[lums[i]]++;
-    return hist;
-  }
-
-  function jsOtsu(lums) {
-    var hist = jsHistogram(lums);
-    var total = lums.length;
-    var sumAll = 0;
-    for (var v = 0; v < 256; v++) sumAll += v * hist[v];
-    var sumBg = 0, wBg = 0, maxVar = 0, threshold = 127;
-    for (var t = 0; t < 256; t++) {
-      wBg += hist[t];
-      if (wBg === 0) continue;
-      var wFg = total - wBg;
-      if (wFg === 0) break;
-      sumBg += t * hist[t];
-      var mBg = sumBg / wBg;
-      var mFg = (sumAll - sumBg) / wFg;
-      var variance = wBg * wFg * (mBg - mFg) * (mBg - mFg);
-      if (variance > maxVar) { maxVar = variance; threshold = t; }
-    }
-    var nBelow = 0;
-    for (var q = 0; q <= threshold; q++) nBelow += hist[q];
-    var nAbove = total - nBelow;
-    if (nBelow === 0 || nAbove === 0) return [threshold, false];
-    return [threshold, nAbove < nBelow];
-  }
-
-  function jsAdaptiveLut(lums) {
-    var hist = jsHistogram(lums);
-    var total = lums.length;
-    var cdf = 0, cdfMin = null;
-    var lut = new Array(256);
-    for (var i = 0; i < 256; i++) {
-      cdf += hist[i];
-      if (cdfMin === null && hist[i] > 0) cdfMin = cdf;
-      if (cdfMin === null) lut[i] = 0;
-      else if (total === cdfMin) lut[i] = i;
-      else lut[i] = Math.round((cdf - cdfMin) / (total - cdfMin) * 255);
-    }
-    return lut;
-  }
-
-  var ANSI_ESC = "\x1b";
-  function jsAnsiFg(rgb) { return ANSI_ESC + "[38;2;" + rgb[0] + ";" + rgb[1] + ";" + rgb[2] + "m"; }
-  function jsAnsiBg(rgb) { return ANSI_ESC + "[48;2;" + rgb[0] + ";" + rgb[1] + ";" + rgb[2] + "m"; }
-
-  function jsRenderRamp(lums, w, h, chars, fg, bg) {
-    var n = chars.length;
-    var lut = jsAdaptiveLut(lums);
-    var mib = jsOtsu(lums)[1];
-    var cell = new Array(256);
-    for (var g = 0; g < 256; g++) {
-      var gray = lut[g];
-      var idx = mib ? (n - 1) - Math.floor(gray * (n - 1) / 255)
-                    : Math.floor(gray * (n - 1) / 255);
-      cell[g] = chars[idx];
-    }
-    var lines = [];
-    for (var y = 0; y < h; y++) {
-      var row = "";
-      var base = y * w;
-      for (var x = 0; x < w; x++) {
-        var ch = cell[lums[base + x]];
-        if (fg) row += jsAnsiFg(fg);
-        if (bg) row += jsAnsiBg(bg);
-        row += ch;
-      }
-      if (fg || bg) row += ANSI_ESC + "[0m";
-      lines.push(row);
-    }
-    return lines;
-  }
-
-  function jsRenderBinary(lums, w, h, fg, bg) {
-    var ots = jsOtsu(lums);
-    var threshold = ots[0], mib = ots[1];
-    var cell = new Array(256);
-    for (var g = 0; g < 256; g++) {
-      cell[g] = mib ? (g >= threshold ? "█" : " ") : (g < threshold ? "█" : " ");
-    }
-    var lines = [];
-    for (var y = 0; y < h; y++) {
-      var row = "";
-      var base = y * w;
-      for (var x = 0; x < w; x++) {
-        var ch = cell[lums[base + x]];
-        if (fg) row += jsAnsiFg(fg);
-        if (bg) row += jsAnsiBg(bg);
-        row += ch;
-      }
-      if (fg || bg) row += ANSI_ESC + "[0m";
-      lines.push(row);
-    }
-    return lines;
-  }
-
-  function jsRenderGeometric(lums, w, h, fg, bg) {
-    var chars = "■●◆▪▫◇○ ";
-    var n = chars.length;
-    var mib = jsOtsu(lums)[1];
-    var cell = new Array(256);
-    for (var g = 0; g < 256; g++) {
-      var idx = mib ? (n - 1) - Math.floor(g * (n - 1) / 255)
-                    : Math.floor(g * (n - 1) / 255);
-      cell[g] = chars[idx];
-    }
-    var lines = [];
-    for (var y = 0; y < h; y++) {
-      var row = "";
-      var base = y * w;
-      for (var x = 0; x < w; x++) {
-        var ch = cell[lums[base + x]];
-        if (fg) row += jsAnsiFg(fg);
-        if (bg) row += jsAnsiBg(bg);
-        row += ch;
-      }
-      if (fg || bg) row += ANSI_ESC + "[0m";
-      lines.push(row);
-    }
-    return lines;
-  }
-
-  var brailleCoordCache = {};
-  var BRAILLE_DOTS = [
-    [0, 0, 0x01], [0, 1, 0x02], [0, 2, 0x04],
-    [1, 0, 0x08], [1, 1, 0x10], [1, 2, 0x20],
-    [0, 3, 0x40], [1, 3, 0x80],
-  ];
-  function brailleCoords(srcW, srcH, outW, outH) {
-    var key = srcW + "x" + srcH + ">" + outW + "x" + outH;
-    var table = brailleCoordCache[key];
-    if (table) return table;
-    table = [];
-    for (var by = 0; by < outH; by++) {
-      for (var bx = 0; bx < outW; bx++) {
-        for (var d = 0; d < 8; d++) {
-          var dx = BRAILLE_DOTS[d][0], dy = BRAILLE_DOTS[d][1], mask = BRAILLE_DOTS[d][2];
-          var sx = Math.min(Math.floor((bx * 2 + dx) * srcW / (outW * 2)), srcW - 1);
-          var sy = Math.min(Math.floor((by * 4 + dy) * srcH / (outH * 4)), srcH - 1);
-          table.push([sy * srcW + sx, mask]);
-        }
-      }
-    }
-    brailleCoordCache[key] = table;
-    return table;
-  }
-
-  function jsRenderBraille(lums, srcW, srcH, width, height, fg, bg) {
-    var outW = Math.max(1, Math.floor(width / 2));
-    var outH = Math.max(1, Math.floor(height / 4));
-    var ots = jsOtsu(lums);
-    var threshold = ots[0], mib = ots[1];
-    var table = brailleCoords(srcW, srcH, outW, outH);
-    var lines = [];
-    var pos = 0;
-    for (var by = 0; by < outH; by++) {
-      var row = "";
-      for (var bx = 0; bx < outW; bx++) {
-        var bits = 0;
-        for (var d = 0; d < 8; d++) {
-          var lum = lums[table[pos + d][0]];
-          var mask = table[pos + d][1];
-          if (mib ? lum >= threshold : lum < threshold) bits |= mask;
-        }
-        pos += 8;
-        var ch = String.fromCharCode(0x2800 + bits);
-        if (fg) row += jsAnsiFg(fg);
-        if (bg) row += jsAnsiBg(bg);
-        row += ch;
-      }
-      if (fg || bg) row += ANSI_ESC + "[0m";
-      lines.push(row);
-    }
-    return lines;
-  }
-
-  function jsRenderBlocks(data, srcW, srcH) {
-    // 与 _render_blocks 同语义：SGR 变化时才重发，行尾不重置
-    var lines = [];
-    for (var yTop = 0; yTop < srcH; yTop += 2) {
-      var yBot = yTop + 1 < srcH ? yTop + 1 : yTop;
-      var rowTop = yTop * srcW * 4, rowBot = yBot * srcW * 4;
-      var parts = [];
-      var lastFg = null, lastBg = null;
-      for (var x = 0; x < srcW; x++) {
-        var p1 = rowTop + x * 4, p2 = rowBot + x * 4;
-        var fg = [data[p1], data[p1 + 1], data[p1 + 2]];
-        var bg = [data[p2], data[p2 + 1], data[p2 + 2]];
-        if (lastFg === null || fg[0] !== lastFg[0] || fg[1] !== lastFg[1] || fg[2] !== lastFg[2]) {
-          parts.push(jsAnsiFg(fg));
-          lastFg = fg;
-        }
-        if (lastBg === null || bg[0] !== lastBg[0] || bg[1] !== lastBg[1] || bg[2] !== lastBg[2]) {
-          parts.push(jsAnsiBg(bg));
-          lastBg = bg;
-        }
-        parts.push("▀");
-      }
-      lines.push(parts.join(""));
-    }
-    return lines;
-  }
-
-  async function localRenderFrames(charset, width, height, myReq) {
+  /* ── T23 JS 渲染已迁移至 static/js/termify-render.js（与画廊作品页共用） ── */
+  function localRenderFrames(charset, width, height, myReq) {
     var lv = S.localVideo;
-    if (!lv || !lv.bitmaps.length) return null;
-    var dims;
-    if (charset === "blocks") dims = { w: width, h: height * 2 };
-    else if (charset === "braille") dims = { w: width * 2, h: height * 4 };
-    else dims = { w: width, h: height };
-    var work = document.createElement("canvas");
-    work.width = dims.w;
-    work.height = dims.h;
-    var wctx = work.getContext("2d", { willReadFrequently: true });
-    var frames = [];
-    for (var i = 0; i < lv.bitmaps.length; i++) {
-      wctx.drawImage(lv.bitmaps[i], 0, 0, dims.w, dims.h);
-      var idata = wctx.getImageData(0, 0, dims.w, dims.h);
-      if (charset === "blocks") {
-        frames.push(jsRenderBlocks(idata.data, dims.w, dims.h));
-      } else {
-        var lums = jsLuminance(idata);
-        if (charset === "ascii") frames.push(jsRenderRamp(lums, dims.w, dims.h, "@#%*+=-:. ", S.fg, S.bg));
-        else if (charset === "shades") frames.push(jsRenderRamp(lums, dims.w, dims.h, "█▓▒░ ", S.fg, S.bg));
-        else if (charset === "custom") frames.push(jsRenderRamp(lums, dims.w, dims.h, S.ramp || "@%#*+=-:.", S.fg, S.bg));
-        else if (charset === "binary") frames.push(jsRenderBinary(lums, dims.w, dims.h, S.fg, S.bg));
-        else if (charset === "geometric") frames.push(jsRenderGeometric(lums, dims.w, dims.h, S.fg, S.bg));
-        else if (charset === "braille") frames.push(jsRenderBraille(lums, dims.w, dims.h, width, height, S.fg, S.bg));
-        else frames.push(jsRenderRamp(lums, dims.w, dims.h, "@#%*+=-:. ", S.fg, S.bg));
-      }
-      // 分块让出主线程：大尺寸长视频渲染不冻结 UI（渲染中徽标可见）
-      if (i % 30 === 29) {
-        if (myReq !== undefined && myReq !== latestReq) return null;  // 竞态：已有更新的请求
-        await new Promise(function (r) { setTimeout(r, 0); });
-      }
-    }
-    return frames;
+    if (!lv || !lv.bitmaps.length) return Promise.resolve(null);
+    return TermifyRender.renderFrames(lv.bitmaps, charset, width, height,
+      { ramp: S.ramp, fg: S.fg, bg: S.bg },
+      function (done, total) {
+        if (done % 60 === 0 && animTerminal) {
+          animTerminal.dataset.renderPct = Math.round(done / total * 100) + "%";
+        }
+      });
   }
 
   /* 懒上传：本地视频首次下载/分享时才把源文件交给服务器 */

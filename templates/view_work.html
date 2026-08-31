@@ -6,7 +6,7 @@
     <title>{{ work.title }} — Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260831i">
 </head>
 <body>
 <div id="toast"></div>
@@ -228,6 +228,7 @@
         <div class="tweak-group"><div class="tweak-label">主题色</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button><button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button><button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button></div></div>
     </div>
 
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260831i"></script>
     <script>
         // ═══════════ Embedded work data ═══════════
         window.TERMIFY_GALLERY_WORK = {
@@ -345,11 +346,74 @@
             }
 
             // ── load preview ──
+            // 方案B：视频作品一次性取回源帧（base64 JPEG），此后全部切换本地渲染
+            var IS_VIDEO = params.kind === "video";
+            var srcFrames = null, srcLoading = false;
+            function ensureSourceFrames() {
+                if (srcFrames || srcLoading || !IS_VIDEO) return;
+                srcLoading = true;
+                fetch("/api/gallery/source-frames/" + WORK_ID).then(function (r) { return r.json(); }).then(function (d) {
+                    if (!d.ok) { srcLoading = false; return; }
+                    var jobs = d.frames.map(function (b64) {
+                        return new Promise(function (res) {
+                            var img = new Image();
+                            img.onload = function () {
+                                var c = document.createElement("canvas");
+                                c.width = d.w; c.height = d.h;
+                                c.getContext("2d").drawImage(img, 0, 0);
+                                res(c);
+                            };
+                            img.onerror = function () { res(null); };
+                            img.src = "data:image/jpeg;base64," + b64;
+                        });
+                    });
+                    Promise.all(jobs).then(function (bitmaps) {
+                        srcFrames = { bitmaps: bitmaps.filter(Boolean), interval: d.interval };
+                        srcLoading = false;
+                        loadPreview();  // 源帧就绪 → 之后的切换全部本地渲染
+                    });
+                }).catch(function () { srcLoading = false; });
+            }
+            function fitViewFontSize() {
+                // 固定窗口内适配（与主页同算法）：分辨率只改精度，窗口恒定
+                var style = getComputedStyle(preview);
+                var padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+                var padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+                var availW = preview.clientWidth - padX;
+                var availH = preview.clientHeight - padY;
+                if (availW <= 0 || availH <= 0 || !curWidth || !curHeight) return;
+                var fs = Math.min(availW / (curWidth * 0.6), availH / (curHeight * 1.3));
+                preview.style.fontSize = Math.max(2, Math.min(fs, 30)) + "px";
+            }
             function loadPreview() {
                 var myId = ++latestReq;
                 preview.style.transition = "opacity 0.15s ease";
                 preview.style.opacity = "0.5";
-                preview.innerHTML = '<div class="view-loading"><div class="view-spinner"></div><span>加载中...</span></div>';
+                preview.innerHTML = '<div class="view-loading"><div class="view-spinner"></div><span>' +
+                    (srcFrames ? "渲染中..." : "加载中...") + '</span></div>';
+                // 本地渲染路径：源帧已在内存，瞬时完成
+                if (srcFrames && srcFrames.bitmaps.length) {
+                    TermifyRender.renderFrames(srcFrames.bitmaps, curCharset, curWidth, curHeight,
+                        { fg: null, bg: null },
+                        function (done, total) {
+                            if (myId === latestReq) {
+                                preview.innerHTML = '<div class="view-loading"><span>渲染中 ' +
+                                    Math.round(done / total * 100) + '%</span></div>';
+                            }
+                        }).then(function (lf) {
+                            if (myId !== latestReq) return;
+                            preview.style.opacity = "1";
+                            frames = lf;
+                            interval = srcFrames.interval;
+                            htmlFrames = [];
+                            totalFrames = lf.length;
+                            if (previewTitle) previewTitle.textContent = "animation preview — " + curCharset + " " + curWidth + "x" + curHeight;
+                            fitViewFontSize();
+                            renderFrame(0);
+                            if (frames.length >= 2) startPlayer();
+                        });
+                    return;
+                }
                 var url = "/api/gallery/preview/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight;
                 fetch(url).then(function (r) { return r.json(); }).then(function (d) {
                     if (myId !== latestReq) return;
@@ -360,6 +424,7 @@
                     htmlFrames = [];
                     totalFrames = frames.length;
                     if (previewTitle) previewTitle.textContent = "animation preview — " + curCharset + " " + curWidth + "x" + curHeight;
+                    fitViewFontSize();
                     renderFrame(0);
                     if (frames.length >= 2) startPlayer();
                 }).catch(function () {
@@ -519,6 +584,9 @@
 
             // ── kick off first preview ──
             loadPreview();
+            // 视频作品：后台拉源帧，就绪后所有切换本地渲染（瞬时）
+            ensureSourceFrames();
+            window.addEventListener("resize", fitViewFontSize);
         })();
     </script>
 </body>
