@@ -63,6 +63,80 @@ def probe_duration(video_path: str) -> float | None:
     return None
 
 
+def has_audio_stream(video_path: str) -> bool:
+    """True iff the container has at least one audio stream (ffprobe)."""
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return False
+    try:
+        result = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "a",
+             "-show_entries", "stream=codec_type",
+             "-of", "csv=p=0", video_path],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and "audio" in result.stdout
+
+
+def extract_audio(video_path: str, out_path: str) -> str | None:
+    """Extract the audio track to AAC ``out_path``; None when no audio.
+
+    Best-effort by design: a failure to extract audio must never fail the
+    video import, so every error path returns None instead of raising.
+    Callers must run this BEFORE the source video is deleted.
+    """
+    if not _ffmpeg_path() or not has_audio_stream(video_path):
+        return None
+    try:
+        result = subprocess.run(
+            [_ffmpeg_path(), "-y", "-loglevel", "error",
+             "-i", video_path,
+             "-vn", "-acodec", "aac", "-b:a", "128k", "-ac", "2",
+             out_path],
+            capture_output=True, timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0 or not os.path.isfile(out_path) \
+            or os.path.getsize(out_path) == 0:
+        return None
+    return out_path
+
+
+def mux_audio_file(video_path: str, audio_path: str, out_path: str) -> str:
+    """Merge an audio track into a finished MP4 (video stream copied).
+
+    ``-shortest`` trims the audio when the video ends first. Raises
+    VideoError on failure; ``out_path`` is only replaced on success.
+    """
+    if not _ffmpeg_path():
+        raise VideoError("ffmpeg is not installed or not on PATH")
+    fd, tmp_out = tempfile.mkstemp(suffix=".mp4")
+    os.close(fd)
+    os.remove(tmp_out)  # ffmpeg creates its own output file
+    cmd = [
+        _ffmpeg_path(), "-y", "-loglevel", "error",
+        "-i", video_path, "-i", audio_path,
+        "-map", "0:v:0", "-map", "1:a:0",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+        "-shortest", "-movflags", "+faststart",
+        tmp_out,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=300,
+                                shell=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise VideoError(f"audio mux failed: {exc}")
+    if result.returncode != 0 or not os.path.isfile(tmp_out) \
+            or os.path.getsize(tmp_out) == 0:
+        stderr = result.stderr.decode("utf-8", errors="replace")[-300:]
+        raise VideoError(f"audio mux failed: {stderr}")
+    shutil.move(tmp_out, out_path)
+    return out_path
+
+
 def extract_frames(
     video_path: str,
     max_duration: int | None = None,

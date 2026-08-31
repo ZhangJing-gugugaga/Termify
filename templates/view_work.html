@@ -6,7 +6,7 @@
     <title>{{ work.title }} — Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260831i">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260901a">
 </head>
 <body>
 <div id="toast"></div>
@@ -154,6 +154,7 @@
                             <div class="terminal-dot amber"></div>
                             <div class="terminal-dot green"></div>
                             <div class="terminal-title" id="previewTitle">animation preview</div>
+                            <span id="audioBadge" style="display:none;align-items:center;gap:4px;margin-left:10px;font-size:11px;color:var(--green);border:1px solid var(--border-dim);border-radius:999px;padding:2px 10px;">♪ 含音频</span>
                         </div>
                         <div class="terminal-body" id="animPreview">
                             <div class="view-loading"><div class="view-spinner"></div><span>加载中...</span></div>
@@ -228,7 +229,7 @@
         <div class="tweak-group"><div class="tweak-label">主题色</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button><button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button><button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button></div></div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260831i"></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260901a"></script>
     <script>
         // ═══════════ Embedded work data ═══════════
         window.TERMIFY_GALLERY_WORK = {
@@ -336,6 +337,17 @@
                 if (playBtn) playBtn.classList.add("active");
                 if (pauseBtn) pauseBtn.classList.remove("active");
                 playStartTs = performance.now() - currentFrame * interval * 1000;
+                // T25 音频同步：从当前帧对应的时间点继续播
+                if (AUDIO_URL) {
+                    ensureAudio();
+                    if (workAudio) {
+                        try {
+                            workAudio.currentTime = (currentFrame * interval) %
+                                Math.max(0.1, workAudio.duration || 1e9);
+                        } catch (e) { /* seek 前元数据未就绪则从头播 */ }
+                        workAudio.play().catch(function () { /* 自动播放策略拒绝则静音播放 */ });
+                    }
+                }
                 rafId = requestAnimationFrame(rafLoop);
             }
             function pausePlayer() {
@@ -343,7 +355,24 @@
                 if (playBtn) playBtn.classList.remove("active");
                 if (pauseBtn) pauseBtn.classList.add("active");
                 if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+                if (workAudio && !workAudio.paused) workAudio.pause();
             }
+
+            // ── T25 音频：视频作品自带音轨 → 预览同步播放 ──
+            var AUDIO_URL = (params.kind === "video" && params.audio_file)
+                ? "/gallery/file/" + WORK_ID + "/audio" : null;
+            var workAudio = null;
+            function ensureAudio() {
+                if (!AUDIO_URL || workAudio !== null) return;
+                workAudio = new Audio(AUDIO_URL);
+                workAudio.loop = true;
+                workAudio.preload = "auto";
+            }
+            (function initAudioBadge() {
+                if (!AUDIO_URL) return;
+                var badge = document.getElementById("audioBadge");
+                if (badge) badge.style.display = "inline-flex";
+            })();
 
             // ── load preview ──
             // 方案B：视频作品一次性取回源帧（base64 JPEG），此后全部切换本地渲染
@@ -375,15 +404,23 @@
                 }).catch(function () { srcLoading = false; });
             }
             function fitViewFontSize() {
-                // 固定窗口内适配（与主页同算法）：分辨率只改精度，窗口恒定
-                var style = getComputedStyle(preview);
+                // 窗口贴合内容（与主页同算法）：高度按网格像素比宽定高，
+                // 字号双向填满 → 内容 100% 充满窗口；换风格不换网格零跳动
+                var tb = preview;
+                var style = getComputedStyle(tb);
                 var padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
                 var padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-                var availW = preview.clientWidth - padX;
-                var availH = preview.clientHeight - padY;
-                if (availW <= 0 || availH <= 0 || !curWidth || !curHeight) return;
-                var fs = Math.min(availW / (curWidth * 0.6), availH / (curHeight * 1.3));
-                preview.style.fontSize = Math.max(2, Math.min(fs, 30)) + "px";
+                var availW = tb.clientWidth - padX;
+                if (availW <= 0 || !curWidth || !curHeight) return;
+                var gridAspect = (curWidth * 0.6) / (curHeight * 1.3);
+                var maxH = Math.max(300, Math.round(window.innerHeight * 0.62));
+                var idealH = Math.round(availW / gridAspect) + Math.round(padY);
+                var boxH = Math.max(240, Math.min(maxH, idealH));
+                tb.style.height = boxH + "px";
+                var availH = boxH - padY;
+                var fs = Math.min(availW / (curWidth * 0.6),
+                                  availH / (curHeight * 1.3));
+                tb.style.fontSize = Math.max(2, Math.min(fs, 30)) + "px";
             }
             function loadPreview() {
                 var myId = ++latestReq;

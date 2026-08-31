@@ -5,7 +5,8 @@
     charset: "ascii", totalFrames: 0, width: 80, height: 24,
     wasPlaying: false, fg: null, bg: null, ramp: "",
     canvasFrames: [], canvasEl: null, canvasCtx: null,
-    fileList: [], selIdx: 0, sourceFile: null
+    fileList: [], selIdx: 0, sourceFile: null,
+    musicFile: null, musicUploadedFor: null  // T25 背景音乐
   };
   var latestReq = 0;
   var currentFrame = 0, playing = false, rafId = null, lastFrameTime = 0;
@@ -137,10 +138,12 @@
 
     // 固定窗口内适配：cellW 取宽/高两个方向的较小值，画布永远装进预览框。
     // ▀ 编码 2 个纵向像素，cellH = 2 × cellW 保持内容宽高比。
-    var container = preview.parentNode;
-    var fs = fitTerminalFontSize() || 10;
-    var availW = container ? container.clientWidth - 32 : 640;
-    var availH = Math.round(S.height * 1.3 * fs) + 8;
+    var tb = preview.parentNode;
+    var tbStyle = getComputedStyle(tb);
+    var padX = parseFloat(tbStyle.paddingLeft) + parseFloat(tbStyle.paddingRight);
+    var padY = parseFloat(tbStyle.paddingTop) + parseFloat(tbStyle.paddingBottom);
+    var availW = tb.clientWidth - padX;
+    var availH = tb.clientHeight - padY;
     var cellW = Math.max(2, Math.floor(Math.min(availW / cols, availH / (2 * rows))));
     var cellH = cellW * 2;
     var canvasW = cols * cellW;
@@ -289,9 +292,9 @@
     // Set data-charset so CSS can adjust font-size per style
     if (preview) preview.dataset.charset = S.charset;
     setTitleMeta();
-    renderFrame(0);
     syncTerminalHeight();
-    fitTerminalFontSize();
+    fitTerminalFontSize();   // 先定窗口与字号，再画首帧（blocks 画布依赖窗口尺寸）
+    renderFrame(0);
     if (S.wasPlaying) { S.wasPlaying = false; startPlayer(); }
   }
 
@@ -299,7 +302,10 @@
   function syncTerminalHeight() {
   }
 
-  /* ── Fit terminal font-size to fill the FIXED window (quality changes, not size) ── */
+  /* ── 窗口贴合内容：高度按网格固有像素比例（宽定高），字号双向填满 ──
+     10:3 系预设（80×24/120×36/160×48/200×60）像素比恒为 1.538，
+     窗口随宽度自适应后字号同时满足宽/高两个方向 → 内容 100% 填满；
+     换风格不换网格 → 窗口零跳动（40×20 竖比网格以 62vh 封顶后横向留白）。 */
   function fitTerminalFontSize() {
     var tb = document.querySelector(".animation-terminal .terminal-body");
     if (!tb) return;
@@ -308,21 +314,29 @@
     var padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
     var padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
     var availW = tb.clientWidth - padX;
-    var availH = tb.clientHeight - padY;
-    if (availW <= 0 || availH <= 0 || !S.width || !S.height) return;
+    if (availW <= 0 || !S.width || !S.height) return;
 
-    // Monospace: char width ≈ 0.6 * font-size, line-height = 1.3 * font-size
-    var charRatio = 0.6;
+    var charRatio = 0.6;        // JetBrains Mono 等宽 advance ≈ 0.6em
     var lineHeightRatio = 1.3;
-    var fsW = availW / (S.width * charRatio);
-    var fsH = availH / (S.height * lineHeightRatio);
-    var fs = Math.min(fsW, fsH);
+    var gridAspect = (S.width * charRatio) / (S.height * lineHeightRatio);
+    var maxH = Math.max(300, Math.round(window.innerHeight * 0.62));
+    var idealH = Math.round(availW / gridAspect) + Math.round(padY);
+    var boxH = Math.max(240, Math.min(maxH, idealH));
+    tb.style.height = boxH + "px";
+
+    var availH = boxH - padY;
+    var fs = Math.min(availW / (S.width * charRatio),
+                      availH / (S.height * lineHeightRatio));
     fs = Math.max(2, Math.min(fs, 30));  // clamp to sane range
     tb.style.fontSize = fs + "px";
     return fs;
   }
 
-  window.addEventListener("resize", function () { syncTerminalHeight(); fitTerminalFontSize(); });
+  window.addEventListener("resize", function () {
+    syncTerminalHeight();
+    fitTerminalFontSize();
+    if (S.frames.length) renderFrame(Math.min(currentFrame, S.frames.length - 1));
+  });
 
   /* ── Build color query params ── */
   function colorParams() {
@@ -411,6 +425,7 @@
     S.wasPlaying = true;
     markSelected(".style-card", '[data-style="' + S.charset + '"]');
     renderFileList();
+    updateMusicCard();
     requestPreview(S.charset);
   }
 
@@ -566,6 +581,11 @@
         URL.revokeObjectURL(url);
         hideModal();
         registerLocalVideo(file, bitmaps, 1 / fps);
+        // 尽力检测视频自带音频（Chromium 特性，仅供即时提示；服务器会权威探测）
+        var hasAudio = !!(video.mozHasAudio ||
+          (video.audioTracks && video.audioTracks.length > 0) ||
+          video.webkitAudioDecodedByteCount > 0);
+        if (hasAudio) toast("♪ 检测到视频自带音频，导出时自动合成");
       }).catch(function (err) {
         URL.revokeObjectURL(url);
         hideModal();
@@ -772,11 +792,128 @@
     return "python";
   }
 
+  /* ══════════ T25 背景音乐 ══════════
+     视频自带音频：服务端上传时自动抽取，MP4/HTML 导出自动合成。
+     用户上传音乐：优先于视频原声；本地任务在懒上传时一并交给服务器。 */
+  var MUSIC_EXTS = [".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"];
+  var MUSIC_MAX_BYTES = 20 * 1024 * 1024;
+
+  function currentIsVideo() {
+    var f = S.fileList[S.selIdx];
+    return !!(S.localVideo || (f && (f.kind === "video" || f.localVideo)));
+  }
+
+  function updateMusicCard() {
+    var card = byId("musicCard");
+    if (!card) return;
+    card.style.display = currentIsVideo() ? "" : "none";
+    refreshMusicRows();
+  }
+
+  function refreshMusicRows() {
+    var emptyRow = byId("musicEmptyRow"), chosenRow = byId("musicChosenRow"),
+        chip = byId("musicChip");
+    if (!emptyRow || !chosenRow) return;
+    if (S.musicFile) {
+      emptyRow.style.display = "none";
+      chosenRow.style.display = "flex";
+      if (chip) chip.textContent = "♪ " + S.musicFile.name +
+        " (" + Math.max(1, Math.round(S.musicFile.size / 1024)) + "KB)";
+    } else {
+      emptyRow.style.display = "flex";
+      chosenRow.style.display = "none";
+    }
+  }
+
+  function uploadMusicXhr(taskId, file) {
+    return new Promise(function (resolve, reject) {
+      var fd = new FormData();
+      fd.append("task_id", taskId);
+      fd.append("file", file);
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload-music");
+      xhr.addEventListener("load", function () {
+        try {
+          var d = JSON.parse(xhr.responseText);
+          if (xhr.status === 200 && d.ok) resolve(d);
+          else reject(new Error(d.error || "HTTP " + xhr.status));
+        } catch (err) { reject(new Error("HTTP " + xhr.status)); }
+      });
+      xhr.addEventListener("error", function () { reject(new Error("网络错误")); });
+      xhr.send(fd);
+    });
+  }
+
+  function removeMusicOnServer(taskId) {
+    if (!taskId || String(taskId).indexOf("local:") === 0) return;
+    try {
+      fetch("/api/remove-music", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task_id: taskId })
+      });
+    } catch (e) { /* best-effort */ }
+  }
+
+  function initMusicUI() {
+    var addBtn = byId("musicAddBtn"), rmBtn = byId("musicRemoveBtn");
+    if (!addBtn) return;
+    var input = document.createElement("input");
+    input.type = "file";
+    input.accept = "audio/mpeg,audio/wav,audio/mp4,audio/aac,audio/ogg,audio/flac,.mp3,.wav,.m4a,.aac,.ogg,.flac";
+    input.style.display = "none";
+    document.body.appendChild(input);
+    addBtn.addEventListener("click", function () { input.click(); });
+    input.addEventListener("change", function () {
+      var f = input.files && input.files[0];
+      if (!f) return;
+      var ext = f.name.slice(f.name.lastIndexOf(".")).toLowerCase();
+      if (MUSIC_EXTS.indexOf(ext) < 0) {
+        toast("不支持的音乐格式（" + ext + "），支持 MP3/WAV/M4A/AAC/OGG/FLAC");
+        input.value = ""; return;
+      }
+      if (f.size > MUSIC_MAX_BYTES) {
+        toast("音乐文件过大（上限 20MB）");
+        input.value = ""; return;
+      }
+      // 换音乐 / 换任务：旧音乐若已上传过则从服务器移除
+      if (S.musicUploadedFor && S.musicUploadedFor !== (S.taskId || "")) {
+        removeMusicOnServer(S.musicUploadedFor);
+        S.musicUploadedFor = null;
+      }
+      S.musicFile = f;
+      refreshMusicRows();
+      toast("音乐已就绪，导出时自动合成");
+      input.value = "";
+    });
+    if (rmBtn) rmBtn.addEventListener("click", function () {
+      if (S.musicUploadedFor) removeMusicOnServer(S.musicUploadedFor);
+      S.musicFile = null;
+      S.musicUploadedFor = null;
+      refreshMusicRows();
+    });
+  }
+
   /* ── Download ── */
   function doDownload() {
     if (!S.taskId && !S.localVideo) { toast("请先上传文件"); return; }
     if (S.charset === "custom" && !S.ramp) { toast("请先在 Tweaks 面板填写自定义字符"); return; }
     var fmt = selectedFormat();
+    function ensureMusicUploaded(taskId) {
+      // 音乐随首次导出一并交给服务器（懒上传），已传过则跳过
+      if (!S.musicFile || S.musicUploadedFor === taskId) {
+        return Promise.resolve();
+      }
+      showModal("正在上传背景音乐", S.musicFile.name, false, true);
+      setModalProgress(0);
+      return uploadMusicXhr(taskId, S.musicFile).then(function () {
+        S.musicUploadedFor = taskId;
+        hideModal();
+      }, function (err) {
+        hideModal();
+        toast("音乐上传失败（" + err.message + "），本次导出不含自定义音乐");
+        // 不阻塞导出：服务器会退回视频自带音频（如有）
+      });
+    }
     function generateWithTask(taskId) {
       var body = {
         task_id: taskId, charset: S.charset, format: fmt,
@@ -813,6 +950,9 @@
         window.location.href = d.download_url;
       }).catch(function (e) { toast("download failed: " + e); });
     }
+    function generateWithMusic(taskId) {
+      ensureMusicUploaded(taskId).then(function () { generateWithTask(taskId); });
+    }
     var needsUpload = S.localVideo &&
       (!S.taskId || String(S.taskId).indexOf("local:") === 0);
     if (needsUpload) {
@@ -825,14 +965,15 @@
         S.taskId = d.task_id;
         var cur = S.fileList[S.selIdx];
         if (cur) cur.task_id = d.task_id;
-        generateWithTask(S.taskId);
+        if (d.has_audio) toast("♪ 已检测到视频自带音频，将合成进导出文件");
+        generateWithMusic(S.taskId);
       }).catch(function (e) {
         hideModal();
         toast("上传失败: " + e);
       });
       return;
     }
-    generateWithTask(S.taskId);
+    generateWithMusic(S.taskId);
   }
 
   /* ── T21: termify modal (no native alert/confirm) ── */
@@ -1341,8 +1482,10 @@
       params.interval = cur.interval || 0.1;
     }
     fd.append("params", JSON.stringify(params));
+    var shareHasMusic = cur.kind === "video" && S.musicFile;
+    if (shareHasMusic) fd.append("music", S.musicFile);
 
-    this.disabled = true; this.textContent = "发布中...";
+    this.disabled = true; this.textContent = shareHasMusic ? "发布中（含音乐）..." : "发布中...";
     fetch("/api/gallery/upload", { method: "POST", body: fd })
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -1358,4 +1501,7 @@
       }.bind(this))
       .catch(function () { this.disabled = false; this.textContent = "发布到画廊"; toast("发布失败"); }.bind(this));
   });
+
+  initMusicUI();
+  updateMusicCard();
 })();

@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -226,10 +227,14 @@ def frame_to_image(lines: list[str], font, char_w: int, char_h: int,
     return img
 
 
-def encode_mp4(seq: FrameSequence, out_path: str, font_size: int = 14) -> str:
+def encode_mp4(seq: FrameSequence, out_path: str, font_size: int = 14,
+               audio_path: str | None = None) -> str:
     """Rasterize every frame and pipe raw RGB into ffmpeg -> H.264 MP4.
 
-    Returns the output path; raises VideoEncodeError on failure.
+    When ``audio_path`` is given, the finished silent MP4 gets that track
+    muxed in (video stream copied untouched; mux failure degrades to the
+    silent file rather than failing the export). Returns the output path;
+    raises VideoEncodeError on failure.
     """
     if not ffmpeg_available():
         raise VideoEncodeError("ffmpeg is not available on this host")
@@ -270,4 +275,12 @@ def encode_mp4(seq: FrameSequence, out_path: str, font_size: int = 14) -> str:
         raise VideoEncodeError(f"ffmpeg exited {ret}: {stderr[:300]}")
     if not os.path.isfile(out_path) or os.path.getsize(out_path) == 0:
         raise VideoEncodeError("ffmpeg produced no output")
+
+    if audio_path:
+        from termify.video import mux_audio_file
+        try:
+            mux_audio_file(out_path, audio_path, out_path)
+        except Exception as exc:  # noqa: BLE001 — degrade to silent MP4
+            print(f"[termify] audio mux skipped: {exc}", file=sys.stderr)
+
     return out_path

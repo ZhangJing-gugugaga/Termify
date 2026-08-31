@@ -9,6 +9,7 @@ T1.6 Online Gallery adds /api/gallery/* + /gallery /v/<id> /admin routes.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -52,7 +53,11 @@ _VIDEO_IMPORT_SLOTS = threading.Semaphore(2)
 
 
 def _sweep_stale_frame_dirs(max_age_hours: int = 24) -> None:
-    """Best-effort removal of persisted video frame dirs past their TTL."""
+    """Best-effort removal of persisted video frame dirs past their TTL.
+
+    Also removes stale per-task audio artifacts (audio_*.m4a / music_*.ext)
+    — they share the uploads/ dir and the same lifetime as their task.
+    """
     import shutil as _shutil
 
     cutoff = time.time() - max_age_hours * 3600
@@ -60,13 +65,20 @@ def _sweep_stale_frame_dirs(max_age_hours: int = 24) -> None:
         entries = os.listdir("uploads")
     except OSError:
         return
+    uploads_base = os.path.abspath("uploads")
     for name in entries:
-        if not name.startswith("frames_"):
+        is_stale_kind = name.startswith("frames_") \
+            or name.startswith("audio_") or name.startswith("music_")
+        if not is_stale_kind:
             continue
-        path = os.path.join("uploads", name)
+        path = os.path.abspath(os.path.join("uploads", name))
+        if os.path.dirname(path) != uploads_base:
+            continue
         try:
             if os.path.isdir(path) and os.path.getmtime(path) < cutoff:
                 _shutil.rmtree(path, ignore_errors=True)
+            elif os.path.isfile(path) and os.path.getmtime(path) < cutoff:
+                os.remove(path)
         except OSError:
             continue
 
@@ -340,11 +352,21 @@ def upload_video():
         os.remove(video_tmp)
         return jsonify({"error": str(exc)}), 400
 
+    # Grab the audio track before frame extraction deletes the source.
+    task_id = uuid.uuid4().hex[:12]
+    audio_file = None
+    try:
+        from termify.video import extract_audio
+        audio_file = extract_audio(video_tmp, _safe_uploads_path(f"audio_{task_id}.m4a"))
+    except ValueError:
+        audio_file = None
+
     if not _VIDEO_IMPORT_SLOTS.acquire(blocking=False):
+        if audio_file:
+            os.remove(audio_file)
         os.remove(video_tmp)
         return jsonify({"error": "当前任务较多，请稍后再试"}), 429
     try:
-        task_id = uuid.uuid4().hex[:12]
         charset = "ascii"
         width, height = 80, 24
         # Persist frames under uploads/ so every charset/size can be
@@ -378,6 +400,7 @@ def upload_video():
         "filename": file.filename,
         "frames_count": len(seq.lines_per_frame),
         "interval": seq.interval,
+        "has_audio": bool(audio_file),
         "original_size": {"type": "video", "frame_count": len(seq.lines_per_frame)},
         "target_size": target_size,
     })
@@ -392,6 +415,137 @@ def _safe_uploads_path(name: str) -> str:
     if not name or ".." in name or "/" in name or os.sep in name:
         raise ValueError("unsafe uploads filename")
     return resolved
+
+
+VALID_MUSIC_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}
+MAX_MUSIC_BYTES = 20 * 1024 * 1024
+
+_MUSIC_MIME = {
+    ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4",
+    ".aac": "audio/aac", ".ogg": "audio/ogg", ".flac": "audio/flac",
+}
+
+
+def _safe_remove_upload(path: str | None) -> None:
+    """Delete a file only when it provably lives inside uploads/."""
+    if not path:
+        return
+    uploads_base = os.path.abspath("uploads")
+    resolved = os.path.abspath(path)
+    if os.path.dirname(resolved) != uploads_base:
+        return
+    if not resolved.startswith(uploads_base + os.sep):
+        return
+    if ".." in resolved:
+        return
+    try:
+        os.remove(resolved)
+    except OSError:
+        pass
+
+
+def _find_uploaded_file(prefix: str, task_or_work: str) -> str | None:
+    """Locate an existing uploads/<prefix>_<id>.<ext> artifact (any ext)."""
+    base = os.path.abspath("uploads")
+    if not os.path.isdir(base):
+        return None
+    marker = f"{prefix}_{task_or_work}."
+    for name in os.listdir(base):
+        if ".." in name or "/" in name or os.sep in name:
+            continue
+        if not name.startswith(marker):
+            continue
+        resolved = os.path.abspath(os.path.join(base, name))
+        if os.path.dirname(resolved) != base:
+            continue
+        if not resolved.startswith(base + os.sep):
+            continue
+        if os.path.isfile(resolved):
+            return resolved
+    return None
+
+
+def _valid_task_id(task_id: str) -> bool:
+    """Task ids are uuid4().hex[:12] — enforce the strict charset."""
+    return bool(re.fullmatch(r"[0-9a-f]{12}", task_id or ""))
+
+
+def _task_audio_source(task_id: str) -> str | None:
+    """Best audio for exports: user-uploaded music first, then video audio."""
+    music = _find_uploaded_file("music", task_id)
+    if music:
+        return music
+    return _find_uploaded_file("audio", task_id)
+
+
+@app.route("/api/upload-music", methods=["POST"])
+def upload_music():
+    """Attach a background-music file to an existing task.
+
+    multipart: task_id + file (mp3/wav/m4a/aac/ogg/flac, ≤20MB).
+    Stored under uploads/ by the validated task id; takes priority over the
+    video's own audio track in every export.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"error": "No filename"}), 400
+    task_id = (request.form.get("task_id") or "").strip()
+    if not _valid_task_id(task_id) or not get_store().exists(task_id):
+        return jsonify({"error": "Task not found"}), 404
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in VALID_MUSIC_EXTS:
+        return jsonify({"error": f"Unsupported audio format: {ext}. "
+                                 f"支持 MP3/WAV/M4A/AAC/OGG/FLAC"}), 400
+
+    ip = _client_ip()
+    allowed, _reason = _rate_check(ip, "music-upload", per_minute=6, per_day=40)
+    if not allowed:
+        return jsonify({"error": "上传太频繁，请稍后再试"}), 429
+
+    blob = file.read()
+    if len(blob) > MAX_MUSIC_BYTES:
+        return jsonify({"error": "音乐文件过大 (上限 20MB)"}), 413
+
+    # One music file per task: drop previous uploads first.
+    _safe_remove_upload(_find_uploaded_file("music", task_id))
+    dest = _safe_uploads_path("music_" + task_id + ext)
+    Path(dest).write_bytes(blob)
+
+    return jsonify({
+        "ok": True,
+        "music": os.path.basename(dest),
+        "size_kb": max(1, len(blob) // 1024),
+    })
+
+
+@app.route("/api/remove-music", methods=["POST"])
+def remove_music():
+    """Detach the uploaded background music from a task."""
+    data = request.get_json(silent=True) or {}
+    task_id = (data.get("task_id") or "").strip()
+    if not _valid_task_id(task_id):
+        return jsonify({"error": "No task_id"}), 400
+    _safe_remove_upload(_find_uploaded_file("music", task_id))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/audio-info/<task_id>", methods=["GET"])
+def audio_info(task_id: str):
+    """Which audio will be baked into exports for this task."""
+    if not _valid_task_id(task_id) or not get_store().exists(task_id):
+        return jsonify({"error": "Task not found"}), 404
+    music = _find_uploaded_file("music", task_id)
+    audio = _find_uploaded_file("audio", task_id)
+    src = music or audio
+    ext = os.path.splitext(src or "")[1].lower()
+    return jsonify({
+        "has_audio": bool(src),
+        "kind": "music" if music else ("video" if audio else None),
+        "mime": _MUSIC_MIME.get(ext) if src else None,
+    })
 
 
 @app.route("/api/fetch-video-url", methods=["POST"])
@@ -428,6 +582,13 @@ def fetch_video_url():
         return jsonify({"error": "当前任务较多，请稍后再试"}), 429
     try:
         task_id = uuid.uuid4().hex[:12]
+        # Grab the audio track before frame extraction deletes the source.
+        audio_file = None
+        try:
+            from termify.video import extract_audio
+            audio_file = extract_audio(video_tmp, _safe_uploads_path(f"audio_{task_id}.m4a"))
+        except ValueError:
+            audio_file = None
         frames_dir = f"uploads/frames_{task_id}"
         _sweep_stale_frame_dirs()
         try:
@@ -457,6 +618,7 @@ def fetch_video_url():
         "filename": "video-link",
         "frames_count": frames_count,
         "interval": seq.interval,
+        "has_audio": bool(audio_file),
         "original_size": {"type": "video", "frame_count": frames_count},
         "target_size": {"width": seq.width, "height": seq.height},
     })
@@ -572,10 +734,24 @@ def _request_charset_ramp() -> str | None:
     return chars
 
 
+def _preview_payload_too_large(frame_count: int, width: int, height: int,
+                               charset: str) -> bool:
+    """Guard against multi-hundred-MB preview JSONs on legacy clients.
+
+    Measured per-character ANSI cost: ~21B for blocks (fg+bg SGR per cell),
+    ~4B for ramp styles (color mostly per line). Threshold 30MB — the
+    client-side renderer is the intended path for heavy workloads.
+    """
+    if frame_count <= 0 or width <= 0 or height <= 0:
+        return False
+    rows = height * 2 if charset == "blocks" else height
+    per_char = 21 if charset == "blocks" else 4
+    return frame_count * width * rows * per_char > 30 * 1024 * 1024
+
+
 @app.route("/api/preview/<task_id>")
 def preview(task_id):
     charset = request.args.get("charset", "ascii").lower().strip()
-
     from termify.charset import CHARSETS
 
     if charset not in CHARSETS:
@@ -615,6 +791,11 @@ def preview(task_id):
 
     # No `frame` requested -> return ALL frames so the player can loop them.
     if frame is None:
+        if _preview_payload_too_large(frame_count, seq.width, seq.height, charset):
+            return jsonify({
+                "error": "预览数据过大，请刷新页面使用新版播放器（本地渲染）",
+                "too_large": True,
+            }), 413
         return jsonify({
             "frames": seq.lines_per_frame,
             "frame_count": frame_count,
@@ -673,9 +854,18 @@ def generate():
     seq = _get_sequence(task_id, charset, width, height, fg_color=fg_color,
                         bg_color=bg_color, charset_ramp=charset_ramp)
 
+    audio_b64 = audio_mime = None
+    if fmt == "html":
+        # 自包含 HTML 播放器：把音轨以 data-URI 内嵌（过大则放弃内嵌）。
+        src = _task_audio_source(task_id)
+        if src and os.path.getsize(src) <= 15 * 1024 * 1024:
+            audio_b64 = base64.b64encode(Path(src).read_bytes()).decode("ascii")
+            audio_mime = _MUSIC_MIME.get(os.path.splitext(src)[1].lower(),
+                                         "audio/mpeg")
+
     from termify.output import render
 
-    content = render(seq, fmt)
+    content = render(seq, fmt, audio_b64=audio_b64, audio_mime=audio_mime)
 
     ext = "py" if fmt == "python" else "html"
     filename = f"{task_id}_{charset}.{ext}"
@@ -728,7 +918,8 @@ def _generate_video(task_id, charset, width, height, fg_color, bg_color,
     if not _VIDEO_PROC_SLOTS.acquire(blocking=False):
         return jsonify({"error": "当前任务较多，请稍后再试"}), 429
     try:
-        video_mod.encode_mp4(seq, out_path)
+        video_mod.encode_mp4(seq, out_path,
+                             audio_path=_task_audio_source(task_id))
     except video_mod.VideoEncodeError as e:
         return jsonify({"error": f"视频编码失败: {e}"}), 500
     finally:
@@ -794,6 +985,20 @@ def _make_unique_id() -> str:
         if not GALLERY_DB.id_collides(sid):
             return sid
     raise RuntimeError("Could not allocate unique short_id after 64 tries")
+
+
+def _gallery_remove_file(base: str, name: str) -> None:
+    """Remove a file inside the gallery dir, containment-checked."""
+    if not name or ".." in name or "/" in name or os.sep in name:
+        return
+    target = os.path.abspath(os.path.join(base, name))
+    if os.path.dirname(target) != os.path.abspath(base):
+        return
+    try:
+        if os.path.isfile(target):
+            os.remove(target)
+    except OSError:
+        pass
 
 
 @app.route("/api/gallery/upload", methods=["POST"])
@@ -883,7 +1088,15 @@ def gallery_upload():
         if not _VIDEO_IMPORT_SLOTS.acquire(blocking=False):
             os.remove(source_path)
             return jsonify({"error": "当前任务较多，请稍后再试"}), 429
+        audio_file = None
         try:
+            # Grab the audio track before frame extraction deletes the source.
+            try:
+                from termify.video import extract_audio
+                audio_file = extract_audio(
+                    source_path, os.path.join(base, f"{work_id}_audio.m4a"))
+            except OSError:
+                audio_file = None
             frames_dir = os.path.join(base, f"{work_id}_frames")
             try:
                 seq0 = convert_video_file(source_path, charset="ascii", width=80,
@@ -929,6 +1142,22 @@ def gallery_upload():
         params["kind"] = "video"
         params["frames_dir"] = frames_dir
         params["interval"] = seq0.interval
+        if audio_file and os.path.isfile(audio_file):
+            params["audio_file"] = os.path.basename(audio_file)
+
+    # Optional user-uploaded music (multipart "music"): overrides video audio
+    music_file = request.files.get("music")
+    if is_video and music_file and music_file.filename:
+        mext = os.path.splitext(music_file.filename)[1].lower()
+        if mext in VALID_MUSIC_EXTS:
+            mblob = music_file.read()
+            if len(mblob) <= MAX_MUSIC_BYTES:
+                music_path = os.path.join(base, f"{work_id}_audio{mext}")
+                Path(music_path).write_bytes(mblob)
+                # 视频原声轨作废，避免双份音频文件堆积
+                if params.get("audio_file"):
+                    _gallery_remove_file(base, params["audio_file"])
+                params["audio_file"] = os.path.basename(music_path)
 
     # Insert into DB
     admin_token = _gallery_mod.make_admin_token()
@@ -1240,6 +1469,13 @@ def gallery_preview(work_id):
         except Exception as exc:  # noqa: BLE001
             return jsonify({"error": f"Conversion failed: {exc}"}), 500
 
+    if _preview_payload_too_large(len(seq.lines_per_frame), seq.width,
+                                  seq.height, charset):
+        return jsonify({
+            "error": "预览数据过大，请刷新页面使用新版播放器（本地渲染）",
+            "too_large": True,
+        }), 413
+
     return jsonify({
         "frames": seq.lines_per_frame,
         "interval": seq.interval,
@@ -1308,10 +1544,16 @@ def gallery_download(work_id):
                                      f"视频导出上限 {video_mod.MAX_VIDEO_FRAMES} 帧"}), 400
         filename = f"gallery_{work_id}_{charset}.mp4"
         out_path = _tmp_out_path(filename, root=tmp_dir)
+        work_audio = None
+        if original.get("audio_file"):
+            cand = os.path.join(_gallery_mod.gallery_base(GALLERY_DATA_DIR),
+                                original["audio_file"])
+            if os.path.isfile(cand):
+                work_audio = cand
         if not _VIDEO_PROC_SLOTS.acquire(blocking=False):
             return jsonify({"error": "当前任务较多，请稍后再试"}), 429
         try:
-            video_mod.encode_mp4(seq, out_path)
+            video_mod.encode_mp4(seq, out_path, audio_path=work_audio)
         except video_mod.VideoEncodeError as exc:
             return jsonify({"error": f"视频编码失败: {exc}"}), 500
         finally:
@@ -1319,7 +1561,18 @@ def gallery_download(work_id):
         _record_download(work_id, _client_ip())
         return send_file(out_path, as_attachment=True, download_name=filename)
 
-    content = render(seq, fmt)
+    content = None
+    if fmt == "html" and original.get("audio_file"):
+        audio_path = os.path.join(_gallery_mod.gallery_base(GALLERY_DATA_DIR),
+                                  original["audio_file"])
+        if os.path.isfile(audio_path) \
+                and os.path.getsize(audio_path) <= 15 * 1024 * 1024:
+            audio_b64 = base64.b64encode(Path(audio_path).read_bytes()).decode("ascii")
+            mime = _MUSIC_MIME.get(os.path.splitext(audio_path)[1].lower(),
+                                   "audio/mpeg")
+            content = render(seq, fmt, audio_b64=audio_b64, audio_mime=mime)
+    if content is None:
+        content = render(seq, fmt)
 
     ext = "py" if fmt == "python" else "html"
     filename = f"gallery_{work_id}_{charset}.{ext}"
@@ -1371,6 +1624,23 @@ def gallery_og(work_id):
     if not work or not os.path.isfile(work["og_path"]):
         abort(404)
     return send_file(work["og_path"], mimetype="image/png")
+
+
+@app.route("/gallery/file/<work_id>/audio")
+def gallery_audio(work_id):
+    """Stream a video work's extracted audio track (view-page playback)."""
+    work = GALLERY_DB.get_work(work_id)
+    if not work:
+        abort(404)
+    params = json.loads(work["params_json"]) if work["params_json"] else {}
+    name = params.get("audio_file") or ""
+    if not name or ".." in name or "/" in name or os.sep in name:
+        abort(404)
+    audio_path = os.path.join(_gallery_mod.gallery_base(GALLERY_DATA_DIR), name)
+    if not os.path.isfile(audio_path):
+        abort(404)
+    mime = _MUSIC_MIME.get(os.path.splitext(audio_path)[1].lower(), "audio/mp4")
+    return send_file(audio_path, mimetype=mime)
 
 
 # --- page routes ---
