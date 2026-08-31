@@ -118,6 +118,17 @@
 ██████████████</div>
                     <div class="style-info"><div class="style-name">极简二值</div><div class="style-desc">纯黑白，复古印刷</div></div>
                 </div>
+                <div class="style-card" data-style="shades">
+                    <div class="style-preview binary">██████████████
+████▓▓▓▓  ████
+██▓▓▒▒  ░░███
+██▓▒  ░░  ▓██
+██▓▒  ░░  ▓██
+██▓▓▒▒  ░░███
+████▓▓▓▓  ████
+██████████████</div>
+                    <div class="style-info"><div class="style-name">明暗渐变块</div><div class="style-desc">块状明暗，平滑质感</div></div>
+                </div>
             </div>
         </div>
     </section>
@@ -151,7 +162,7 @@
                             <button class="control-btn active" id="playBtn" title="Play"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
                             <button class="control-btn" id="pauseBtn" title="Pause"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
                             <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-                            <span class="frame-counter" id="frameCounter">0 / 0</span>
+                            <span class="frame-counter" id="frameCounter">0.0s / 0.0s</span>
                         </div>
                     </div>
                 </div>
@@ -170,6 +181,10 @@
                     <button class="download-btn" id="downloadHtmlBtn" style="margin-top:8px;">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                         ⬇ 下载 .html
+                    </button>
+                    <button class="download-btn" id="downloadMp4Btn" style="margin-top:8px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        ⬇ 下载 .mp4 视频
                     </button>
                 </div>
             </div>
@@ -197,7 +212,7 @@
     <!-- ═══════════ FOOTER ═══════════ -->
     <footer>
         <div class="container">
-            <p class="footer-text"><a href="https://github.com/ZhangJing-gugugaga/Termify">Termify</a> — 万物皆可终端 · MIT License</p>
+            <p class="footer-text"><a href="https://github.com/ZhangJing-gugugaga/Termify">Termify</a> — 万物皆可终端</p>
             <p class="footer-cta">字符集不够用？<a href="https://github.com/ZhangJing-gugugaga/Termify/issues">来提 Issue →</a></p>
         </div>
     </footer>
@@ -293,17 +308,25 @@
                     preview.textContent = joined;
                 }
                 currentFrame = idx;
-                if (progressFill) progressFill.style.width = ((idx + 1) / frames.length) * 100 + "%";
-                if (frameCounter) frameCounter.textContent = (idx + 1) + " / " + frames.length;
+                if (!playing) updateProgressClock((idx + 1) * interval);
             }
-            function tick() {
-                if (!frames.length) return;
-                renderFrame((currentFrame + 1) % frames.length);
+            // ── 秒制匀速进度（与主页一致的 rAF 时钟） ──
+            function fmtSecs(v) { return v.toFixed(1) + "s"; }
+            function updateProgressClock(cycleSec) {
+                var totalSec = frames.length * interval;
+                if (progressFill) progressFill.style.width = (totalSec > 0 ? (cycleSec / totalSec) * 100 : 0) + "%";
+                if (frameCounter) frameCounter.textContent = fmtSecs(cycleSec) + " / " + fmtSecs(totalSec);
             }
+            var playStartTs = 0;
             function rafLoop(ts) {
                 if (!playing) return;
-                if (!lastFrameTime) { lastFrameTime = ts; }
-                else if (ts - lastFrameTime >= interval * 1000) { lastFrameTime = ts; tick(); }
+                if (frames.length < 2 || interval <= 0) { rafId = requestAnimationFrame(rafLoop); return; }
+                var totalSec = frames.length * interval;
+                var cycle = ((ts - playStartTs) / 1000) % totalSec;
+                if (cycle < 0) cycle += totalSec;
+                updateProgressClock(cycle);
+                var idx = Math.floor(cycle / interval) % frames.length;
+                if (idx !== currentFrame) renderFrame(idx);
                 rafId = requestAnimationFrame(rafLoop);
             }
             function startPlayer() {
@@ -311,7 +334,7 @@
                 playing = true;
                 if (playBtn) playBtn.classList.add("active");
                 if (pauseBtn) pauseBtn.classList.remove("active");
-                lastFrameTime = 0;
+                playStartTs = performance.now() - currentFrame * interval * 1000;
                 rafId = requestAnimationFrame(rafLoop);
             }
             function pausePlayer() {
@@ -378,12 +401,37 @@
             if (pauseBtn) pauseBtn.addEventListener("click", pausePlayer);
 
             // ── downloads ──
-            function doDownload(fmt) {
+            function doDownload(fmt, btn) {
                 var url = "/api/gallery/download/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight + "&format=" + fmt;
+                if (fmt === "mp4" && btn) {
+                    // 视频编码耗时较长：按钮进入等待态 + 预计时间
+                    var est = Math.max(5, Math.round((frames.length || 1) * curWidth * curHeight / 100000) + 3);
+                    var oldText = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = "⏳ 生成中…预计约 " + est + " 秒";
+                    fetch(url).then(function (r) {
+                        if (!r.ok) { return r.json().then(function (d) { throw new Error(d.error || "HTTP " + r.status); }); }
+                        return r.blob();
+                    }).then(function (blob) {
+                        btn.disabled = false; btn.innerHTML = oldText;
+                        var a = document.createElement("a");
+                        a.href = URL.createObjectURL(blob);
+                        a.download = "gallery_" + WORK_ID + "_" + curCharset + ".mp4";
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                    }).catch(function (e) {
+                        btn.disabled = false; btn.innerHTML = oldText;
+                        toast("视频生成失败: " + e.message);
+                    });
+                    return;
+                }
                 window.location.href = url;
             }
             document.getElementById("downloadPyBtn").addEventListener("click", function () { doDownload("python"); });
             document.getElementById("downloadHtmlBtn").addEventListener("click", function () { doDownload("html"); });
+            var _mp4Btn = document.getElementById("downloadMp4Btn");
+            if (_mp4Btn) _mp4Btn.addEventListener("click", function () { doDownload("mp4", _mp4Btn); });
 
             // ── banner ──
             document.getElementById("viewBannerClose").addEventListener("click", function () {

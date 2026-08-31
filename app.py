@@ -342,7 +342,7 @@ def upload_video():
 
     if not _VIDEO_IMPORT_SLOTS.acquire(blocking=False):
         os.remove(video_tmp)
-        return jsonify({"error": "服务器转换繁忙，请稍后再试"}), 429
+        return jsonify({"error": "当前任务较多，请稍后再试"}), 429
     try:
         task_id = uuid.uuid4().hex[:12]
         charset = "ascii"
@@ -425,7 +425,7 @@ def fetch_video_url():
         return jsonify({"error": str(exc)}), 400
 
     if not _VIDEO_IMPORT_SLOTS.acquire(blocking=False):
-        return jsonify({"error": "服务器转换繁忙，请稍后再试"}), 429
+        return jsonify({"error": "当前任务较多，请稍后再试"}), 429
     try:
         task_id = uuid.uuid4().hex[:12]
         frames_dir = f"uploads/frames_{task_id}"
@@ -704,7 +704,7 @@ def _generate_video(task_id, charset, width, height, fg_color, bg_color,
     from termify.output import video as video_mod
 
     if not video_mod.ffmpeg_available():
-        return jsonify({"error": "服务器未安装 ffmpeg，视频导出暂不可用"}), 503
+        return jsonify({"error": "视频导出暂不可用，请稍后再试"}), 503
 
     ip = _client_ip()
     if not _rate_check(ip, "video-export", per_minute=6):
@@ -726,7 +726,7 @@ def _generate_video(task_id, charset, width, height, fg_color, bg_color,
     out_path = _tmp_out_path(filename)
 
     if not _VIDEO_PROC_SLOTS.acquire(blocking=False):
-        return jsonify({"error": "服务器编码繁忙，请稍后再试"}), 429
+        return jsonify({"error": "当前任务较多，请稍后再试"}), 429
     try:
         video_mod.encode_mp4(seq, out_path)
     except video_mod.VideoEncodeError as e:
@@ -882,7 +882,7 @@ def gallery_upload():
             return jsonify({"error": str(exc)}), 400
         if not _VIDEO_IMPORT_SLOTS.acquire(blocking=False):
             os.remove(source_path)
-            return jsonify({"error": "服务器转换繁忙，请稍后再试"}), 429
+            return jsonify({"error": "当前任务较多，请稍后再试"}), 429
         try:
             frames_dir = os.path.join(base, f"{work_id}_frames")
             try:
@@ -1208,12 +1208,12 @@ def gallery_preview(work_id):
 
 @app.route("/api/gallery/download/<work_id>", methods=["GET"])
 def gallery_download(work_id):
-    """Generate + serve a .py or .html download for a gallery work.
+    """Generate + serve a .py, .html or .mp4 download for a gallery work.
 
     Query params:
-      charset = ascii|blocks|braille|geometric|binary (default: work's original)
+      charset = ascii|blocks|braille|geometric|binary|shades (default: work's original)
       width, height = int (default: work's original)
-      format  = python|html (required)
+      format  = python|html|mp4 (required)
     Increments download_count once per IP per 24h.
     """
     work = GALLERY_DB.get_work(work_id)
@@ -1246,12 +1246,39 @@ def gallery_download(work_id):
                                        interval=original.get("interval") or 0.1)
     else:
         seq = convert(work["source_path"], charset, width, height)
+    tmp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+
+    if fmt == "mp4":
+        # 视频版下载：同步编码，走并发槽位 + 限频
+        from termify.output import video as video_mod
+
+        if not video_mod.ffmpeg_available():
+            return jsonify({"error": "视频导出暂不可用，请稍后再试"}), 503
+        ip = _client_ip()
+        allowed, _reason = _rate_check(ip, "gallery-mp4", per_minute=6)
+        if not allowed:
+            return jsonify({"error": "操作太频繁，请稍后再试"}), 429
+        if len(seq.lines_per_frame) > video_mod.MAX_VIDEO_FRAMES:
+            return jsonify({"error": f"帧数过多 ({len(seq.lines_per_frame)})，"
+                                     f"视频导出上限 {video_mod.MAX_VIDEO_FRAMES} 帧"}), 400
+        filename = f"gallery_{work_id}_{charset}.mp4"
+        out_path = _tmp_out_path(filename, root=tmp_dir)
+        if not _VIDEO_PROC_SLOTS.acquire(blocking=False):
+            return jsonify({"error": "当前任务较多，请稍后再试"}), 429
+        try:
+            video_mod.encode_mp4(seq, out_path)
+        except video_mod.VideoEncodeError as exc:
+            return jsonify({"error": f"视频编码失败: {exc}"}), 500
+        finally:
+            _VIDEO_PROC_SLOTS.release()
+        _record_download(work_id, _client_ip())
+        return send_file(out_path, as_attachment=True, download_name=filename)
+
     content = render(seq, fmt)
 
     ext = "py" if fmt == "python" else "html"
     filename = f"gallery_{work_id}_{charset}.{ext}"
-    tmp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tmp")
-    os.makedirs(tmp_dir, exist_ok=True)
     out_path = _tmp_out_path(filename, root=tmp_dir)
     Path(out_path).write_text(content, encoding="utf-8")
 

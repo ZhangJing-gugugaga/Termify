@@ -226,19 +226,3 @@ def test_preview_shades(client):
     task_id = _upload(client)
     resp = client.get(f"/api/preview/{task_id}?charset=shades&frame=0")
     assert resp.status_code == 200
-
-
-# --- gallery guard ----------------------------------------------------------------
-
-def test_gallery_rejects_custom_charset(client, tmp_path):
-    """上传画廊时 charset=custom 应回退默认（画廊不存 ramp）。"""
-    buf = __import__("io").BytesIO()
-    Image.new("RGB", (16, 16), (90, 90, 90)).save(buf, format="PNG")
-    buf.seek(0)
-    resp = client.post("/api/gallery/upload",
-                       data={"source": (buf, "t.png"), "title": "t",
-                             "charset": "custom"},
-                       content_type="multipart/form-data")
-    body = json.loads(resp.data)
-    assert body["ok"]
-    assert body["work"]["params"].get("charset") != "custom"

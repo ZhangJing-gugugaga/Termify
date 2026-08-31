@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Termify CLI — 图片 / GIF / 视频 → 终端动画（.py / .html）。
 
-纯本地处理，全程不联网、不占服务器资源。
+纯本地处理，全程不联网。
 
 Usage:
     python demo.py <file> [--charset NAME|all] [--width N] [--height N] [--out DIR]

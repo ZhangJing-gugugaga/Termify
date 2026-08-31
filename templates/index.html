@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Termify — 万物皆可终端</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260831f">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260831f">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260831g">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260831g">
 </head>
 <body>
 <div id="toast"></div>
@@ -613,7 +613,7 @@
         }
         requestAnimationFrame(demoTick);
     </script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260831f" defer></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260831g" defer></script>
 
     <!-- Termify 自定义弹窗（替代浏览器原生 alert/confirm） -->
     <div class="termify-modal" id="termifyModal" hidden>
@@ -626,7 +626,7 @@
             <div class="termify-modal-progress" id="termifyModalProgressWrap" hidden>
                 <div class="termify-modal-progress-fill" id="termifyModalProgress"></div>
             </div>
-            <div class="termify-modal-hint">关闭弹窗不会取消服务器端的处理</div>
+            <div class="termify-modal-hint">关闭弹窗不会取消正在进行的处理</div>
         </div>
     </div>
 

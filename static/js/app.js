@@ -558,7 +558,7 @@
       var dur = isFinite(video.duration) ? video.duration : 0;
       if (!dur) {
         hideModal();
-        toast("本地解码失败，改用服务器处理");
+        toast("本地解码失败，正在用兼容模式重新处理");
         uploadVideo(file);
         return;
       }
@@ -576,13 +576,13 @@
       }).catch(function (err) {
         URL.revokeObjectURL(url);
         hideModal();
-        toast("本地解码失败（" + err.message + "），改用服务器处理");
+        toast("本地解码失败（" + err.message + "），正在用兼容模式重新处理");
         uploadVideo(file);
       });
     };
     video.onerror = function () {
       hideModal();
-      toast("本地解码失败，改用服务器处理");
+      toast("本地解码失败，正在用兼容模式重新处理");
       uploadVideo(file);
     };
   }
@@ -603,7 +603,7 @@
     S.selIdx = S.fileList.length - 1;
     selectFile(S.selIdx);
     renderFileList();
-    toast("本地解码完成（" + bitmaps.length + " 帧）· 风格切换不再经过服务器");
+    toast("导入完成（" + bitmaps.length + " 帧）· 风格切换零等待");
     var stylesSection = document.getElementById("styles");
     if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -1036,7 +1036,7 @@
       if (fmt === "mp4") {
         // 实测 ~100k 字符格/秒（字节合成 + x264），加 3s 编码固定开销
         var est = Math.max(5, Math.round((S.totalFrames || 1) * S.width * S.height / 100000) + 3);
-        showModal("正在导出 MP4 视频", "预计约 " + est + " 秒，编码在服务器进行，完成后自动下载…");
+        showModal("正在导出 MP4 视频", "预计约 " + est + " 秒，完成后自动下载…");
         fetch("/api/generate", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body)
@@ -1065,7 +1065,7 @@
       (!S.taskId || String(S.taskId).indexOf("local:") === 0);
     if (needsUpload) {
       // 懒上传：本地视频首次下载/分享时才把源文件交给服务器
-      showModal("上传源文件到服务器", "首次下载需要源视频，正在上传…", false, true);
+      showModal("正在准备导出素材", "首次下载需要处理源视频，请稍候…", false, true);
       setModalProgress(0);
       uploadVideoXhr(S.localVideo.file).then(function (d) {
         hideModal();
