@@ -257,7 +257,18 @@
         try {
           var deadline = performance.now() + 24;  // 每批 ≤24ms 后让出主线程
           while (i < sources.length && performance.now() - deadline < 24) {
-            var scaled = scaleFrame(sources[i], dims.w, dims.h);
+            // 等比缩放 + 黑底居中，直接画进工作画布（镜像 Python scale_frame，绝不拉伸）
+            var srcW = sources[i].width || dims.w;
+            var srcH = sources[i].height || dims.h;
+            var sc = Math.min(dims.w / srcW, dims.h / srcH);
+            var fw = Math.max(1, Math.round(srcW * sc));
+            var fh = Math.max(1, Math.round(srcH * sc));
+            wctx.fillStyle = "#000";
+            wctx.fillRect(0, 0, dims.w, dims.h);
+            wctx.imageSmoothingEnabled = true;
+            wctx.imageSmoothingQuality = "high";
+            wctx.drawImage(sources[i],
+              Math.floor((dims.w - fw) / 2), Math.floor((dims.h - fh) / 2), fw, fh);
             var idata = wctx.getImageData(0, 0, dims.w, dims.h);
             if (charset === "blocks") {
               frames.push(renderBlocks(idata.data, dims.w, dims.h));
