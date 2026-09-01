@@ -781,6 +781,9 @@ def preview(task_id):
         height = int(request.args.get("height", 24))
     except ValueError:
         return jsonify({"error": "width/height must be integers"}), 400
+    # 钳制到 1-400（与 /api/gallery/preview 一致），防止超大尺寸 DoS。
+    width = max(1, min(400, width))
+    height = max(1, min(400, height))
 
     frame = request.args.get("frame")
     try:
@@ -847,6 +850,9 @@ def generate():
         height = int(data.get("height", 24))
     except ValueError:
         return jsonify({"error": "width/height must be integers"}), 400
+    # 钳制到 1-400（与 /api/gallery/preview 一致），防止超大尺寸 DoS。
+    width = max(1, min(400, width))
+    height = max(1, min(400, height))
 
     fg_color = _parse_rgb(data.get("fg"))
     bg_color = _parse_rgb(data.get("bg"))
