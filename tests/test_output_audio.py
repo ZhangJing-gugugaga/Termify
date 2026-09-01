@@ -139,7 +139,12 @@ def test_start_audio_builds_powershell_command_with_injected_path(tmp_path, char
     assert expected_open in ps, f"Open 路径未正确注入: {ps[:200]}"
     # PowerShell 脚本块花括号必须原样保留（修复前会被 format 吃掉/报错）
     assert "{ Start-Sleep -Milliseconds 100 }" in ps
-    assert ps.count("{") == 1 and ps.count("}") == 1, "残留未转义的 format 占位符"
+    # try / catch / while 三处脚本块，花括号成对且无 format 占位符残留
+    assert ps.count("{") == 3 and ps.count("}") == 3, "残留未转义的 format 占位符"
+    # MediaPlayer 在 PresentationCore 中，Windows PowerShell 默认不加载：
+    # 命令需自带按需加载（缺失时 New-Object 直接 TypeNotFound）
+    assert "Add-Type -AssemblyName PresentationCore" in ps
+    assert "[void][System.Windows.Media.MediaPlayer]" in ps
     # MediaPlayer 播放与等待时长逻辑仍在
     assert "System.Windows.Media.MediaPlayer" in ps
     assert "$p.Play()" in ps

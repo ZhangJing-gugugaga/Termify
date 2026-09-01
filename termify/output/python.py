@@ -362,6 +362,25 @@ def _setup_output_encoding():
 
 
 
+def _enable_ctrl_c():
+    """Restore default Ctrl+C handling when launched in a new process group.
+
+    Windows 下若播放器被以新进程组启动（CREATE_NEW_PROCESS_GROUP，例如
+    批处理脚本或自动化测试），系统会默认屏蔽 Ctrl+C，导致只能强杀、
+    无法优雅退出。这里恢复默认控制台行为：Ctrl+C 触发 KeyboardInterrupt，
+    finally 会停止配乐并打印告别语。
+    / Re-enables Ctrl+C so the player can exit gracefully (stops audio,
+    prints the farewell line) even when started in a new process group.
+    """
+    if os.name != 'nt':
+        return
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleCtrlHandler(None, False)
+    except Exception:
+        pass
+
+
 def _get_terminal_size():
     """Get terminal size. Uses Windows API on nt for reliability."""
     if os.name == 'nt':
@@ -431,6 +450,10 @@ def _start_audio():
             # swallowed by the except below, killing audio for good).
             safe = audio.replace("'", "''")
             ps = (
+                # MediaPlayer lives in PresentationCore, which Windows
+                # PowerShell does not load by default -> load on demand.
+                "try {{ [void][System.Windows.Media.MediaPlayer] }} "
+                "catch {{ Add-Type -AssemblyName PresentationCore }}; "
                 "$p = New-Object System.Windows.Media.MediaPlayer; "
                 "$p.Open('" + safe + "'); "
                 "$p.Play(); "
@@ -471,6 +494,7 @@ def _stop_audio():
 
 def play():
     _setup_output_encoding()
+    _enable_ctrl_c()
     ansi_capable = _enable_windows_ansi()
     global _ANSI_OK
     _ANSI_OK = ansi_capable
