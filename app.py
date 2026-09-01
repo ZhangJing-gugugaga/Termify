@@ -1185,9 +1185,9 @@ def download(filename):
     try:
         path = _tmp_out_path(filename)
     except ValueError:
-        return jsonify({"error": "Invalid filename"}), 400
+        return jsonify({"error": "非法文件名 / Invalid filename"}), 400
     if not os.path.isfile(path):
-        return jsonify({"error": "File not found"}), 404
+        return jsonify({"error": "文件不存在或已过期 / File not found or expired"}), 404
 
     return send_file(path, as_attachment=True)
 
