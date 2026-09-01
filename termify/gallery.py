@@ -52,7 +52,12 @@ def make_admin_token() -> str:
 
 
 def sanitize(text: str | None, max_len: int) -> str:
-    """HTML-escape + truncate. Always returns str."""
+    """Truncate-only sanitisation (strip + cut to ``max_len``). Always str.
+
+    注意：这里 **不做 HTML 转义** —— 存储层保存原文，转义责任在渲染端
+    （模板/前端输出时必须 HTML-escape，防存储型 XSS）。历史 docstring
+    声称 "HTML-escape + truncate" 与实现不符，已修正。
+    """
     if not text:
         return ""
     text = str(text).strip()
