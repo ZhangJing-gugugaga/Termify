@@ -104,6 +104,18 @@
 
         var ADMIN_PWD = "";
 
+        // 存储型 XSS 防线：作品 title/author、举报 reason/description 均为用户
+        // 可控原文（服务端只截断不转义），插进 innerHTML 前必须转义。
+        // 含引号转义（属性上下文也不可逃逸）。
+        function escapeHtml(s) {
+            return String(s == null ? "" : s)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
         // Login
         document.getElementById("adminLoginBtn").addEventListener("click", doLogin);
         document.getElementById("adminPwd").addEventListener("keydown", function (e) {
@@ -141,12 +153,12 @@
             empty.style.display = "none";
             tbody.innerHTML = works.map(function (w) {
                 return '<tr>' +
-                    '<td><a href="/v/' + w.id + '" target="_blank">' + w.id + '</a></td>' +
-                    '<td>' + w.title + '</td>' +
-                    '<td>' + (w.author || '匿名') + '</td>' +
-                    '<td>' + w.like_count + '</td>' +
-                    '<td>' + w.view_count + '</td>' +
-                    '<td><button class="admin-del-btn" data-id="' + w.id + '">删除</button></td>' +
+                    '<td><a href="/v/' + escapeHtml(w.id) + '" target="_blank">' + escapeHtml(w.id) + '</a></td>' +
+                    '<td>' + escapeHtml(w.title) + '</td>' +
+                    '<td>' + escapeHtml(w.author || '匿名') + '</td>' +
+                    '<td>' + escapeHtml(w.like_count) + '</td>' +
+                    '<td>' + escapeHtml(w.view_count) + '</td>' +
+                    '<td><button class="admin-del-btn" data-id="' + escapeHtml(w.id) + '">删除</button></td>' +
                     '</tr>';
             }).join("");
         }
@@ -158,13 +170,13 @@
             empty.style.display = "none";
             tbody.innerHTML = reports.map(function (r) {
                 return '<tr>' +
-                    '<td>' + r.id + '</td>' +
-                    '<td><a href="/v/' + r.work_id + '" target="_blank">' + r.work_id + '</a></td>' +
-                    '<td>' + r.reason + '</td>' +
-                    '<td class="admin-report-desc">' + (r.description || '') + '</td>' +
+                    '<td>' + escapeHtml(r.id) + '</td>' +
+                    '<td><a href="/v/' + escapeHtml(r.work_id) + '" target="_blank">' + escapeHtml(r.work_id) + '</a></td>' +
+                    '<td>' + escapeHtml(r.reason) + '</td>' +
+                    '<td class="admin-report-desc">' + escapeHtml(r.description || '') + '</td>' +
                     '<td>' +
-                    '<button class="admin-resolve-btn" data-id="' + r.id + '">处理</button> ' +
-                    '<button class="admin-dismiss-btn" data-id="' + r.id + '">忽略</button>' +
+                    '<button class="admin-resolve-btn" data-id="' + escapeHtml(r.id) + '">处理</button> ' +
+                    '<button class="admin-dismiss-btn" data-id="' + escapeHtml(r.id) + '">忽略</button>' +
                     '</td>' +
                     '</tr>';
             }).join("");

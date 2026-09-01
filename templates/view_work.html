@@ -232,9 +232,11 @@
     <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260901a"></script>
     <script>
         // ═══════════ Embedded work data ═══════════
+        // tojson：JS 字符串上下文的安全转义（反斜杠/引号/</script> 全覆盖），
+        // 裸 {{ }} 自动转义不含反斜杠，标题以 \ 结尾会破坏整个页面脚本。
         window.TERMIFY_GALLERY_WORK = {
-            id: "{{ work.id }}",
-            title: "{{ work.title }}",
+            id: {{ work.id | tojson }},
+            title: {{ work.title | tojson }},
             params: {{ work.params_json | safe if work.params_json else '{}' }},
             tags: {{ work.tags | safe if work.tags else '[]' }}
         };
@@ -267,8 +269,13 @@
                 clearTimeout(window.__vw_tt);
                 window.__vw_tt = setTimeout(function () { el.classList.remove("show"); }, 2200);
             }
+            // 存储型 XSS 防线：用户可控字符串（tags 等）插进 innerHTML 前转义。
+            // 含引号转义，属性/文本上下文都不可逃逸；横幅区 title/description/author
+            // 走 Jinja 自动转义，ANSI 帧走 ansiToHtml 内部转义，此处兜底全页面。
             function escapeHtml(t) {
-                return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                return String(t == null ? "" : t)
+                    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
             }
             function ansiToHtml(text) {
                 var fg = null, bg = null, out = "";
