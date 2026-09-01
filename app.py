@@ -1303,7 +1303,9 @@ def gallery_like(work_id):
     if not work:
         return jsonify({"error": "Work not found"}), 404
     existing_cookie = request.cookies.get(f"termify_like_{work_id}", "")
-    json_cookie = request.json.get("cookie", "") if request.is_json else ""
+    # request.json 可能是非 dict（如 JSON 数组/字符串），isinstance 守卫防 500。
+    body = request.get_json(silent=True) if request.is_json else None
+    json_cookie = body.get("cookie", "") if isinstance(body, dict) else ""
     cookie_val = existing_cookie or json_cookie
     if not cookie_val:
         cookie_val = _client_ip() + str(time.time())
