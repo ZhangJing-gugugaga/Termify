@@ -28,7 +28,9 @@ Public API
 - ``get_or_404(task_id)`` — tuple ``(task_dict | None, (json, 404))``.
 - ``cache_get(task_id, key)``, ``cache_put(task_id, key, seq)``,
   ``cache_key(...)`` — per-worker cache helpers.
-- ``sweep_expired()`` — DELETE rows whose ``ttl_until`` is in the past.
+- ``sweep_expired()`` — DELETE rows whose ``ttl_until`` is in the past,
+  and best-effort remove their on-disk artifacts (uploads/ source files /
+  frame dirs + tmp/ ``<task_id>_*`` downloads).
 - ``init()`` — idempotent: creates tables, sweeps expired rows, starts
   the background sweep thread.
 """
@@ -50,6 +52,10 @@ DEFAULT_TTL_SECONDS = 3600
 # How often the background sweeper runs.
 SWEEP_INTERVAL_SECONDS = 5 * 60
 
+# 产物根目录（与 app.py 的相对路径约定一致：仓库根的 uploads/ 与 tmp/）。
+UPLOADS_DIR = "uploads"
+TMP_DIR = "tmp"
+
 
 # Module-level cache. Each gunicorn worker has its own copy of this dict;
 # that's intentional — see module docstring.
@@ -70,11 +76,21 @@ class TaskStore:
         self._lock = threading.Lock()
         self._sweep_thread: threading.Thread | None = None
         self._sweep_stop = threading.Event()
+        self._sweep_hook = None
         self._initialised = False
         # Ensure parent dir exists
         parent = os.path.dirname(db_path)
         if parent:
             os.makedirs(parent, exist_ok=True)
+
+    def set_sweep_hook(self, hook) -> None:
+        """Register a zero-arg callable run alongside every background sweep.
+
+        app.py 用它把 ``_sweep_stale_frame_dirs``（uploads/ 帧目录 +
+        tmp/gallery_* 下载产物的 24h TTL 清理）挂进 sweep 循环——那些产物
+        不归 TaskStore 管，但寿命管理是同一件事。
+        """
+        self._sweep_hook = hook
 
     # --- connection -----------------------------------------------------
 
@@ -225,11 +241,47 @@ class TaskStore:
             return cur.rowcount > 0
 
     def sweep_expired(self, *, now: float | None = None) -> int:
-        """DELETE rows whose ``ttl_until < now``. Returns row count removed."""
+        """DELETE rows whose ``ttl_until < now``. Returns row count removed.
+
+        被删行的磁盘产物一并做 best-effort 清理：
+
+        - ``filepath`` 落在 uploads/ 内（直接子级，包含检查后）的源文件
+          或视频帧目录；
+        - tmp/ 下以 ``<task_id>_`` 为前缀的下载产物（.py/.html/.mp4）。
+
+        所有删除都包在 try/except OSError 里——清理失败只放弃该文件，
+        绝不影响 sweep 本身。
+        """
         ts = time.time() if now is None else now
         with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT task_id, filepath FROM tasks WHERE ttl_until < ?",
+                (ts,),
+            ).fetchall()
             cur = conn.execute("DELETE FROM tasks WHERE ttl_until < ?", (ts,))
-            return cur.rowcount
+            removed = cur.rowcount
+        for task_id, filepath in rows:
+            self._cleanup_task_artifacts(task_id, filepath)
+        return removed
+
+    def _cleanup_task_artifacts(self, task_id: str, filepath: str | None) -> None:
+        """Best-effort delete one expired task's on-disk artifacts.
+
+        任何 OSError（文件已消失/被占用/权限不足）都被吞掉——清理失败
+        绝不能影响 sweep 本身。
+        """
+        if filepath:
+            _remove_within_dir(UPLOADS_DIR, filepath)
+        if task_id:
+            try:
+                names = os.listdir(TMP_DIR)
+            except OSError:
+                names = []
+            marker = f"{task_id}_"
+            for name in names:
+                if not name.startswith(marker):
+                    continue
+                _remove_within_dir(TMP_DIR, os.path.join(TMP_DIR, name))
 
     # --- background sweeper --------------------------------------------
 
@@ -252,6 +304,12 @@ class TaskStore:
                     # try again. We deliberately don't propagate to avoid
                     # noisy stderr under flaky disk conditions.
                     pass
+                hook = self._sweep_hook
+                if hook is not None:
+                    try:
+                        hook()
+                    except Exception:  # noqa: BLE001 — keep thread alive
+                        pass
 
         t = threading.Thread(target=_loop, name="TaskStoreSweeper", daemon=True)
         t.start()
@@ -381,6 +439,32 @@ def cache_clear_all() -> None:
 
 
 # --- internal helpers -------------------------------------------------------
+
+def _remove_within_dir(base_dir: str, path: str) -> None:
+    """Delete a file/dir only when it provably sits directly inside base_dir.
+
+    参照 app.py ``_safe_remove_upload`` 的加固模式：解析为绝对路径后要求
+    父目录恰为 base（不递归子目录）、无 ``..`` 段，然后才删除；目录用
+    rmtree，文件/链接用 os.remove。任何 OSError 一律吞掉。
+    """
+    import shutil
+
+    base = os.path.abspath(base_dir)
+    resolved = os.path.abspath(path)
+    if os.path.dirname(resolved) != base:
+        return
+    if not resolved.startswith(base + os.sep):
+        return
+    if ".." in resolved:
+        return
+    try:
+        if os.path.isdir(resolved):
+            shutil.rmtree(resolved, ignore_errors=True)
+        elif os.path.isfile(resolved) or os.path.islink(resolved):
+            os.remove(resolved)
+    except OSError:
+        pass
+
 
 def _size_to_w_h(value: Any) -> tuple[int | None, int | None]:
     """Normalise a size input to ``(width, height)`` 2-tuple of ints.

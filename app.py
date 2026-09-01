@@ -63,7 +63,8 @@ def _sweep_stale_frame_dirs(max_age_hours: int = 24) -> None:
     """Best-effort removal of persisted video frame dirs past their TTL.
 
     Also removes stale per-task audio artifacts (audio_*.m4a / music_*.ext)
-    — they share the uploads/ dir and the same lifetime as their task.
+    — they share the uploads/ dir and the same lifetime as their task — and
+    tmp/ 下的 gallery_* 下载产物（画廊生成、无 task 归属，同样 24h TTL）。
     """
     import shutil as _shutil
 
@@ -71,7 +72,7 @@ def _sweep_stale_frame_dirs(max_age_hours: int = 24) -> None:
     try:
         entries = os.listdir("uploads")
     except OSError:
-        return
+        entries = []
     uploads_base = os.path.abspath("uploads")
     for name in entries:
         is_stale_kind = name.startswith("frames_") \
@@ -85,6 +86,25 @@ def _sweep_stale_frame_dirs(max_age_hours: int = 24) -> None:
             if os.path.isdir(path) and os.path.getmtime(path) < cutoff:
                 _shutil.rmtree(path, ignore_errors=True)
             elif os.path.isfile(path) and os.path.getmtime(path) < cutoff:
+                os.remove(path)
+        except OSError:
+            continue
+
+    # tmp/ 下的画廊下载产物（gallery_<work>_<charset>.py/.html/.mp4）没有
+    # task 归属，sweep_expired 清不到，这里按同一 24h TTL 兜底。
+    try:
+        tmp_entries = os.listdir("tmp")
+    except OSError:
+        return
+    tmp_base = os.path.abspath("tmp")
+    for name in tmp_entries:
+        if not name.startswith("gallery_"):
+            continue
+        path = os.path.abspath(os.path.join("tmp", name))
+        if os.path.dirname(path) != tmp_base or not path.startswith(tmp_base + os.sep):
+            continue
+        try:
+            if os.path.isfile(path) and os.path.getmtime(path) < cutoff:
                 os.remove(path)
         except OSError:
             continue
@@ -1725,7 +1745,9 @@ def gallery_admin_page():
 # the ``tasks`` table, sweeps any rows that expired while we were down, and
 # starts the background TTL cleanup thread. The same code runs under both
 # ``python app.py`` (single process) and ``gunicorn --workers 4`` (4 procs).
-get_store()
+# 把 _sweep_stale_frame_dirs 挂进后台 sweep 循环：uploads/ 帧目录与
+# tmp/gallery_* 下载产物共用同一套 24h TTL 生命周期管理。
+get_store().set_sweep_hook(_sweep_stale_frame_dirs)
 
 if __name__ == "__main__":
     os.makedirs("uploads", exist_ok=True)
