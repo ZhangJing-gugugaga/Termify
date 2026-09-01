@@ -128,6 +128,18 @@
 
         var G = { sort: "latest", tag: "", page: 1, limit: 24, total: 0, hasMore: false };
 
+        // 存储型 XSS 防线：服务端只截断不转义，所有插进 innerHTML 的
+        // 用户可控字符串（title/author/tags 等）必须先过 escapeHtml。
+        // 含引号转义（属性上下文 alt="..."/href="..." 也不能逃逸）。
+        function escapeHtml(s) {
+            return String(s == null ? "" : s)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
         function fetchGallery() {
             var params = new URLSearchParams({ sort: G.sort, tag: G.tag, page: G.page, limit: G.limit });
             fetch("/api/gallery/list?" + params.toString())
@@ -151,17 +163,17 @@
             }
             empty.style.display = "none";
             grid.innerHTML = items.map(function (w) {
-                return '<a class="gallery-card" href="/v/' + w.id + '">' +
+                return '<a class="gallery-card" href="/v/' + escapeHtml(w.id) + '">' +
                     '<div class="gallery-card-img">' +
-                    '<img src="' + w.thumbnail_url + '" alt="' + w.title + '" loading="lazy">' +
+                    '<img src="' + escapeHtml(w.thumbnail_url) + '" alt="' + escapeHtml(w.title) + '" loading="lazy">' +
                     '</div>' +
                     '<div class="gallery-card-info">' +
-                    '<div class="gallery-card-title">' + w.title + '</div>' +
+                    '<div class="gallery-card-title">' + escapeHtml(w.title) + '</div>' +
                     '<div class="gallery-card-meta">' +
-                    '<span class="gallery-card-author">' + (w.author || '匿名') + '</span>' +
+                    '<span class="gallery-card-author">' + escapeHtml(w.author || '匿名') + '</span>' +
                     '<span class="gallery-card-stats">' +
-                    '<span>❤ ' + w.like_count + '</span>' +
-                    '<span>👁 ' + w.view_count + '</span>' +
+                    '<span>❤ ' + escapeHtml(w.like_count) + '</span>' +
+                    '<span>👁 ' + escapeHtml(w.view_count) + '</span>' +
                     '</span>' +
                     '</div></div></a>';
             }).join("");
@@ -172,9 +184,9 @@
             if (d.total <= d.limit) { el.innerHTML = ""; return; }
             var totalPages = Math.ceil(d.total / d.limit);
             var html = "";
-            if (d.page > 1) html += '<button class="gallery-page-btn" data-page="' + (d.page - 1) + '">← 上一页</button>';
-            html += '<span class="gallery-page-info">第 ' + d.page + ' / ' + totalPages + ' 页</span>';
-            if (d.has_more) html += '<button class="gallery-page-btn" data-page="' + (d.page + 1) + '">下一页 →</button>';
+            if (d.page > 1) html += '<button class="gallery-page-btn" data-page="' + escapeHtml(d.page - 1) + '">← 上一页</button>';
+            html += '<span class="gallery-page-info">第 ' + escapeHtml(d.page) + ' / ' + escapeHtml(totalPages) + ' 页</span>';
+            if (d.has_more) html += '<button class="gallery-page-btn" data-page="' + escapeHtml(d.page + 1) + '">下一页 →</button>';
             el.innerHTML = html;
         }
 
