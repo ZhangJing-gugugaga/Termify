@@ -6,7 +6,8 @@
 1. 路径穿越全谱系：绝对路径 / 混合分隔符 / 反斜杠目录 / 空主名 / NUL 字节，
    并校验落盘字节与上传内容一致（t26 只测了 ../../ 与 sub/dir 的 PNG）。
 2. 尺寸钳制 fuzz：非整数 / 浮点串 / 空串 / 0x 前缀 / 空超长整数，一律不 500；
-   /api/generate 的 JSON width=null|list|dict → 当前 TypeError 500（bug，xfail 锁定）。
+   /api/generate 的 JSON width=null|list|dict|float|bool → 已修复为 400 双语
+   （原 TypeError 500，xfail 已摘除转正）。
 3. 限流 429 双语"格式"断言（中文 + " / " + 英文），不与 t26 的逐字断言重复。
 4. 413 处理器作用域：5 个重端点统一 JSON 双语（t26 只测 /api/upload）。
 5. gallery_like：数组体 [1,2]（回归任务口径）+ dict 体非字符串 cookie 的
@@ -266,17 +267,16 @@ def test_generate_size_fuzz_bad_strings(client):
         assert resp.status_code == status, (w, h, resp.status_code)
 
 
-@pytest.mark.parametrize("bad_width", [None, [1, 2], {"a": 1}])
-@pytest.mark.xfail(strict=True, raises=TypeError,
-                   reason="产品 bug：/api/generate 的 int() 只捕 ValueError，"
-                          "JSON width/height 为 null/list/dict 时 TypeError → 500 "
-                          "（app.py:1039）。修复后应 400。")
+@pytest.mark.parametrize("bad_width", [None, [1, 2], {"a": 1}, 12.5, True])
 def test_generate_json_nonint_width_no_500(client, bad_width):
-    """JSON 非整数 width 不应 500（期望 400），当前 TypeError 直接冒泡。"""
+    """JSON 非整数 width（null/list/dict/float/bool）一律 400 双语拒绝，
+    不应 500（原 int(None) TypeError 500 已由 app.py generate 的
+    _coerce_int_or_none 类型守卫修复，xfail 已摘除转正）。"""
     task_id = json.loads(_upload(client).data)["task_id"]
     resp = client.post("/api/generate", json={
         "task_id": task_id, "format": "html", "width": bad_width})
-    assert resp.status_code in (200, 400), resp.status_code
+    assert resp.status_code == 400, resp.status_code
+    _assert_bilingual(json.loads(resp.data)["error"])
 
 
 # ═══ 3. 限流 429 双语格式 ════════════════════════════════════════════════════

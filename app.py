@@ -226,6 +226,25 @@ def _parse_rgb(value):
     return (r, g, b)
 
 
+def _coerce_int_or_none(value):
+    """Coerce a JSON-supplied numeric field to int, or None if not safely castable.
+
+    接受 int 与可 ``int()`` 的整数字符串（如 "80" / " 24 "）；JSON 的
+    None / bool / float / list / dict 及畸形字符串一律返回 None，由调用方
+    回 400 —— 避免 ``int(None)`` 抛 TypeError 导致 500。
+    """
+    if isinstance(value, bool) or isinstance(value, (float, list, dict)):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
 
 def _tmp_out_path(filename: str, root: str = "tmp") -> str:
     """Resolve a generated-artifact path under ``root`` and refuse traversal.
@@ -1035,11 +1054,12 @@ def generate():
     if fmt not in VALID_FORMATS:
         return jsonify({"error": f"Unknown format: {fmt}"}), 400
 
-    try:
-        width = int(data.get("width", 80))
-        height = int(data.get("height", 24))
-    except ValueError:
-        return jsonify({"error": "width/height must be integers"}), 400
+    # JSON width/height 类型守卫：None/bool/float/list/dict/畸形串一律 400
+    # （双语），防 int(None) 抛 TypeError → 500；缺失时才用默认值。
+    width = _coerce_int_or_none(data.get("width", 80))
+    height = _coerce_int_or_none(data.get("height", 24))
+    if width is None or height is None:
+        return jsonify({"error": "宽高必须是整数 / width and height must be integers"}), 400
     # 钳制到 1-400（与 /api/gallery/preview 一致），防止超大尺寸 DoS。
     width = max(1, min(400, width))
     height = max(1, min(400, height))
