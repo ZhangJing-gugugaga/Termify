@@ -395,14 +395,19 @@ def _start_audio():
         return None
     try:
         if player == 'powershell':
+            # Build the PS command by plain string concatenation. The literal
+            # PowerShell script-block braces must reach the process untouched --
+            # str.format() would choke on them (KeyError/ValueError silently
+            # swallowed by the except below, killing audio for good).
+            safe = audio.replace("'", "''")
             ps = (
                 "$p = New-Object System.Windows.Media.MediaPlayer; "
-                "$p.Open('{{}}'); "
+                "$p.Open('" + safe + "'); "
                 "$p.Play(); "
                 "while($p.NaturalDuration.HasTimeSpan -eq $false) {{ Start-Sleep -Milliseconds 100 }}; "
                 "$dur = $p.NaturalDuration.TimeSpan.TotalSeconds; "
                 "Start-Sleep -Seconds $dur"
-            ).format(audio.replace("'", "''"))
+            )
             _audio_proc = _sp.Popen(
                 ['powershell', '-NoProfile', '-Command', ps],
                 stdin=_sp.DEVNULL, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
