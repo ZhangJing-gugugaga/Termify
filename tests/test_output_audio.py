@@ -163,7 +163,45 @@ def test_start_audio_escapes_single_quotes_in_path(tmp_path):
     assert "$p.Open('" + escaped + "')" in ps
 
 
-# ── 3. 生成的 ps 命令是合法 PowerShell 语法 ───────────────────
+# ── 3. 音频候选扩展：mp3 → m4a → wav → ogg ────────────────────
+
+
+@pytest.mark.parametrize("charset", ["ascii", "blocks"])
+def test_start_audio_prefers_first_existing_candidate_in_order(tmp_path, charset):
+    """四个候选都在时按 music.mp3 → m4a → wav → ogg 顺序取第一个存在者。"""
+    for ext in ("mp3", "m4a", "wav", "ogg"):
+        (tmp_path / f"music.{ext}").write_bytes(b"\x00")
+
+    ns, _ = _load_start_audio(tmp_path, charset)
+    assert ns["_start_audio"]() is not None
+    ps = _FakePopen.calls[0][-1]
+    assert "$p.Open('" + str(tmp_path / "music.mp3") + "')" in ps
+
+
+@pytest.mark.parametrize("charset", ["ascii", "blocks"])
+@pytest.mark.parametrize("ext", ["m4a", "wav", "ogg"])
+def test_start_audio_falls_back_to_next_candidate(tmp_path, charset, ext):
+    """只有某个候选存在时也能生效（mp3 缺失 → 依次回退）。"""
+    (tmp_path / f"music.{ext}").write_bytes(b"\x00")
+
+    ns, _ = _load_start_audio(tmp_path, charset)
+    assert ns["_start_audio"]() is not None
+    ps = _FakePopen.calls[0][-1]
+    assert "$p.Open('" + str(tmp_path / f"music.{ext}") + "')" in ps
+
+
+def test_start_audio_non_powershell_branch_receives_audio_path(tmp_path):
+    """非 PowerShell 分支（ffplay 等）也把选中的音频路径传给播放器。"""
+    (tmp_path / "music.ogg").write_bytes(b"\x00")
+
+    ns, _ = _load_start_audio(tmp_path, "ascii", player=["ffplay"])
+    assert ns["_start_audio"]() is not None
+    cmd = _FakePopen.calls[0]
+    assert cmd[0] == "ffplay"
+    assert cmd[-1] == str(tmp_path / "music.ogg")
+
+
+# ── 4. 生成的 ps 命令是合法 PowerShell 语法 ───────────────────
 
 powershell = shutil.which("powershell")
 

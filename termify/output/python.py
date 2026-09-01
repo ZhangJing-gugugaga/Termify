@@ -15,7 +15,10 @@ Termify 终端动画播放器
 风格: {charset} | 尺寸: {w}x{h} | {n} 帧
 
 播放自动适应终端大小，拖拽窗口边缘实时跟随。
-可选音频：同目录放 music.mp3 自动播放（零依赖，调系统播放器）。
+可选音频：同目录放 music.mp3 / music.m4a / music.wav / music.ogg
+自动播放（零依赖，调系统播放器）。按此顺序第一个存在者生效。
+/ Optional music: put music.mp3 (or music.m4a / music.wav / music.ogg)
+next to this file — it plays automatically (zero dependencies).
 
 【运行前准备】
   需要 Python 3.6 或更高版本。
@@ -33,7 +36,9 @@ Termify 终端动画播放器
 
 【小贴士】
   - 终端窗口越大，显示效果越好。窗口改变时动画自动缩放。
-  - 将 music.mp3 放在本文件同目录下，播放时自动伴奏。
+  - 将 music.mp3（或 .m4a / .wav / .ogg）放在本文件同目录下，播放时自动伴奏。
+    / Put music.mp3 (or .m4a / .wav / .ogg) beside this file for automatic
+    background music.
   - 如果看到乱码或颜色不对，试试换成 HTML 格式下载，用浏览器打开。
   - 本文件无任何第三方依赖，只需 Python 本身。
 """
@@ -384,11 +389,21 @@ def _find_audio_player():
 
 
 def _start_audio():
-    """Look for music.mp3 next to this script and play it. Returns proc or None."""
+    """Play background music found next to this script. Returns proc or None.
+
+    按序查找 music.mp3 → music.m4a → music.wav / .ogg，
+    第一个存在者生效 / The first existing file among music.mp3,
+    music.m4a, music.wav and music.ogg wins.
+    """
     global _audio_proc
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    audio = os.path.join(script_dir, 'music.mp3')
-    if not os.path.isfile(audio):
+    audio = None
+    for name in ('music.mp3', 'music.m4a', 'music.wav', 'music.ogg'):
+        candidate = os.path.join(script_dir, name)
+        if os.path.isfile(candidate):
+            audio = candidate
+            break
+    if audio is None:
         return None
     player = _find_audio_player()
     if not player:
