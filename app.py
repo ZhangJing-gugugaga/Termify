@@ -228,6 +228,12 @@ def upload():
     if ext not in VALID_EXT:
         return jsonify({"error": "Unsupported format"}), 400
 
+    ip = _client_ip()
+    allowed, _reason = _rate_check(ip, "image-upload", per_minute=10, per_day=100)
+    if not allowed:
+        return jsonify({"error": "上传太频繁，请稍后再试 (限 10 次/分钟) / "
+                                 "Too many uploads, please try again later (10/min)"}), 429
+
     task_id = uuid.uuid4().hex[:12]
     # 服务端生成文件名（{task_id}{ext}，ext 已过 VALID_EXT 白名单）——
     # 用户可控的原始文件名绝不参与路径拼接，杜绝路径穿越。
@@ -646,6 +652,12 @@ def fetch_url():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
+    ip = _client_ip()
+    allowed, _reason = _rate_check(ip, "fetch-url", per_minute=2, per_day=20)
+    if not allowed:
+        return jsonify({"error": "链接解析太频繁，请稍后再试 (限 2 次/分钟) / "
+                                 "URL fetch too frequent, please try again later (2/min)"}), 429
+
     from termify.urlfetch import fetch_url_to_temp, URLFetchError
     from termify import convert
 
@@ -835,6 +847,12 @@ def generate():
     task_id = data.get("task_id")
     charset = (data.get("charset") or "ascii").lower().strip()
     fmt = data.get("format")
+
+    ip = _client_ip()
+    allowed, _reason = _rate_check(ip, "generate", per_minute=12, per_day=200)
+    if not allowed:
+        return jsonify({"error": "生成太频繁，请稍后再试 (限 12 次/分钟) / "
+                                 "Too many generation requests, please try again later (12/min)"}), 429
 
     from termify.charset import CHARSETS
 

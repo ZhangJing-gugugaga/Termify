@@ -25,7 +25,8 @@ def client(tmp_path, monkeypatch):
     (tmp_path / "uploads").mkdir(exist_ok=True)
     (tmp_path / "tmp").mkdir(exist_ok=True)
     monkeypatch.chdir(tmp_path)
-    from app import app
+    from app import app, _RL_LOG
+    _RL_LOG.clear()  # fetch-url 已加限流，清空计数避免同 IP 用例互相顶到 429
     app.config["TESTING"] = True
     return app.test_client()
 
