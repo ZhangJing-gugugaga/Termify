@@ -232,7 +232,7 @@
     <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260901a"></script>
     <script>
         // ═══════════ Embedded work data ═══════════
-        // tojson：JS 字符串上下文的安全转义（反斜杠/引号/</script> 全覆盖），
+        // tojson：JS 字符串上下文的安全转义（反斜杠/引号/HTML 结束标签全覆盖），
         // 裸双花括号自动转义不含反斜杠，标题以反斜杠结尾会破坏整个页面脚本。
         window.TERMIFY_GALLERY_WORK = {
             id: {{ work.id | tojson }},
