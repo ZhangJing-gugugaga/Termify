@@ -29,6 +29,12 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24).hex())
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # PRD §7.1
 
+
+@app.errorhandler(413)
+def _request_entity_too_large(_e):
+    """请求体超过 MAX_CONTENT_LENGTH 时返回 JSON（而非 Flask 默认 HTML 页）。"""
+    return jsonify({"error": "文件过大（上限 20MB） / File too large (max 20MB)"}), 413
+
 # --- T1.9 Task metadata store ------------------------------------------------
 # Production bug fix (L1): under gunicorn 4 workers, a module-level TASKS dict
 # lived in each worker's private memory, so a task created in worker A was
