@@ -14,6 +14,8 @@ task state into two layers:
    process-local dict. Cache misses are non-fatal: we re-compute from
    ``metadata.filepath`` via ``termify.convert()``. Repeated computation
    is the cost we pay for staying simple and avoiding a network cache.
+   The cache is capped at ``CACHE_MAX_ENTRIES`` (128) with oldest-insertion
+   eviction, so long-running workers cannot grow it without bound.
 
 A background thread sweeps expired rows every 5 minutes; on app boot the
 store also pre-cleans anything past its TTL.
@@ -42,6 +44,7 @@ import os
 import sqlite3
 import threading
 import time
+from collections import OrderedDict
 from typing import Any, Iterable
 
 # Default TTL for an uploaded task. After this many seconds, the row is
@@ -58,8 +61,11 @@ TMP_DIR = "tmp"
 
 
 # Module-level cache. Each gunicorn worker has its own copy of this dict;
-# that's intentional — see module docstring.
-CACHE: dict[str, Any] = {}
+# that's intentional — see module docstring. 用 OrderedDict 承载，最多保留
+# CACHE_MAX_ENTRIES 条，超出时按插入序淘汰最旧条目——长驻进程里
+# FrameSequence 不再无界增长（内存上限保护）。
+CACHE: "OrderedDict[str, Any]" = OrderedDict()
+CACHE_MAX_ENTRIES = 128
 _CACHE_LOCK = threading.Lock()
 
 
@@ -415,12 +421,20 @@ def cache_get(task_id: str, key: str) -> Any:
 
 
 def cache_put(task_id: str, key: str, seq: Any) -> None:
-    """Cache ``seq`` under ``(task_id, key)``. No-op if ``seq`` is None."""
+    """Cache ``seq`` under ``(task_id, key)``. No-op if ``seq`` is None.
+
+    超过 ``CACHE_MAX_ENTRIES`` 时按插入序淘汰最旧条目；对已存在 key 的
+    重新 put 视为最新插入（移到队尾）。
+    """
     if seq is None:
         return
     full = f"{task_id}:{key}"
     with _CACHE_LOCK:
+        if full in CACHE:
+            CACHE.move_to_end(full)
         CACHE[full] = seq
+        while len(CACHE) > CACHE_MAX_ENTRIES:
+            CACHE.popitem(last=False)
 
 
 def cache_clear_task(task_id: str) -> None:
@@ -513,6 +527,7 @@ def _row_to_task(row: sqlite3.Row) -> dict:
 __all__ = [
     "TaskStore",
     "CACHE",
+    "CACHE_MAX_ENTRIES",
     "DEFAULT_TTL_SECONDS",
     "SWEEP_INTERVAL_SECONDS",
     "get_store",
