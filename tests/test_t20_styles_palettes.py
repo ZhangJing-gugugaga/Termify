@@ -208,6 +208,11 @@ def test_generate_custom_without_chars_rejected(client):
 
 
 def test_generate_custom_with_chars_downloads(client, tmp_path):
+    import base64 as _b64
+    import json as _json
+    import re as _re
+    import zlib as _zlib
+
     task_id = _upload(client)
     resp = client.post("/api/generate",
                        data=json.dumps({"task_id": task_id, "charset": "custom",
@@ -218,8 +223,13 @@ def test_generate_custom_with_chars_downloads(client, tmp_path):
     # send_file 相对 app.root_path 解析，与测试 cwd 不同——直接读产物文件
     fname = url.rsplit("/", 1)[-1]
     content = (tmp_path / "tmp" / fname).read_text(encoding="utf-8")
-    # 产物里应出现自定义梯的字符（.py 播放器把帧嵌在源码里）
-    assert "@" in content
+    # 产物里应出现自定义梯的字符：.py 播放器把帧嵌在 zlib+Base85 压缩的
+    # FRAMES_B85 数据里，解码后应含自定义梯字符 "@"
+    m = _re.search(r'^FRAMES_B85 = "([^"]+)"', content, _re.M)
+    assert m, "缺少 FRAMES_B85 嵌入"
+    joined = _json.loads(
+        _zlib.decompress(_b64.b85decode(m.group(1))).decode("utf-8"))
+    assert "@" in "".join(joined)
 
 
 def test_preview_shades(client):

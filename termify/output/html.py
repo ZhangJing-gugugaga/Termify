@@ -75,7 +75,8 @@ _PLAYER_TEMPLATE = """<!DOCTYPE html>
       el.style.lineHeight = lineHeightRatio;
     }}
 
-    function parseBlocksFrame(lines) {{
+    function parseBlocksFrame(frameStr) {{
+      var lines = frameStr.split('\\n');
       var pixels = [];
       for (var li = 0; li < lines.length; li++) {{
         var line = lines[li];
@@ -132,7 +133,7 @@ _PLAYER_TEMPLATE = """<!DOCTYPE html>
       if (IS_BLOCKS) {{
         renderBlocks(frameIdx);
       }} else {{
-        el.innerHTML = FRAMES[frameIdx].join('\\n');
+        el.innerHTML = FRAMES[frameIdx];
       }}
     }}
 
@@ -196,16 +197,18 @@ def render(sequence: FrameSequence, audio_b64: str | None = None,
     is_blocks = sequence.charset == "blocks"
 
     if is_blocks:
-        # Blocks mode: pass raw ANSI data; JS renders via <canvas>
-        frames_data = [list(frame) for frame in sequence.lines_per_frame]
+        # Blocks mode: one string per frame (raw ANSI, lines joined with \n);
+        # JS splits it back and renders via <canvas>.
+        frames_data = ["\n".join(frame) for frame in sequence.lines_per_frame]
     else:
-        # Other styles: pre-convert to HTML spans
+        # Other styles: pre-convert to HTML spans, one string per frame.
         frames_data = [
-            [ansi_to_html(line) for line in frame]
+            "\n".join(ansi_to_html(line) for line in frame)
             for frame in sequence.lines_per_frame
         ]
 
-    frames_json = json.dumps(frames_data, ensure_ascii=False, indent=2)
+    frames_json = json.dumps(
+        frames_data, ensure_ascii=False, separators=(",", ":"))
     audio_uri = "null"
     if audio_b64:
         audio_uri = json.dumps(

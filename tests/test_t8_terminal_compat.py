@@ -26,10 +26,28 @@ def _gen_py(charset: str, w: int, h: int, tmp_path) -> str:
 
 
 def test_py_contains_ansi_blocks_codes(tmp_path):
-    """blocks 风格 .py 应含 ANSI 38;2;（前景）和 48;2;（背景）转义码。"""
-    src = _gen_py("blocks", 16, 8, tmp_path)
-    assert "38;2;" in src
-    assert "48;2;" in src
+    """blocks 风格 .py 运行时帧数据应含 ANSI 38;2;（前景）和 48;2;（背景）转义码。
+
+    帧数据以 zlib+Base85 压缩嵌入，源码文本中不可见；经 importlib
+    加载解码后断言转义码仍在。
+    """
+    import importlib.util
+
+    img = Image.new("RGB", (16, 8), (60, 120, 180))
+    p = tmp_path / "_t8_ansi.png"
+    img.save(str(p))
+    seq = convert(str(p), "blocks", 16, 8)
+
+    src = render(seq, "python")
+    path = tmp_path / "_t8_ansi_player.py"
+    path.write_text(src, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("_t8_ansi_player", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    joined = "\n".join(mod.FRAMES[0])
+    assert "38;2;" in joined, "解码后帧数据缺少前景 TrueColor (38;2;)"
+    assert "48;2;" in joined, "解码后帧数据缺少背景 TrueColor (48;2;)"
 
 
 def test_py_has_enable_windows_ansi_call(tmp_path):

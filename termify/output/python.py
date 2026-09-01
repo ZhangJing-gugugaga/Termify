@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import base64
+import zlib
 
 from termify.engine import FrameSequence
 
@@ -54,8 +56,21 @@ if sys.version_info < (3, 6):
     sys.exit(1)
 
 import time, os, shutil, re, subprocess as _sp
+import base64 as _b64, json as _json, zlib as _zlib
 
-FRAMES = {frames}
+# 嵌入帧数据：zlib + Base85 压缩的 JSON 数组，每帧一个字符串（行以 \\n 相连）。
+# Embedded frames: zlib+Base85-compressed JSON, one string per frame
+# (lines joined with \\n) -- keeps the file small and self-contained.
+FRAMES_B85 = {frames}
+
+
+def _load_frames():
+    """Decode the embedded blob into per-frame line arrays."""
+    raw = _zlib.decompress(_b64.b85decode(FRAMES_B85)).decode('utf-8')
+    return [f.split('\\n') for f in _json.loads(raw)]
+
+
+FRAMES = _load_frames()
 
 FRAME_INTERVAL = {interval:.4f}
 W, H = {w}, {h}
@@ -551,14 +566,21 @@ if __name__ == '__main__':
 
 
 def render(sequence: FrameSequence) -> str:
-    """Generate a self-contained .py player script as a string."""
-    # JSON gives us correct escaping of every unicode char and backslash.
-    frames_json = json.dumps(sequence.lines_per_frame, ensure_ascii=False, indent=2)
+    """Generate a self-contained .py player script as a string.
+
+    Frames are embedded compactly: each frame becomes ONE string with its
+    lines joined by newlines; the JSON array of those strings is zlib-
+    compressed and Base85-encoded (both stdlib on the player side), so the
+    artifact stays small while decoding back to the exact original lines.
+    """
+    joined = ['\n'.join(frame) for frame in sequence.lines_per_frame]
+    payload = json.dumps(joined, ensure_ascii=False, separators=(',', ':'))
+    blob = base64.b85encode(zlib.compress(payload.encode('utf-8'), 9)).decode('ascii')
     return _PLAYER_TEMPLATE.format(
         charset=sequence.charset,
         w=sequence.width,
         h=sequence.height,
         n=len(sequence.lines_per_frame),
-        frames=frames_json,
+        frames=json.dumps(blob),
         interval=sequence.interval,
     )

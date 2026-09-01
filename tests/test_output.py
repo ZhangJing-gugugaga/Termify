@@ -33,10 +33,19 @@ def test_python_output_is_parseable_py():
     ast.parse(py_src)
 
 
-def test_python_output_contains_frames_array():
+def test_python_output_embeds_compact_frames_blob():
+    """帧数据以 zlib+Base85 压缩 JSON 嵌入（每帧一个字符串，行以 \\n 相连），
+    解码后与原始序列逐帧一致。"""
     py_src = render(_make_seq(), "python")
-    # The FRAMES assignment should be present and non-empty.
-    assert re.search(r"^FRAMES = \[", py_src, re.M)
+    m = re.search(r'^FRAMES_B85 = "([^"]+)"', py_src, re.M)
+    assert m, "缺少 FRAMES_B85 嵌入"
+
+    import base64 as _b64
+    import json as _json
+    import zlib as _zlib
+
+    joined = _json.loads(_zlib.decompress(_b64.b85decode(m.group(1))).decode("utf-8"))
+    assert joined == ["\n".join(frame) for frame in _make_seq().lines_per_frame]
 
 
 def test_python_output_contains_frame_interval():

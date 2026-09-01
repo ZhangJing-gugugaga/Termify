@@ -96,8 +96,27 @@ def test_generated_py_contains_utf8_header(tmp_path):
         assert "coding: utf-8" in src, f"{cs} 缺少 utf-8 coding 声明"
 
 
-def test_generated_py_frames_not_ascii_escaped(tmp_path):
-    """生成的 .py 中 FRAMES 数据未做 \\uXXXX 转义（使用 ensure_ascii=False）。"""
-    src = _gen_py("blocks", 8, 4, tmp_path)
-    # blocks 风格应含 ▀ 字符的直接 UTF-8 编码（非 \\u2580 转义）
-    assert "▀" in src or "FRAMES = [" in src
+def test_generated_py_frames_roundtrip(tmp_path):
+    """生成的 .py 运行时 FRAMES 与原始序列逐帧逐行一致。
+
+    帧数据以 zlib+Base85 压缩 JSON 嵌入（紧凑产物，无人类可读缩进），
+    加载模块解码后每帧还原为行数组；unicode（blocks 字符）经
+    ensure_ascii=False 直接进 UTF-8 JSON，运行时无损还原。
+    """
+    import importlib.util
+
+    img = Image.new("RGB", (16, 8), (60, 120, 180))
+    p = tmp_path / "_t1_roundtrip.png"
+    img.save(str(p))
+    seq = convert(str(p), "blocks", 16, 8)
+
+    src = render(seq, "python")
+    path = tmp_path / "_t1_roundtrip_player.py"
+    path.write_text(src, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("_t1_roundtrip_player", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    assert mod.FRAMES == seq.lines_per_frame, "FRAMES 解码后与原序列不一致"
+    block_chars = "".join(mod.FRAMES[0])
+    assert any(c in block_chars for c in "█▀▄"), "blocks 字符在解码后丢失"
