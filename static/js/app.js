@@ -194,7 +194,7 @@
   /* ── Title / meta ── */
   function setTitleMeta() {
     if (terminalTitle && S.charset)
-      terminalTitle.textContent = "animation preview - " + S.charset + " style";
+      terminalTitle.textContent = "动画预览 - " + S.charset + " 风格 / animation preview - " + S.charset + " style";
   }
 
   /* ── Progress clock（rAF 匀速秒制，像视频播放器） ── */
@@ -366,7 +366,7 @@
       return;
     }
     if (!S.taskId) {
-      if (!(opts && opts.silent)) toast("请先上传文件");
+      if (!(opts && opts.silent)) toast("请先上传文件 / Please upload a file first");
       return;
     }
     if (charset === "custom" && !S.ramp) { toast("请先在 Tweaks 面板填写自定义字符"); return; }
@@ -450,7 +450,7 @@
     var unsupported = files.filter(function (f) { return !isVideo(f) && !isImage(f); });
 
     if (unsupported.length) {
-      unsupported.forEach(function (f) { toast(f.name + ": 不支持的格式"); });
+      unsupported.forEach(function (f) { toast(f.name + ": 不支持的格式 / Unsupported format"); });
     }
 
     // Upload images via batch endpoint
@@ -868,11 +868,11 @@
       if (!f) return;
       var ext = f.name.slice(f.name.lastIndexOf(".")).toLowerCase();
       if (MUSIC_EXTS.indexOf(ext) < 0) {
-        toast("不支持的音乐格式（" + ext + "），支持 MP3/WAV/M4A/AAC/OGG/FLAC");
+        toast("不支持的音乐格式（" + ext + "），支持 MP3/WAV/M4A/AAC/OGG/FLAC / Unsupported music format (" + ext + "), supported: MP3/WAV/M4A/AAC/OGG/FLAC");
         input.value = ""; return;
       }
       if (f.size > MUSIC_MAX_BYTES) {
-        toast("音乐文件过大（上限 20MB）");
+        toast("音乐文件过大（上限 20MB）/ Music file too large (max 20MB)");
         input.value = ""; return;
       }
       // 换音乐 / 换任务：旧音乐若已上传过则从服务器移除
@@ -882,7 +882,7 @@
       }
       S.musicFile = f;
       refreshMusicRows();
-      toast("音乐已就绪，导出时自动合成");
+      toast("音乐已就绪，导出时自动合成 / Music ready — will be merged on export");
       input.value = "";
     });
     if (rmBtn) rmBtn.addEventListener("click", function () {
@@ -895,7 +895,7 @@
 
   /* ── Download ── */
   function doDownload() {
-    if (!S.taskId && !S.localVideo) { toast("请先上传文件"); return; }
+    if (!S.taskId && !S.localVideo) { toast("请先上传文件 / Please upload a file first"); return; }
     if (S.charset === "custom" && !S.ramp) { toast("请先在 Tweaks 面板填写自定义字符"); return; }
     var fmt = selectedFormat();
     function ensureMusicUploaded(taskId) {
@@ -1060,7 +1060,7 @@
       opt.classList.add("selected");
       var svg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
       if (byId("terminalSizeCard")) byId("terminalSizeCard").style.display = "";
-      if (downloadBtn) downloadBtn.innerHTML = svg + "download animation";
+      if (downloadBtn) downloadBtn.innerHTML = svg + "下载动画文件 / Download animation";
     });
   });
 
@@ -1172,13 +1172,13 @@
       var url = urlInput.value.trim();
       if (!url) { toast("请输入 URL"); return; }
       if (isVideoPlatformUrl(url)) { doFetchVideoUrl(url); return; }
-      urlBtn.disabled = true; urlBtn.textContent = "下载中...";
+      urlBtn.disabled = true; urlBtn.textContent = "下载中… / Fetching…";
       fetch("/api/fetch-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url })
       }).then(function (r) { return r.json(); }).then(function (d) {
-        urlBtn.disabled = false; urlBtn.textContent = "下载";
+        urlBtn.disabled = false; urlBtn.textContent = "下载 / Fetch";
         if (d.error) { toast(d.error); return; }
         S.fileList = [{ task_id: d.task_id, filename: d.filename || "url-image",
                         frames_count: d.frames_count, charset: "ascii", width: 80, height: 24 }];
@@ -1187,7 +1187,7 @@
         if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
         urlInput.value = "";
       }).catch(function (e) {
-        urlBtn.disabled = false; urlBtn.textContent = "下载";
+        urlBtn.disabled = false; urlBtn.textContent = "下载 / Fetch";
         toast("fetch failed: " + e);
       });
     }
@@ -1406,7 +1406,7 @@
 
   function openGalleryModal() {
     var cur = S.fileList[S.selIdx] || {};
-    if (!(cur.sourceFile || S.sourceFile)) { toast("请先上传文件"); return; }
+    if (!(cur.sourceFile || S.sourceFile)) { toast("请先上传文件 / Please upload a file first"); return; }
     galleryModal.classList.add("open");
     var title = byId("galleryTitle");
     var srcName = ((cur.sourceFile || S.sourceFile) || {}).name || "";
@@ -1460,7 +1460,7 @@
   if (byId("gallerySubmitBtn")) byId("gallerySubmitBtn").addEventListener("click", function () {
     var cur = S.fileList[S.selIdx] || {};
     var src = cur.sourceFile || S.sourceFile;
-    if (!src) { toast("请先上传文件"); return; }
+    if (!src) { toast("请先上传文件 / Please upload a file first"); return; }
     var title = byId("galleryTitle").value.trim() || src.name.replace(/\.[^.]+$/, "");
     var desc = byId("galleryDesc").value.trim();
     var author = byId("galleryAuthor").value.trim();

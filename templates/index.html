@@ -84,8 +84,8 @@
                     </svg>
                 </div>
                 <div class="upload-text">
-                    <h3>拖拽文件到这里，或 <span class="browse-link">点击选择</span></h3>
-                    <p>支持 GIF、PNG、JPG、MP4、WEBM，最大 20MB，可一次选择多个文件</p>
+                    <h3>拖拽文件到这里，或 <span class="browse-link">点击选择</span> / Drag files here, or <span class="browse-link">click to browse</span></h3>
+                    <p>支持 GIF、PNG、JPG、MP4、WEBM，最大 20MB，可一次选择多个文件 / Supports GIF, PNG, JPG, MP4, WEBM — max 20MB, multiple files allowed</p>
                 </div>
                 <div class="upload-formats">
                     <span class="format-tag">.GIF</span>
@@ -99,10 +99,10 @@
             <div class="file-list" id="fileList"></div>
             <!-- URL fetch input -->
             <div class="url-fetch" id="urlFetch">
-                <span class="url-fetch-label">或粘贴链接：</span>
+                <span class="url-fetch-label">或粘贴链接 / Or paste a link：</span>
                 <input type="text" class="url-fetch-input" id="urlInput"
                        placeholder="https://example.com/image.gif" />
-                <button class="url-fetch-btn" id="urlFetchBtn">下载</button>
+                <button class="url-fetch-btn" id="urlFetchBtn" title="下载 / Fetch">下载 / Fetch</button>
             </div>
         </div>
     </section>
@@ -327,27 +327,27 @@
                     </div>
 
                     <div class="output-card" id="musicCard" style="display:none;">
-                        <div class="output-card-title">背景音乐 <span class="music-note">♪ 视频自带音频会自动合成</span></div>
+                        <div class="output-card-title">背景音乐 / Background music <span class="music-note">♪ 视频自带音频会自动合成 / Built-in video audio is merged automatically</span></div>
                         <div class="music-row" id="musicEmptyRow">
-                            <button class="music-add-btn" id="musicAddBtn" type="button">＋ 添加音乐文件</button>
-                            <div class="music-hint">MP3/WAV/M4A 等，≤20MB，将替换视频原声并合成进 MP4/HTML</div>
+                            <button class="music-add-btn" id="musicAddBtn" type="button">＋ 添加音乐文件 / Add music file</button>
+                            <div class="music-hint">MP3/WAV/M4A 等，≤20MB，将替换视频原声并合成进 MP4/HTML / MP3/WAV/M4A etc., max 20MB — replaces the video's own audio and is merged into MP4/HTML</div>
                         </div>
                         <div class="music-row" id="musicChosenRow" style="display:none;">
                             <span class="music-chip" id="musicChip">♪ music.mp3</span>
-                            <button class="music-remove-btn" id="musicRemoveBtn" type="button" title="移除音乐">×</button>
+                            <button class="music-remove-btn" id="musicRemoveBtn" type="button" title="移除音乐 / Remove music">×</button>
                         </div>
                     </div>
 
-                    <button class="download-btn">
+                    <button class="download-btn" title="下载动画文件 / Download animation file">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                             <polyline points="7 10 12 15 17 10"/>
                             <line x1="12" y1="15" x2="12" y2="3"/>
                         </svg>
-                        下载动画文件
+                        下载动画文件 / Download animation
                     </button>
 
-                    <button class="gallery-share-btn" id="shareToGalleryBtn" style="display:none;">分享到画廊</button>
+                    <button class="gallery-share-btn" id="shareToGalleryBtn" style="display:none;">分享到画廊 / Share to gallery</button>
                 </div>
 
             </div>
@@ -519,7 +519,7 @@
                 document.querySelectorAll('.format-option').forEach(o => o.classList.remove('selected'));
                 opt.classList.add('selected');
                 terminalSizeCard.style.display = '';
-                downloadBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>下载动画文件';
+                downloadBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>下载动画文件 / Download animation';
             });
         });
 
@@ -639,7 +639,7 @@
             <div class="termify-modal-progress" id="termifyModalProgressWrap" hidden>
                 <div class="termify-modal-progress-fill" id="termifyModalProgress"></div>
             </div>
-            <div class="termify-modal-hint">关闭弹窗不会取消正在进行的处理</div>
+            <div class="termify-modal-hint">关闭弹窗不会取消正在进行的处理 / Closing this dialog will not cancel the ongoing processing</div>
         </div>
     </div>
 
