@@ -350,6 +350,10 @@
   function requestPreview(charset, opts) {
     // 方案B：本地视频 → JS 分块异步渲染，不经服务器，切换瞬时完成
     if (S.localVideo) {
+      if (charset === "custom" && !TermifyRender.sanitizeRamp(S.ramp || "").length) {
+        toast("请先在 Tweaks 面板填写有效自定义字符 / Please set a valid custom ramp in Tweaks");
+        return;
+      }
       var myReq = ++latestReq;
       if (animTerminal) animTerminal.classList.add("rendering");
       localRenderFrames(charset, S.width, S.height, myReq).then(function (localFrames) {
@@ -369,8 +373,29 @@
       if (!(opts && opts.silent)) toast("请先上传文件 / Please upload a file first");
       return;
     }
-    if (charset === "custom" && !S.ramp) { toast("请先在 Tweaks 面板填写自定义字符"); return; }
+    if (charset === "custom" && !TermifyRender.sanitizeRamp(S.ramp || "").length) {
+      toast("请先在 Tweaks 面板填写有效自定义字符 / Please set a valid custom ramp in Tweaks");
+      return;
+    }
     var myId = ++latestReq;
+    // 方案B 推广：服务端任务优先本地渲染（源帧一次性拉取后，风格/尺寸切换零请求）
+    if (!taskFramesFailed(S.taskId)) {
+      if (animTerminal) animTerminal.classList.add("rendering");
+      ensureTaskFrames(S.taskId).then(function (entry) {
+        if (myId !== latestReq) return;
+        renderTaskFramesLocally(entry, charset, myId);
+      }, function () {
+        // 404 / 413 / 解码 / 网络失败 → 回退服务端 /api/preview（旧路径）
+        if (myId !== latestReq) return;
+        serverPreview(charset, opts, myId);
+      });
+      return;
+    }
+    serverPreview(charset, opts, myId);
+  }
+
+  /* ── 服务端渲染回退路径（方案B 之前的既有流程，完整保留） ── */
+  function serverPreview(charset, opts, myId) {
     var url = "/api/preview/" + S.taskId
       + "?charset=" + charset
       + "&width=" + S.width + "&height=" + S.height
@@ -626,11 +651,121 @@
     var lv = S.localVideo;
     if (!lv || !lv.bitmaps.length) return Promise.resolve(null);
     return TermifyRender.renderFrames(lv.bitmaps, charset, width, height,
-      { ramp: S.ramp, fg: S.fg, bg: S.bg },
+      { ramp: S.ramp, fg: S.fg, bg: S.bg,
+        cache: lumCacheFor(S.taskId || "local", width, height) },
       function (done, total) {
         if (done % 60 === 0 && animTerminal) {
           animTerminal.dataset.renderPct = Math.round(done / total * 100) + "%";
         }
+      });
+  }
+
+  /* ══════════ 方案B 推广：服务端任务源帧本地渲染 ══════════
+     上传/链接抓取拿到 task_id 后（selectFile → requestPreview 首次触发）
+     懒加载 GET /api/task-frames/<task_id>，base64 JPEG 解码为位图常驻内存；
+     之后 7 风格 × 5 尺寸的切换全部在浏览器本地完成（零网络请求）。
+     404 / 413 / 解码失败 / 网络失败 → 记忆失败状态（本会话不再重试），
+     回退既有服务端 /api/preview 流程（serverPreview，完整保留可用）。 */
+  var taskFrameCache = {};   // task_id -> { state: loading|ok|failed, promise, bitmaps, interval }
+  var lumCaches = {};        // task_id|WxH -> { map, used, budget } 跨风格切换的亮度/RGBA 缓存
+  var LUM_CACHE_BUDGET = 48 * 1024 * 1024;
+
+  function b64ToBitmap(b64) {
+    var url = "data:image/jpeg;base64," + b64;
+    function viaImage() {
+      return new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.onload = function () { resolve(img); };
+        img.onerror = function () { reject(new Error("frame decode failed")); };
+        img.src = url;
+      });
+    }
+    if (typeof createImageBitmap !== "function" || typeof fetch !== "function") {
+      return viaImage();
+    }
+    return fetch(url).then(function (r) { return r.blob(); })
+      .then(function (b) { return createImageBitmap(b); })
+      .catch(viaImage);
+  }
+
+  function ensureTaskFrames(taskId) {
+    var entry = taskFrameCache[taskId];
+    if (entry) return entry.promise;
+    entry = { state: "loading", bitmaps: [], interval: 0.1 };
+    entry.promise = new Promise(function (resolve, reject) {
+      entry.resolve = resolve;
+      entry.reject = reject;
+    });
+    taskFrameCache[taskId] = entry;
+    fetch("/api/task-frames/" + taskId)
+      .then(function (r) {
+        // 404 / 413 / 5xx 一律视为不可本地渲染 → 回退服务端
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        if (!d || !d.ok || !d.frames || !d.frames.length || !d.w || !d.h) {
+          throw new Error("empty task frames");
+        }
+        return Promise.all(d.frames.map(b64ToBitmap)).then(function (bitmaps) {
+          var usable = bitmaps.filter(function (b) { return b && b.width; });
+          if (!usable.length) throw new Error("frame decode failed");
+          entry.bitmaps = usable;
+          entry.interval = d.interval || 0.1;
+          entry.state = "ok";
+          entry.resolve(entry);
+        });
+      })
+      .catch(function (err) {
+        entry.state = "failed";  // 记忆失败状态
+        entry.error = err;
+        entry.reject(err);
+      });
+    return entry.promise;
+  }
+
+  function taskFramesFailed(taskId) {
+    var e = taskFrameCache[taskId];
+    return !!(e && e.state === "failed");
+  }
+
+  function lumCacheFor(taskId, width, height) {
+    var key = taskId + "|" + width + "x" + height;
+    var c = lumCaches[key];
+    if (!c) {
+      c = { map: {}, used: 0, budget: LUM_CACHE_BUDGET };
+      lumCaches[key] = c;
+    }
+    return c;
+  }
+
+  function renderTaskFramesLocally(entry, charset, myReq) {
+    if (animTerminal) animTerminal.classList.add("rendering");
+    TermifyRender.renderFrames(entry.bitmaps, charset, S.width, S.height,
+      { ramp: S.ramp, fg: S.fg, bg: S.bg,
+        cache: lumCacheFor(S.taskId, S.width, S.height) },
+      function (done, total) {
+        if (done % 60 === 0 && animTerminal) {
+          animTerminal.dataset.renderPct = Math.round(done / total * 100) + "%";
+        }
+      }).then(function (localFrames) {
+        if (myReq !== latestReq) return;  // 已被更新的请求取代
+        if (animTerminal) animTerminal.classList.remove("rendering");
+        if (!localFrames || !localFrames.length) {
+          serverPreview(charset, {}, myReq);  // 理论不可达的兜底
+          return;
+        }
+        S.charset = charset;
+        applyPreview({
+          frames: localFrames,
+          interval: entry.interval,
+          frame_count: localFrames.length,
+          charset: charset
+        });
+      }).catch(function () {
+        // 本地渲染异常 → 同样回退服务端（一次性，失败任务已记忆则不再进本地路径）
+        if (myReq !== latestReq) return;
+        serverPreview(charset, {}, myReq);
       });
   }
 
@@ -896,7 +1031,10 @@
   /* ── Download ── */
   function doDownload() {
     if (!S.taskId && !S.localVideo) { toast("请先上传文件 / Please upload a file first"); return; }
-    if (S.charset === "custom" && !S.ramp) { toast("请先在 Tweaks 面板填写自定义字符"); return; }
+    if (S.charset === "custom" && !TermifyRender.sanitizeRamp(S.ramp || "").length) {
+      toast("请先在 Tweaks 面板填写有效自定义字符 / Please set a valid custom ramp in Tweaks");
+      return;
+    }
     var fmt = selectedFormat();
     function ensureMusicUploaded(taskId) {
       // 音乐随首次导出一并交给服务器（懒上传），已传过则跳过
@@ -1430,6 +1568,8 @@
     // 必须在 _origSelectFile（内部会触发 requestPreview）之前设置，
     // 否则本地分支首切永远走服务端路径 → "Task not found"
     S.localVideo = (cur && cur.localVideo) || null;
+    // 换任务 → 上一任务的亮度缓存全部失效（内存有界）
+    lumCaches = {};
     _origSelectFile(idx);
     var src = (cur && cur.sourceFile) || S.sourceFile;
     if (shareBtn) shareBtn.style.display = src ? "flex" : "none";
