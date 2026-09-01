@@ -253,6 +253,10 @@ def _tmp_out_path(filename: str, root: str = "tmp") -> str:
     whitelist-checked upstream; the checks below enforce that invariant at
     the file boundary instead of relying on it: no path separators, no
     ``..`` segments, and the resolved path must stay inside ``root``.
+
+    返回绝对路径并在首次调用时确保 ``root`` 目录存在——所有产物写入与
+    /api/download 读取都必须经由本函数取得同一路径基准（见 download），
+    以保证 CWD 与 app.root_path 不一致时写入/读取仍然对齐。
     """
     if ".." in filename or os.sep in filename or (os.altsep or "/") in filename:
         raise ValueError(f"generated filename contains path separators: {filename!r}")
@@ -260,6 +264,7 @@ def _tmp_out_path(filename: str, root: str = "tmp") -> str:
     resolved = os.path.abspath(os.path.join(base, filename))
     if os.path.dirname(resolved) != base or not resolved.startswith(base + os.sep):
         raise ValueError(f"generated filename escapes {root}: {filename!r}")
+    os.makedirs(base, exist_ok=True)
     return resolved
 
 
@@ -1171,7 +1176,16 @@ def download(filename):
     if ".." in filename or os.sep in filename or "/" in filename:
         return jsonify({"error": "Invalid filename"}), 400
 
-    path = os.path.join("tmp", filename)
+    # 与写入侧（generate/_generate_video → _tmp_out_path）共用同一基准：
+    # 取 CWD 内 tmp/ 的绝对路径。此前这里把相对路径 "tmp/<file>" 交给
+    # send_file，Flask 会按 app.root_path 解析——CWD ≠ 仓库根时（systemd
+    # WorkingDirectory 漂移、PyInstaller 启动器、隔离部署）与写入侧基准
+    # 不一致 → FileNotFoundError 500。传绝对路径即绕过 root_path 解析，
+    # 写入/读取恒定对齐。
+    try:
+        path = _tmp_out_path(filename)
+    except ValueError:
+        return jsonify({"error": "Invalid filename"}), 400
     if not os.path.isfile(path):
         return jsonify({"error": "File not found"}), 404
 
