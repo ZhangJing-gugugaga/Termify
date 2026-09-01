@@ -1474,6 +1474,11 @@ def gallery_like(work_id):
     body = request.get_json(silent=True) if request.is_json else None
     json_cookie = body.get("cookie", "") if isinstance(body, dict) else ""
     cookie_val = existing_cookie or json_cookie
+    # cookie 绑定进 sqlite 参数，必须是短字符串：非字符串（JSON 数组/嵌套
+    # dict 等类型混淆）或超长值一律 400，防止 sqlite3.ProgrammingError 500。
+    if cookie_val and (not isinstance(cookie_val, str) or len(cookie_val) > 200):
+        return jsonify({"error": "点赞标识无效（须为不超过 200 字符的字符串） / "
+                                 "Invalid like cookie (must be a string of at most 200 characters)"}), 400
     if not cookie_val:
         cookie_val = _client_ip() + str(time.time())
     liked, count = GALLERY_DB.toggle_like(work_id, ip, cookie_val)

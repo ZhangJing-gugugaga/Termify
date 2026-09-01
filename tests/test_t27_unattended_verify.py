@@ -10,7 +10,7 @@
 3. 限流 429 双语"格式"断言（中文 + " / " + 英文），不与 t26 的逐字断言重复。
 4. 413 处理器作用域：5 个重端点统一 JSON 双语（t26 只测 /api/upload）。
 5. gallery_like：数组体 [1,2]（回归任务口径）+ dict 体非字符串 cookie 的
-   类型混淆（当前 sqlite3.ProgrammingError 500，bug，xfail 锁定）。
+   类型混淆（原 sqlite3.ProgrammingError 500，已修复转正）。
 6. task-frames：越界/畸形 id 不 500；源文件损坏后 404（t25 覆盖正常契约与 413）。
 7. LRU：走真实 HTTP 链路（130 次 /api/preview 不同尺寸）验证 128 上限（t26 只测
    cache_put 单元层面）。
@@ -30,7 +30,6 @@ import io
 import json
 import os
 import re
-import sqlite3
 
 import pytest
 from PIL import Image
@@ -336,19 +335,17 @@ def test_gallery_like_array_body_no_500(client, monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("evil_cookie", ['[1,2]', '{"nested": true}'])
-@pytest.mark.xfail(strict=True, raises=sqlite3.ProgrammingError,
-                   reason="产品 bug：gallery_like 只守卫了 body 非 dict（be17007），"
-                          "dict 体里 cookie 值非字符串时（如 {\"cookie\": [1,2]}）原样"
-                          "传给 sqlite 绑定 → ProgrammingError → 500 "
-                          "（app.py:1475,1479 → termify/gallery.py:362）。")
 def test_gallery_like_dict_nonstring_cookie_no_500(client, monkeypatch,
                                                    tmp_path, evil_cookie):
-    """dict 体 + 非字符串 cookie 不应 500（期望 200/400），当前 sqlite 绑定崩。"""
+    """dict 体 + 非字符串 cookie 不应 500（修复后 400 双语拒绝，
+    原 sqlite3.ProgrammingError 500 已由 app.py gallery_like 的
+    cookie 类型/长度守卫修复，xfail 已摘除转正）。"""
     _make_gallery_db(monkeypatch, tmp_path, work_id="wt27like0002")
     resp = client.post("/api/gallery/like/wt27like0002",
                        data=json.dumps({"cookie": json.loads(evil_cookie)}),
                        content_type="application/json")
-    assert resp.status_code in (200, 400), resp.status_code
+    assert resp.status_code == 400, resp.status_code
+    _assert_bilingual(json.loads(resp.data)["error"])
 
 
 # ═══ 6. task-frames 越界与损坏源 ═════════════════════════════════════════════
