@@ -21,6 +21,7 @@
 11. XSS 静态检查：innerHTML 插值点用户字段必须过 escapeHtml；escapeHtml 实现含
     引号转义；view_work <script> 内嵌用户数据必须走 tojson。
 12. 双语抽查：i18n commit 0a5ac26 新增文案的 "中文 / English" 形态静态锚点。
+13. /api/download 的 CWD 依赖缺陷（冒烟 5555 实测 500，xfail 锁定）。
 """
 
 from __future__ import annotations
@@ -483,6 +484,31 @@ def test_gallery_delete_wrong_work_token_403_right_token_200(client,
 
 
 # ═══ 10. 产物紧凑化：明文不得残留 ════════════════════════════════════════════
+
+
+# /api/download 正常路径（CWD == root_path 时 200）由
+# tests/test_t7_web_api.py::test_api_download_serves_file 覆盖；它恰好因为
+# pytest 从仓库根运行而通过，掩盖了下面的 CWD 依赖缺陷。
+
+
+@pytest.mark.xfail(strict=True, raises=FileNotFoundError,
+                   reason="产品 bug：/api/download（app.py:1158）用 CWD 相对路径 "
+                          "send_file('tmp/<file>')，而 Flask send_file 把相对路径解析到 "
+                          "app.root_path。CWD ≠ 仓库根时（systemd WorkingDirectory 不一致、"
+                          "PyInstaller 启动器、隔离部署），generate 写到 $CWD/tmp 而 "
+                          "download 去 <root_path>/tmp 找 → FileNotFoundError → 裸 HTML 500。"
+                          "真实服务冒烟（隔离 CWD，端口 5555）实测 500。")
+def test_download_cwd_independent(client):
+    """CWD ≠ root_path 时 /api/download 不应 500（send_file 相对路径语义缺陷）。"""
+    task_id = json.loads(_upload(client).data)["task_id"]
+    resp = client.post("/api/generate", json={
+        "task_id": task_id, "format": "python", "width": 8, "height": 2})
+    assert resp.status_code == 200
+    filename = json.loads(resp.data)["download_url"].split("/")[-1]
+    # 本文件 autouse fixture 已 chdir 到 tmp_path（≠ root_path），正好复现
+    resp = client.get(f"/api/download/{filename}")
+    assert resp.status_code == 200
+
 
 
 def test_py_artifact_no_plaintext_frames():
