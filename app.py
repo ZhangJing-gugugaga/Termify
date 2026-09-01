@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import threading
 import time
 import uuid
@@ -146,6 +147,19 @@ GALLERY_DB.init_db()
 def _admin_pwd() -> str:
     """Read TERMIFY_ADMIN_PWD on each request (so tests can monkeypatch env)."""
     return os.environ.get("TERMIFY_ADMIN_PWD", "")
+
+
+def _secret_equal(a, b) -> bool:
+    """Constant-time comparison for admin tokens / passwords.
+
+    ``secrets.compare_digest`` 要求两侧同为 str（或同为 bytes），这里先做
+    真值守卫：任一侧非 str 或为空一律 False，避免异常与空口令误匹配。
+    """
+    if not isinstance(a, str) or not isinstance(b, str):
+        return False
+    if not a or not b:
+        return False
+    return secrets.compare_digest(a, b)
 
 # Rate limit: {ip: [(action_str, timestamp_s), ...]}
 _RL_LOCK = threading.Lock()
@@ -1280,8 +1294,9 @@ def gallery_work(work_id):
     fresh = GALLERY_DB.get_work(work_id)
     out = _gallery_public_dict(fresh)
     out["is_authorized"] = (
-        request.cookies.get(f"termify_admin_{work_id}") == work["admin_token"]
-        or (bool(_admin_pwd()) and request.headers.get("X-Termify-Admin-Pwd", "") == _admin_pwd())
+        _secret_equal(request.cookies.get(f"termify_admin_{work_id}", ""),
+                      work["admin_token"])
+        or _secret_equal(request.headers.get("X-Termify-Admin-Pwd", ""), _admin_pwd())
     )
     # Has the current visitor (IP + cookie) liked this work?
     like_cookie = request.cookies.get(f"termify_like_{work_id}", "")
@@ -1344,8 +1359,8 @@ def gallery_delete(work_id):
     token = request.cookies.get(f"termify_admin_{work_id}", "")
     hdr_token = request.headers.get("X-Termify-Admin", "")
     input_token = hdr_token or token
-    is_admin = bool(_admin_pwd()) and request.headers.get("X-Termify-Admin-Pwd", "") == _admin_pwd()
-    authorized = is_admin or (input_token and input_token == work["admin_token"])
+    is_admin = _secret_equal(request.headers.get("X-Termify-Admin-Pwd", ""), _admin_pwd())
+    authorized = is_admin or _secret_equal(input_token, work["admin_token"])
     if not authorized:
         return jsonify({"error": "Unauthorized"}), 403
     deleted = GALLERY_DB.delete_work(work_id)
@@ -1372,7 +1387,7 @@ def gallery_admin_list():
     Requires X-Termify-Admin-Pwd header.
     """
     hdr_pwd = request.headers.get("X-Termify-Admin-Pwd", "")
-    if not _admin_pwd() or hdr_pwd != _admin_pwd():
+    if not _secret_equal(hdr_pwd, _admin_pwd()):
         return jsonify({"error": "Unauthorized"}), 403
     works = GALLERY_DB.admin_list_works()
     reports = GALLERY_DB.admin_list_reports(status="pending")
@@ -1386,7 +1401,7 @@ def gallery_admin_list():
 def gallery_admin_delete(work_id):
     """Admin hard delete."""
     hdr_pwd = request.headers.get("X-Termify-Admin-Pwd", "")
-    if not _admin_pwd() or hdr_pwd != _admin_pwd():
+    if not _secret_equal(hdr_pwd, _admin_pwd()):
         return jsonify({"error": "Unauthorized"}), 403
     work = GALLERY_DB.get_work(work_id)
     if not work:
@@ -1412,7 +1427,7 @@ def gallery_admin_delete(work_id):
 def gallery_admin_resolve_report(report_id):
     """Mark a report resolved/dismissed."""
     hdr_pwd = request.headers.get("X-Termify-Admin-Pwd", "")
-    if not _admin_pwd() or hdr_pwd != _admin_pwd():
+    if not _secret_equal(hdr_pwd, _admin_pwd()):
         return jsonify({"error": "Unauthorized"}), 403
     data = request.get_json(silent=True) or {}
     status = data.get("status", "resolved")
