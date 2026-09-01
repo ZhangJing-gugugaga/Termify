@@ -229,7 +229,12 @@ def upload():
         return jsonify({"error": "Unsupported format"}), 400
 
     task_id = uuid.uuid4().hex[:12]
-    save_path = os.path.join("uploads", f"{task_id}_{file.filename}")
+    # 服务端生成文件名（{task_id}{ext}，ext 已过 VALID_EXT 白名单）——
+    # 用户可控的原始文件名绝不参与路径拼接，杜绝路径穿越。
+    try:
+        save_path = _safe_uploads_path(f"{task_id}{ext}")
+    except ValueError:
+        return jsonify({"error": "Unsupported format"}), 400
     file.save(save_path)
 
     try:
@@ -281,7 +286,12 @@ def upload_batch():
             continue
 
         task_id = uuid.uuid4().hex[:12]
-        save_path = os.path.join("uploads", f"{task_id}_{file.filename}")
+        # 同 /api/upload：服务端生成文件名，ext 已过白名单，防路径穿越。
+        try:
+            save_path = _safe_uploads_path(f"{task_id}{ext}")
+        except ValueError:
+            errors.append({"filename": file.filename, "error": "Unsupported format"})
+            continue
         file.save(save_path)
 
         try:
