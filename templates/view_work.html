@@ -232,13 +232,15 @@
     <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260901a"></script>
     <script>
         // ═══════════ Embedded work data ═══════════
-        // tojson：JS 字符串上下文的安全转义（反斜杠/引号/HTML 结束标签全覆盖），
-        // 裸双花括号自动转义不含反斜杠，标题以反斜杠结尾会破坏整个页面脚本。
+        // tojson：JS 字符串上下文的安全转义（反斜杠/引号/HTML 结束标签全覆盖）。
+        // params_json / tags 是 JSON 字符串，经 tojson 编码为字面量后 JSON.parse
+        // 还原；禁止用 safe 过滤器裸输出——用户可控内容会逃逸脚本上下文
+        // （存储型 XSS），且任何字面 HTML 结束标签都会提前终止本脚本块。
         window.TERMIFY_GALLERY_WORK = {
             id: {{ work.id | tojson }},
             title: {{ work.title | tojson }},
-            params: {{ work.params_json | safe if work.params_json else '{}' }},
-            tags: {{ work.tags | safe if work.tags else '[]' }}
+            params: JSON.parse({{ (work.params_json or '{}') | tojson }}),
+            tags: JSON.parse({{ (work.tags or '[]') | tojson }})
         };
     </script>
     <script>
