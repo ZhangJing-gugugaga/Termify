@@ -881,6 +881,138 @@ def preview(task_id):
     })
 
 
+# --- T2.5 方案B 本地渲染：任务源帧直读 --------------------------------------
+
+# 帧数 / payload 守卫：超出即拒绝（防一次性拉爆内存/带宽）。
+TASK_FRAMES_MAX_COUNT = 600
+TASK_FRAMES_MAX_PAYLOAD = 40 * 1024 * 1024
+# 预览帧最大像素尺寸（与 termify.video 帧提取的 400x240 上限一致）。
+PREVIEW_MAX_W, PREVIEW_MAX_H = 400, 240
+
+
+def _fit_frame_to_preview(frame):
+    """保持纵横比缩放到 ≤400×240（只缩小不放大，不加黑边）。
+
+    前端负责 letterbox；这里只保证任何一维都不超过预览上限。
+    """
+    from PIL import Image
+
+    fw, fh = frame.size
+    if fw <= PREVIEW_MAX_W and fh <= PREVIEW_MAX_H:
+        return frame
+    scale = min(PREVIEW_MAX_W / fw, PREVIEW_MAX_H / fh)
+    return frame.resize((max(1, int(fw * scale)), max(1, int(fh * scale))),
+                        Image.LANCZOS)
+
+
+@app.route("/api/task-frames/<task_id>", methods=["GET"])
+def task_frames(task_id):
+    """Serve a task's source frames as base64 JPEGs (方案B 本地渲染数据源).
+
+    video 任务（filepath 是持久化帧目录）：直接读帧（ffmpeg 抽帧时已
+    缩到 ≤400×240）。image 任务：PIL 从源文件抽帧（GIF 逐帧、静图 1 帧），
+    每帧保持纵横比缩放到 ≤400×240（不加黑边，前端自行 letterbox）。
+    每帧 RGB → JPEG quality=80 → base64。轻量直读，不进转换缓存。
+
+    守卫：帧数 > 600 或 payload 超 40MB → 413。
+    """
+    from PIL import Image
+    import io as _io
+
+    task = _task_get(task_id)
+    if task is None:
+        return jsonify({"error": "任务不存在 / Task not found"}), 404
+
+    filepath = task.get("filepath")
+    interval = task.get("interval") or 0.1
+
+    def _payload_guard(total_b64: int):
+        """Return a 413 response when the accumulated payload is too big."""
+        if total_b64 > TASK_FRAMES_MAX_PAYLOAD:
+            return jsonify({
+                "too_large": True,
+                "error": "预览帧数据过大 / Preview frame payload too large",
+            }), 413
+        return None
+
+    frames: list[str] = []
+    w = h = 0
+
+    if filepath and os.path.isdir(filepath):
+        # Video task: persisted frame dir (already ≤400×240 PNGs).
+        from termify.video import frames_dir_to_images
+
+        paths = frames_dir_to_images(filepath)
+        if len(paths) > TASK_FRAMES_MAX_COUNT:
+            return jsonify({
+                "too_large": True,
+                "error": "预览帧数据过大 / Preview frame payload too large",
+            }), 413
+        total = 0
+        for p in paths:
+            try:
+                with Image.open(p) as im:
+                    frame = _fit_frame_to_preview(im.convert("RGB"))
+                    if w == 0:
+                        w, h = frame.size
+                    buf = _io.BytesIO()
+                    frame.save(buf, format="JPEG", quality=80)
+                    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+            except Exception:  # noqa: BLE001 — 单帧损坏只跳过，不拖垮整体
+                continue
+            frames.append(b64)
+            total += len(b64)
+            guard = _payload_guard(total)
+            if guard is not None:
+                return guard
+        return jsonify({
+            "ok": True, "w": w, "h": h,
+            "interval": interval, "count": len(frames), "frames": frames,
+        })
+
+    if not filepath or not os.path.isfile(filepath):
+        # 背后文件已消失/不可读 → 任务实质不可用。
+        return jsonify({"error": "任务不存在 / Task not found"}), 404
+
+    # Image task: single file — GIF 逐帧，静图 1 帧。
+    try:
+        with Image.open(filepath) as im:
+            n_frames = getattr(im, "n_frames", 1)
+            if n_frames > TASK_FRAMES_MAX_COUNT:
+                return jsonify({
+                    "too_large": True,
+                    "error": "预览帧数据过大 / Preview frame payload too large",
+                }), 413
+            total = 0
+            for i in range(n_frames):
+                im.seek(i)
+                frame = _fit_frame_to_preview(im.convert("RGB"))
+                if w == 0:
+                    w, h = frame.size
+                    # 粗估 payload：JPEG q80 ≈ 0.5B/px，base64 ×4/3。
+                    est = n_frames * w * h * 0.5 * 4 / 3
+                    if est > TASK_FRAMES_MAX_PAYLOAD:
+                        return jsonify({
+                            "too_large": True,
+                            "error": "预览帧数据过大 / Preview frame payload too large",
+                        }), 413
+                buf = _io.BytesIO()
+                frame.save(buf, format="JPEG", quality=80)
+                b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+                frames.append(b64)
+                total += len(b64)
+                guard = _payload_guard(total)
+                if guard is not None:
+                    return guard
+    except Exception:  # noqa: BLE001 — 源文件无法解码 → 任务实质不可用
+        return jsonify({"error": "任务不存在 / Task not found"}), 404
+
+    return jsonify({
+        "ok": True, "w": w, "h": h,
+        "interval": interval, "count": len(frames), "frames": frames,
+    })
+
+
 @app.route("/api/generate", methods=["POST"])
 def generate():
     data = request.get_json(silent=True) or {}
