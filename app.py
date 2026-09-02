@@ -155,7 +155,7 @@ def _task_get_or_404(task_id: str):
     """Return ``(task, None)`` if found, else ``(None, (json_resp, 404))``."""
     task = _task_get(task_id)
     if task is None:
-        return None, (jsonify({"error": "Task not found"}), 404)
+        return None, (jsonify({"error": "任务不存在或已过期，请重新上传 / Task not found or expired, please re-upload"}), 404)
     return task, None
 
 # --- T1.6 Gallery wiring ----------------------------------------------------
@@ -642,7 +642,7 @@ def upload_music():
         return jsonify({"error": "No filename"}), 400
     task_id = (request.form.get("task_id") or "").strip()
     if not _valid_task_id(task_id) or not get_store().exists(task_id):
-        return jsonify({"error": "Task not found"}), 404
+        return jsonify({"error": "任务不存在或已过期，请重新上传 / Task not found or expired, please re-upload"}), 404
 
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in VALID_MUSIC_EXTS:
@@ -685,7 +685,7 @@ def remove_music():
 def audio_info(task_id: str):
     """Which audio will be baked into exports for this task."""
     if not _valid_task_id(task_id) or not get_store().exists(task_id):
-        return jsonify({"error": "Task not found"}), 404
+        return jsonify({"error": "任务不存在或已过期，请重新上传 / Task not found or expired, please re-upload"}), 404
     music = _find_uploaded_file("music", task_id)
     audio = _find_uploaded_file("audio", task_id)
     src = music or audio
@@ -956,7 +956,7 @@ def preview(task_id):
                         bg_color=bg_color, charset_ramp=charset_ramp,
                         color_mode=color_mode)
     if seq is None:
-        return jsonify({"error": "Task not found"}), 404
+        return jsonify({"error": "任务不存在或已过期，请重新上传 / Task not found or expired, please re-upload"}), 404
 
     frame_count = len(seq.lines_per_frame)
     if frame is not None and not (0 <= frame < frame_count):
@@ -1144,7 +1144,7 @@ def generate():
     from termify.charset import CHARSETS
 
     if not task_id or not get_store().exists(task_id):
-        return jsonify({"error": "Task not found"}), 404
+        return jsonify({"error": "任务不存在或已过期，请重新上传 / Task not found or expired, please re-upload"}), 404
     if charset not in CHARSETS:
         return jsonify({"error": f"Unknown charset: {charset}"}), 400
     if fmt not in VALID_FORMATS:
@@ -1236,7 +1236,7 @@ def _generate_video(task_id, charset, width, height, fg_color, bg_color,
                         bg_color=bg_color, charset_ramp=charset_ramp,
                         color_mode=color_mode)
     if seq is None:
-        return jsonify({"error": "Task not found"}), 404
+        return jsonify({"error": "任务不存在或已过期，请重新上传 / Task not found or expired, please re-upload"}), 404
     if len(seq.lines_per_frame) > video_mod.MAX_VIDEO_FRAMES:
         return jsonify({"error": f"帧数过多 ({len(seq.lines_per_frame)})，"
                                  f"视频导出上限 {video_mod.MAX_VIDEO_FRAMES} 帧"}), 400
