@@ -26,6 +26,13 @@ import pytest
 from PIL import Image
 
 
+def app_test_request_context(*args, **kwargs):
+    """app.test_request_context 的模块级别名（XFF 测试用）。"""
+    from app import app
+
+    return app.test_request_context(*args, **kwargs)
+
+
 @pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch, tmp_path):
     """临时 CWD（uploads/tmp）+ 独立任务库 + 独立画廊库与数据目录。"""
@@ -180,3 +187,66 @@ def test_view_page_tags_tojson_and_whitelist(client):
     assert m, "tags 字面量缺失"
     tags = json.loads(json.loads(m.group(1)))
     assert tags == ["动画"]
+
+
+# ═══ [major-4] X-Forwarded-For 仅在反代后（回环/私网 remote_addr）采信 ════════
+
+
+def test_client_ip_xff_honoured_only_behind_trusted_peer():
+    """[major-4] _client_ip：loopback 对端采信 XFF 第一跳；公网对端忽略 XFF。"""
+    from app import _client_ip
+
+    # 反代场景：remote_addr 为回环 → 采信 XFF 第一跳
+    with app_test_request_context(
+        headers={"X-Forwarded-For": "203.0.113.7, 10.0.0.1"},
+        environ_base={"REMOTE_ADDR": "127.0.0.1"},
+    ):
+        assert _client_ip() == "203.0.113.7"
+    # 私网对端（如内网反代）同样采信
+    with app_test_request_context(
+        headers={"X-Forwarded-For": "198.51.100.9"},
+        environ_base={"REMOTE_ADDR": "192.168.1.2"},
+    ):
+        assert _client_ip() == "198.51.100.9"
+    # 直连场景：公网 remote_addr → 忽略伪造 XFF，按对端计
+    # （注意别用 203.0.113.x 等 TEST-NET 段：Python ipaddress 视其为 is_private，
+    #  会被误判为可信反代。）
+    with app_test_request_context(
+        headers={"X-Forwarded-For": "1.2.3.4"},
+        environ_base={"REMOTE_ADDR": "8.8.8.8"},
+    ):
+        assert _client_ip() == "8.8.8.8"
+    # 反代后但无 XFF → 退回 remote_addr
+    with app_test_request_context(environ_base={"REMOTE_ADDR": "127.0.0.1"}):
+        assert _client_ip() == "127.0.0.1"
+
+
+def _upload_png(client, remote_addr, xff=None):
+    headers = {"X-Forwarded-For": xff} if xff else {}
+    resp = client.post(
+        "/api/upload",
+        data={"file": (io.BytesIO(_png_bytes()), "x.png")},
+        content_type="multipart/form-data",
+        headers=headers,
+        environ_base={"REMOTE_ADDR": remote_addr},
+    )
+    return resp.status_code
+
+
+def test_rate_limit_ignores_forged_xff_from_direct_clients(client):
+    """[major-4] 直连客户端伪造不同 XFF 不能绕过限流：同一 remote_addr 计满即 429。"""
+    codes = [
+        _upload_png(client, "45.60.40.1", xff=f"10.1.1.{i}")
+        for i in range(11)
+    ]
+    assert codes[:10] == [200] * 10, codes
+    assert codes[10] == 429, codes  # 第 11 次：伪造 XFF 无效，仍按 remote_addr 计
+
+
+def test_rate_limit_distinct_direct_clients_not_cross_limited(client):
+    """[major-4] 不同 remote_addr 的直连客户端互不共享限额。"""
+    codes = [
+        _upload_png(client, f"45.60.41.{100 + i}", xff="1.2.3.4")
+        for i in range(3)
+    ]
+    assert codes == [200, 200, 200], codes

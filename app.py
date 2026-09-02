@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -187,11 +188,30 @@ _RL_LOG: dict[str, list[tuple[str, float]]] = {}
 
 
 def _client_ip() -> str:
-    """Best-effort client IP, honouring X-Forwarded-For behind a proxy."""
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.remote_addr or "127.0.0.1"
+    """Best-effort client IP for rate limiting / dedup.
+
+    仅当直连对端（remote_addr）是回环/私网地址——即应用确实部署在反向
+    代理之后——才采信 X-Forwarded-For 的第一跳；否则一律使用 remote_addr，
+    防止直连客户端伪造 X-Forwarded-For 头绕过限流/去重。
+
+    X-Forwarded-For is only honoured when the direct peer (remote_addr) is a
+    loopback/private address (i.e. the app actually sits behind a reverse
+    proxy); otherwise remote_addr is used as-is so a direct client cannot
+    forge its way past the rate limiter.
+    """
+    remote = request.remote_addr or "127.0.0.1"
+    try:
+        peer = ipaddress.ip_address(remote)
+        trusted_proxy = peer.is_loopback or peer.is_private
+    except ValueError:
+        trusted_proxy = False
+    if trusted_proxy:
+        xff = request.headers.get("X-Forwarded-For", "")
+        if xff:
+            first_hop = xff.split(",")[0].strip()
+            if first_hop:
+                return first_hop
+    return remote
 
 
 def _rate_check(ip: str, action: str, *, per_minute: int | None = None,
