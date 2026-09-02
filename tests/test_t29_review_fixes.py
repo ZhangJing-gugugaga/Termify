@@ -163,16 +163,16 @@ def test_view_page_params_json_injection_neutralized(client):
     # 注入序列不得以任何 HTML 形式出现
     assert "</script><img" not in body
     assert "<img src=x onerror=alert(1)>" not in body
-    # tojson script-context 转义在位（</script> → \u003c/script\u003e）
-    assert "\\u003c/script\\u003e" in body
-    # 脚本块数量不变（注入未额外终止 script）
+    # [M1b] params 白名单（_VIEW_PARAM_KEYS）：非白名单键（inj）整体丢弃，
+    # 强于 tojson 转义——恶意序列在页面中任何形式（含 \u003c 转义）都不存在
+    assert "\\u003c/script\\u003e" not in body
     assert body.count("</script>") == 3
 
-    # JSON.parse 字面量须可无损还原原始 params（前端数据语义不回归）
+    # JSON.parse 字面量须还原白名单内的渲染参数（前端数据语义不回归）
     m = re.search(r"params: JSON\.parse\((\".*?\")\),", body)
     assert m, "params 字面量缺失"
     params = json.loads(json.loads(m.group(1)))
-    assert params["inj"] == XSS_PAYLOAD["inj"]
+    assert "inj" not in params
     assert params["charset"] == "ascii"
 
 
