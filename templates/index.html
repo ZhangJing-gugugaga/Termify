@@ -330,7 +330,7 @@
                         </div>
                     </div>
 
-                    <button class="download-btn" title="下载动画文件 / Download animation file">
+                    <button class="download-btn" title="导出动画 / Export animation">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                             <polyline points="7 10 12 15 17 10"/>
@@ -494,23 +494,7 @@
         // ═══════════ Format option selection ═══════════
         const terminalSizeCard = document.getElementById('terminalSizeCard');
         const downloadBtn = document.querySelector('.download-btn');
-        document.querySelectorAll('.format-option').forEach(opt => {
-            opt.addEventListener('click', () => {
-                document.querySelectorAll('.format-option').forEach(o => o.classList.remove('selected'));
-                opt.classList.add('selected');
-                terminalSizeCard.style.display = '';
-                downloadBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>下载动画文件 / Download animation';
-            });
-        });
-
-        // ═══════════ Size button selection ═══════════
-        document.querySelectorAll('.size-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('selected'));
-                btn.classList.add('selected');
-            });
-        });
-
+        // 输出格式已移入「导出动画」弹窗（app.js 两步确认）；尺寸仅滑杆，无快捷按钮
         // ═══════════ Upload zone drag effects ═══════════
         const uploadZone = document.getElementById('uploadZone');
         uploadZone.addEventListener('dragover', (e) => {
