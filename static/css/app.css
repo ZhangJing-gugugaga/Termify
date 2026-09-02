@@ -2127,3 +2127,35 @@
         .animation-terminal .terminal-body .frame-block {
             white-space: pre;
         }
+
+        /* ── /v/ 回放页：列数滑杆（与主页同一套视觉） ── */
+        .view-size-row input[type="range"] {
+            flex: 1;
+            min-width: 220px;
+            height: 4px;
+            appearance: none;
+            -webkit-appearance: none;
+            background: var(--border-dim);
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+        }
+        .view-size-row input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--green);
+            border: 2px solid var(--bg-primary, #0a0e14);
+            box-shadow: 0 0 6px var(--green-glow);
+            cursor: grab;
+        }
+        .view-size-row input[type="range"]::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--green);
+            border: 2px solid var(--bg-primary, #0a0e14);
+            cursor: grab;
+        }
