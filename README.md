@@ -59,7 +59,7 @@ python app.py
 - 把 GIF / PNG / JPG **直接拖拽**到页面上的虚线区域
 - 或者**点击上传区域选择文件**
 
-支持格式：`.gif` / `.png` / `.jpg`（图片 ≤ 20MB）；`.mp4` / `.webm` / `.mov` / `.avi` / `.mkv`（视频不限时长，长视频自动降采样，≤ 200MB）。上传过程有真实进度条和预计剩余时间。
+支持格式：`.gif` / `.png` / `.jpg`（图片 ≤ 20MB）；`.mp4` / `.webm` / `.mov` / `.avi` / `.mkv`（视频不限时长，长视频自动降采样，≤ 20MB，`TERMIFY_MAX_VIDEO_MB` 可调）。上传过程有真实进度条和预计剩余时间。
 
 > 💡 **静态图片（PNG/JPG）也可以上传！** Termify 会把它当作"只有一帧的动画"，输出的播放器会循环显示同一帧 —— 适合做"终端艺术字"。
 
@@ -218,7 +218,7 @@ A: 取决于尺寸和帧数：
 - 200×60 blocks 100 帧 → ~6 MB
 
 **Q: 可以上传视频吗？**
-A: 支持 📹！上传 MP4 / WEBM / MOV / AVI / MKV（不限时长，长视频自动降采样；≤ 200MB，限 4 次/分钟），后端 ffmpeg 自动抽帧转换成动画。也支持拖入 `.gif` / `.png` / `.jpg`。还可以直接贴 **Bilibili / 抖音 / YouTube** 视频链接，服务器自动解析。
+A: 支持 📹！上传 MP4 / WEBM / MOV / AVI / MKV（不限时长，长视频自动降采样；≤ 20MB，限 4 次/分钟），后端 ffmpeg 自动抽帧转换成动画。也支持拖入 `.gif` / `.png` / `.jpg`。还可以直接贴 **Bilibili / 抖音 / YouTube** 视频链接，服务器自动解析。
 
 **Q: 200×60 超清点不了 / 播放卡怎么办？**
 A: 超清输出会自动缩放以适应视口，**下载的文件仍是全分辨率**。播放卡顿可以换浏览器（Chrome 最快）；或选小一号尺寸。
@@ -239,7 +239,7 @@ A: Python 未安装或未加入 PATH。请安装 Python 3.10+ 并在安装时勾
 | `POST` | `/api/upload` | 上传单个文件（multipart/form-data），返回 `task_id` + 元数据 |
 | `POST` | `/api/upload-batch` | 批量上传多个文件（multipart，字段名 `files[]`），返回 `task_ids[]` + `errors[]` |
 | `POST` | `/api/fetch-url` | 从 URL 下载图片并转换（`{"url":"..."}`），含 SSRF 防护 |
-| `POST` | `/api/upload-video` | 上传视频（MP4/WEBM/MOV/AVI/MKV），后端 ffmpeg 抽帧后转换；不限时长（自适应采样）、≤200MB、限 4 次/分钟 |
+| `POST` | `/api/upload-video` | 上传视频（MP4/WEBM/MOV/AVI/MKV），后端 ffmpeg 抽帧后转换；不限时长（自适应采样）、≤20MB、限 4 次/分钟 |
 | `POST` | `/api/fetch-video-url` | 从 Bilibili / 抖音 / YouTube 链接解析视频并转换（域名白名单 SSRF 防护），限 2 次/分钟 |
 | `GET` | `/api/preview/<task_id>` | 获取帧数据。参数：`charset`（风格，含 `shades`/`custom`）、`width`、`height`、`frame`（某帧）、`fg`/`bg`（颜色，形如 `rgb(255,0,0)`）、`chars`（custom 必填，自定义字符梯，密→疏）。不传 `frame` 返回全部帧。 |
 | `POST` | `/api/generate` | 打包指定字符集+格式（`python`/`html`/`mp4`），返回 `download_url`。`mp4` 为同步编码（限 6 次/分钟，2 路并发），需服务器安装 ffmpeg |

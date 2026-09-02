@@ -16,7 +16,9 @@ import uuid
 # Size cap is configurable so self-hosters can raise it; the public demo
 # keeps a disk-guard. There is NO duration cap: long videos are accepted and
 # sampled at an adaptive fps (see adaptive_fps) so conversion stays bounded.
-MAX_VIDEO_BYTES = int(os.environ.get("TERMIFY_MAX_VIDEO_MB", "200")) * 1024 * 1024
+# 公网 demo 口径统一为 20MB（与 Flask MAX_CONTENT_LENGTH / 前端文案一致）；
+# 自部署可用 TERMIFY_MAX_VIDEO_MB 调高。导出（encode）侧不受此限制。
+MAX_VIDEO_BYTES = int(os.environ.get("TERMIFY_MAX_VIDEO_MB", "20")) * 1024 * 1024
 VALID_VIDEO_EXTS = {".mp4", ".webm", ".mov", ".avi", ".mkv"}
 
 # Adaptive sampling targets: keep the extracted frame count bounded so a

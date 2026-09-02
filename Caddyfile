@@ -27,11 +27,11 @@ YOUR_DOMAIN {
     }
 
     # --- Upload size limit ------------------------------------------------
-    # Video imports have no duration/size product cap (rate-limited instead).
-    # The backend guard is TERMIFY_MAX_VIDEO_MB (default 200MB); allow
-    # headroom for multipart overhead on top of that.
+    # 公网 demo 口径统一 20MB：Flask MAX_CONTENT_LENGTH 已硬限 20MB，
+    # 视频后端守卫 TERMIFY_MAX_VIDEO_MB 默认同为 20MB。这里只放 multipart
+    # 开销余量（字段+边界），自部署调高上限时需同步放大本值。
     request_body {
-        max_size 210MB
+        max_size 25MB
     }
 
     # --- Static asset caching --------------------------------------------
