@@ -458,7 +458,7 @@
       var item = document.createElement("div");
       item.className = "file-list-item" + (i === S.selIdx ? " active" : "");
       item.textContent = f.filename;
-      item.title = f.filename + " — 点击下载切换";
+      item.title = f.filename + " · 点击下载切换";
       item.addEventListener("click", function () { selectFile(i); });
       container.appendChild(item);
     });
@@ -1103,7 +1103,7 @@
       }
       S.musicFile = f;
       refreshMusicRows();
-      toast("音乐已就绪，导出时自动合成 / Music ready — will be merged on export");
+      toast("音乐已就绪，导出时自动合成 / Music ready, merged on export");
       input.value = "";
     });
     if (rmBtn) rmBtn.addEventListener("click", function () {
