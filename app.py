@@ -366,6 +366,12 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/text-art")
+def text_art_page():
+    """文字艺术字独立页（FIGlet 直转 + LLM 双模式）。"""
+    return render_template("text_art.html")
+
+
 @app.route("/api/upload", methods=["POST"])
 def upload():
     if "file" not in request.files:
@@ -1032,6 +1038,7 @@ def gallery_upload_text():
     tags = [t for t in tags_raw if isinstance(t, str)
             and t in _gallery_mod.VALID_TAGS][:3] if isinstance(tags_raw, list) \
         else []
+    tags = tags + _gallery_mod.sanitize_custom_tags(data.get("custom_tags"))
     is_private = 1 if data.get("is_private") in (1, "1", True, "true", "on") \
         else 0
 
@@ -1654,6 +1661,14 @@ def gallery_upload():
     except (json.JSONDecodeError, TypeError):
         tags = []
     tags = [t for t in tags if t in _gallery_mod.VALID_TAGS][:3]
+    # 自定义标签（T34）：用户自由输入，独立于预设，清洗后与预设合并存储
+    custom_raw = request.form.get("custom_tags", "[]")
+    try:
+        custom_tags = json.loads(custom_raw) if isinstance(custom_raw, str) \
+            else custom_raw
+    except (json.JSONDecodeError, TypeError):
+        custom_tags = []
+    tags = tags + _gallery_mod.sanitize_custom_tags(custom_tags)
     tags_json = json.dumps(tags, ensure_ascii=False)
 
     is_private = 1 if (request.form.get("is_private") in ("1", "true", "on")) else 0
@@ -1812,17 +1827,26 @@ def gallery_upload():
     return resp
 
 
+@app.route("/api/gallery/custom-tags", methods=["GET"])
+def gallery_custom_tags():
+    """全站自定义标签热度（公开作品），供画廊「自定义标签」下拉筛选。"""
+    return jsonify({"ok": True, "tags": GALLERY_DB.custom_tag_counts()})
+
+
 @app.route("/api/gallery/list", methods=["GET"])
 def gallery_list():
     """Paginated list of gallery works.
 
-    Query: sort, tag, page, limit.
+    Query: sort, tag, tags(逗号分隔多选，命中任意), page, limit.
     Always returns public works only (unless authenticated via cookie).
     """
     sort = request.args.get("sort", "latest")
     if sort not in ("latest", "hot", "random"):
         sort = "latest"
     tag = request.args.get("tag") or None
+    tags_param = (request.args.get("tags") or "").strip()
+    tags_any = [t.strip() for t in tags_param.split(",") if t.strip()][:10] \
+        if tags_param else None
     try:
         page = max(1, int(request.args.get("page", 1)))
     except (TypeError, ValueError):
@@ -1831,7 +1855,8 @@ def gallery_list():
         limit = max(1, min(60, int(request.args.get("limit", 24))))
     except (TypeError, ValueError):
         limit = 24
-    items, total = GALLERY_DB.list_works(sort=sort, tag=tag, page=page, limit=limit)
+    items, total = GALLERY_DB.list_works(sort=sort, tag=tag, page=page, limit=limit,
+                                         tags_any=tags_any)
     # Admin cookie check: include is_authorized flag per item
     return jsonify({
         "items": [_gallery_public_dict(w) for w in items],

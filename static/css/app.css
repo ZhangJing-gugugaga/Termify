@@ -1665,22 +1665,56 @@
             border-color: var(--green); color: var(--green);
             background: var(--green-glow);
         }
-        .gallery-tag-chips {
-            display: flex; flex-wrap: wrap; gap: var(--space-2);
-            justify-content: center;
-        }
-        .tag-chip {
+        /* 自定义标签下拉（T34）：替代原预设标签芯片行 */
+        .gallery-custom-tags { position: relative; display: flex; justify-content: center; }
+        .custom-tags-toggle {
             padding: var(--space-1) var(--space-4);
             background: var(--bg-surface); border: 1px solid var(--border-dim);
             border-radius: 100px; font-family: var(--font-mono);
             font-size: 12px; color: var(--text-secondary); cursor: pointer;
             transition: all var(--transition-fast);
         }
-        .tag-chip:hover { border-color: var(--border-active); color: var(--text-primary); }
-        .tag-chip.active {
+        .custom-tags-toggle:hover { border-color: var(--border-active); color: var(--text-primary); }
+        .custom-tags-toggle.filtering {
             border-color: var(--green); color: var(--green);
             background: var(--green-glow);
         }
+        .custom-tags-caret { font-size: 10px; }
+        .custom-tags-panel {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            max-width: min(360px, 90vw);
+            margin-top: var(--space-2);
+            padding: var(--space-4);
+            position: absolute;
+            text-align: left;
+            top: 100%;
+            width: max-content;
+            z-index: 30;
+        }
+        .custom-tags-loading, .custom-tags-empty {
+            color: var(--text-dim); font-size: 0.84rem; margin: 0;
+        }
+        .custom-tags-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+        .custom-tag-item {
+            background: var(--bg-base); border: 1px solid var(--border-dim);
+            border-radius: 100px; color: var(--text-secondary);
+            cursor: pointer; font-family: var(--font-mono); font-size: 12px;
+            padding: 4px 12px; transition: all var(--transition-fast);
+        }
+        .custom-tag-item:hover { border-color: var(--border-active); color: var(--text-primary); }
+        .custom-tag-item.active {
+            background: var(--green-glow); border-color: var(--green); color: var(--green);
+        }
+        .custom-tags-panel-foot { margin-top: var(--space-3); text-align: right; }
+        .custom-tags-clear {
+            background: none; border: none; color: var(--text-dim);
+            cursor: pointer; font-family: var(--font-mono); font-size: 0.78rem;
+            padding: 0; text-decoration: underline;
+        }
+        .custom-tags-clear:hover { color: var(--text-primary); }
         .gallery-section { padding: var(--space-8) 0 var(--space-16); }
         .gallery-grid {
             display: grid;

@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Termify · 万物皆可终端</title>
+    <title>动画工坊 · Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260903e">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260903f">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903f">
 </head>
 <body>
 <div id="toast"></div>
@@ -20,9 +20,8 @@
                 <div class="logo-text">Termi<span>fy</span></div>
             </a>
             <ul class="nav-links">
-                <li><a href="#upload">上传</a></li>
-                <li><a href="#styles">风格</a></li>
-                <li><a href="#preview">预览</a></li>
+                <li><a href="/" class="nav-active">动画工坊</a></li>
+                <li><a href="/text-art">文字艺术</a></li>
                 <li><a href="/gallery">画廊</a></li>
             </ul>
             <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
@@ -70,9 +69,13 @@
     </section>
 
     <!-- ═══════════ UPLOAD ═══════════ -->
-    <section class="upload-section" id="upload">
+    <!-- ═══════════ STUDIO（动画工坊：上传 → 风格 → 预览，归一区块）═══════════ -->
+    <section class="studio-section" id="studio">
         <div class="container">
-            <h2 class="section-title">上传你的素材</h2>
+            <h2 class="section-title">动画工坊 <span class="section-title-en">Studio</span></h2>
+
+            <div class="studio-block" id="upload">
+                <h3 class="studio-sub">上传你的素材</h3>
             <div class="upload-zone" id="uploadZone">
                 <div class="upload-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -102,72 +105,16 @@
                        placeholder="https://example.com/image.gif" />
                 <button class="url-fetch-btn" id="urlFetchBtn" title="抓取 / Fetch">抓取 / Fetch</button>
             </div>
-            <!-- Text art (T33)：FIGlet 直转 + AI 双模式 -->
-            <div class="text-art" id="textArt">
-                <div class="text-art-head">
-                    <span class="text-art-label">或输入文字生成 ASCII 艺术字 / Or type text for ASCII art</span>
-                    <button type="button" class="text-art-gear" id="aiSettingsBtn">⚙ AI 设置 / AI settings</button>
-                </div>
-                <textarea class="text-art-input" id="textArtInput" rows="2" maxlength="500"
-                          placeholder="直接生成：输入英文/数字，如 hello（中文会被忽略）&#10;AI 生成：用一句中文描述，如「火焰感的 HELLO」或「画一只猫」"></textarea>
-                <div class="text-art-controls">
-                    <label class="text-art-field">字体 / Font
-                        <select class="text-art-select" id="textArtFont"></select>
-                    </label>
-                    <span class="text-art-ai-modes" id="textAiModes">
-                        <label class="text-art-radio"><input type="radio" name="textAiMode" value="params" checked> AI 解析参数</label>
-                        <label class="text-art-radio"><input type="radio" name="textAiMode" value="direct"> AI 直接创作</label>
-                    </span>
-                    <span class="text-art-actions">
-                        <button type="button" class="text-art-btn" id="textArtConvertBtn">生成 / Convert</button>
-                        <button type="button" class="text-art-btn text-art-btn-ai" id="textArtAiBtn">AI 生成 / AI</button>
-                    </span>
-                </div>
-                <div class="ai-settings" id="aiSettings" hidden>
-                    <div class="ai-settings-grid">
-                        <label class="ai-settings-field">Base URL
-                            <input type="text" id="aiBaseUrl" autocomplete="off" spellcheck="false"
-                                   placeholder="https://open.bigmodel.cn/api/paas/v4（智谱）· http://localhost:11434/v1（Ollama）">
-                        </label>
-                        <label class="ai-settings-field">Model
-                            <input type="text" id="aiModel" autocomplete="off" spellcheck="false"
-                                   placeholder="glm-4-flash · deepseek-chat · qwen2.5:7b">
-                        </label>
-                        <label class="ai-settings-field">API Key
-                            <input type="password" id="aiApiKey" autocomplete="new-password"
-                                   placeholder="已保存则留空保持不变 / leave empty to keep">
-                        </label>
-                        <label class="ai-settings-field" id="aiAdminField" hidden>管理口令
-                            <input type="password" id="aiAdminPwd" autocomplete="new-password"
-                                   placeholder="TERMIFY_ADMIN_PWD">
-                        </label>
-                    </div>
-                    <div class="ai-settings-actions">
-                        <button type="button" class="text-art-btn" id="aiSaveBtn">保存 AI 配置 / Save</button>
-                        <span class="ai-settings-status" id="aiStatus"></span>
-                    </div>
-                    <p class="ai-settings-note">API Key 只保存在服务端（data/llm_config.json），不会下发到浏览器，也不进日志。</p>
-                </div>
-                <div class="text-result" id="textResult" hidden>
-                    <div class="text-result-head">
-                        <span class="text-result-meta" id="textResultMeta"></span>
-                        <span class="text-result-actions">
-                            <button type="button" class="text-art-btn text-art-btn-sm" id="textCopyBtn">复制 / Copy</button>
-                            <button type="button" class="text-art-btn text-art-btn-sm" id="textDownloadBtn">下载 .txt</button>
-                            <button type="button" class="text-art-btn text-art-btn-sm text-art-btn-ai" id="textShareBtn">分享到画廊 / Share</button>
-                        </span>
-                    </div>
-                    <pre class="text-result-art" id="textResultArt"></pre>
-                </div>
+            <!-- 文字艺术已独立成页：只留一个入口 -->
+            <div class="text-art-cta">
+                <span>想用文字生成 ASCII 艺术字？支持 FIGlet 字体与 AI 创作</span>
+                <a class="text-art-cta-link" href="/text-art">前往文字艺术 →</a>
             </div>
-        </div>
-    </section>
+            </div>
 
-    <!-- ═══════════ STYLE SELECTION ═══════════ -->
-    <section class="preview-section" id="styles">
-        <div class="container">
-            <h2 class="section-title">选择渲染风格</h2>
-            <div class="style-grid">
+            <div class="studio-block" id="styles">
+                <h3 class="studio-sub">选择渲染风格</h3>
+                <div class="style-grid">
 
                 <!-- ASCII -->
                 <div class="style-card selected" data-style="ascii">
@@ -284,14 +231,11 @@
                 </div>
 
             </div>
-        </div>
-    </section>
+            </div>
 
-    <!-- ═══════════ ANIMATION PREVIEW ═══════════ -->
-    <section class="animation-section" id="preview">
-        <div class="container">
-            <h2 class="section-title">预览 & 下载</h2>
-            <div class="animation-layout">
+            <div class="studio-block" id="preview">
+                <h3 class="studio-sub">预览 & 下载</h3>
+                <div class="animation-layout">
 
                 <!-- Left: Large terminal preview -->
                 <div class="animation-terminal">
@@ -402,6 +346,7 @@
                 </div>
 
             </div>
+            </div>
         </div>
     </section>
 
@@ -441,45 +386,8 @@
         </div>
     </footer>
 
-    <!-- ═══════════ GALLERY SHARE MODAL ═══════════ -->
-    <div class="gallery-modal-backdrop" id="galleryModal">
-        <div class="gallery-modal-content">
-            <button class="gallery-modal-close" id="galleryModalClose">×</button>
-            <h3 class="gallery-modal-title">分享到画廊</h3>
-            <div class="gallery-form-row">
-                <label class="gallery-form-label">标题 <span class="gallery-form-count" id="titleCount">0/60</span></label>
-                <input type="text" class="gallery-form-input" id="galleryTitle" maxlength="60" placeholder="给你的作品起个名字">
-            </div>
-            <div class="gallery-form-row">
-                <label class="gallery-form-label">描述 <span class="gallery-form-count" id="descCount">0/500</span></label>
-                <textarea class="gallery-form-textarea" id="galleryDesc" maxlength="500" placeholder="描述这张图片的特点或创作意图（可选）"></textarea>
-            </div>
-            <div class="gallery-form-row">
-                <label class="gallery-form-label">标签 <span class="gallery-form-hint">最多选 3 个</span></label>
-                <div class="gallery-tag-checkboxes">
-                    <label class="gallery-tag-checkbox"><input type="checkbox" value="动画"> 动画</label>
-                    <label class="gallery-tag-checkbox"><input type="checkbox" value="几何"> 几何</label>
-                    <label class="gallery-tag-checkbox"><input type="checkbox" value="人像"> 人像</label>
-                    <label class="gallery-tag-checkbox"><input type="checkbox" value="场景"> 场景</label>
-                    <label class="gallery-tag-checkbox"><input type="checkbox" value="抽象"> 抽象</label>
-                    <label class="gallery-tag-checkbox"><input type="checkbox" value="像素艺术"> 像素艺术</label>
-                    <label class="gallery-tag-checkbox"><input type="checkbox" value="ASCII art"> ASCII art</label>
-                </div>
-            </div>
-            <div class="gallery-form-row">
-                <label class="gallery-form-label">作者 <span class="gallery-form-count" id="authorCount">0/20</span></label>
-                <input type="text" class="gallery-form-input" id="galleryAuthor" maxlength="20" placeholder="你的名字或昵称">
-            </div>
-            <div class="gallery-form-row">
-                <label class="gallery-form-label">可见性</label>
-                <div class="gallery-vis-radios">
-                    <label class="gallery-vis-radio"><input type="radio" name="galleryVis" value="0" checked> 公开</label>
-                    <label class="gallery-vis-radio"><input type="radio" name="galleryVis" value="1"> 仅限链接可见</label>
-                </div>
-            </div>
-            <button class="gallery-submit-btn" id="gallerySubmitBtn">发布到画廊</button>
-        </div>
-    </div>
+    <!-- ═══════════ GALLERY SHARE MODAL（共享 include）═══════════ -->
+    {% include '_gallery_modal.html' %}
 
     <!-- ═══════════ TWEAKS PANEL ═══════════ -->
     <button class="tweaks-toggle" id="tweaksToggle" title="Tweaks">
@@ -631,8 +539,8 @@
         }
         requestAnimationFrame(demoTick);
     </script>
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903e"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260903e" defer></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903f"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260903f" defer></script>
 
     <!-- Termify 自定义弹窗（替代浏览器原生 alert/confirm） -->
     <div class="termify-modal" id="termifyModal" hidden>

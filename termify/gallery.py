@@ -9,7 +9,9 @@ Short ID: 8-char base62 random (~218T space, collision-safe via retry loop).
 from __future__ import annotations
 
 import html
+import json
 import os
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 import sqlite3
@@ -63,6 +65,39 @@ def sanitize(text: str | None, max_len: int) -> str:
         return ""
     text = str(text).strip()
     return text[:max_len]
+
+
+# 自定义标签：用户自由输入的标签（区别于 VALID_TAGS 预设）。
+CUSTOM_TAG_MAX = 12          # 单个标签最长字符数
+CUSTOM_TAGS_MAX = 3          # 每件作品最多自定义标签数
+_CUSTOM_TAG_STRIP_RE = re.compile(r"[\s%_\"'\\]+")
+
+
+def sanitize_custom_tags(raw: object) -> list[str]:
+    """清洗用户自定义标签列表：逐个 strip、去通配/引号字符、限长、去重
+    （大小写不敏感）、剔除与预设重复项，最多 ``CUSTOM_TAGS_MAX`` 个。
+
+    ``raw`` 期望是 list[str]；其余类型一律返回 []。返回值可直接进 tags JSON。
+    """
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        t = _CUSTOM_TAG_STRIP_RE.sub(" ", item).strip()
+        if not t:
+            continue
+        t = t[:CUSTOM_TAG_MAX]
+        key = t.lower()
+        if key in seen or t in VALID_TAGS:
+            continue
+        seen.add(key)
+        out.append(t)
+        if len(out) >= CUSTOM_TAGS_MAX:
+            break
+    return out
 
 
 def escape_html(text: str) -> str:
@@ -290,8 +325,12 @@ class GalleryDB:
         page: int = 1,
         limit: int = 24,
         include_private: bool = False,
+        tags_any: list[str] | None = None,
     ) -> tuple[list[dict], int]:
-        """Return (items, total). Always paginated."""
+        """Return (items, total). Always paginated.
+
+        ``tags_any``: 命中任意一个标签即返回（自定义标签多选筛选）。
+        """
         where_clauses = []
         params: list[Any] = []
         if not include_private:
@@ -300,6 +339,13 @@ class GalleryDB:
             # Tags stored as JSON array; use LIKE for simple tag-match.
             where_clauses.append("tags LIKE ?")
             params.append(f'%"{tag}"%')
+        if tags_any:
+            like_clauses = []
+            for t in tags_any[:10]:
+                like_clauses.append("tags LIKE ?")
+                params.append(f'%"{t}"%')
+            if like_clauses:
+                where_clauses.append("(" + " OR ".join(like_clauses) + ")")
         where = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
         order = "created_at DESC"
@@ -319,6 +365,30 @@ class GalleryDB:
                 params + [limit, offset],
             ).fetchall()
         return [dict(r) for r in rows], total
+
+    def custom_tag_counts(self, limit: int = 50) -> list[dict]:
+        """全站自定义标签热度（公开作品），按出现次数降序。
+
+        返回 [{"tag": str, "count": int}, ...]；预设标签不计入。
+        """
+        counts: dict[str, int] = {}
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT tags FROM works WHERE is_private = 0 AND tags IS NOT NULL"
+            ).fetchall()
+        for row in rows:
+            try:
+                tags = json.loads(row["tags"])
+            except (json.JSONDecodeError, TypeError, ValueError):
+                continue
+            if not isinstance(tags, list):
+                continue
+            for t in tags:
+                if isinstance(t, str) and t and t not in VALID_TAGS:
+                    counts[t] = counts.get(t, 0) + 1
+        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        return [{"tag": t, "count": c} for t, c in ranked[:limit]]
 
     def delete_work(self, work_id: str) -> dict | None:
         """Delete a work and return its file paths (for cleanup), or None."""

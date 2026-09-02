@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文字艺术 · Termify</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903f">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260903f">
+</head>
+<body>
+    <!-- ═══════════ NAVIGATION ═══════════ -->
+    <nav>
+        <div class="container">
+            <a href="/" class="logo">
+                <div class="logo-icon">T</div>
+                <div class="logo-text">Termi<span>fy</span></div>
+            </a>
+            <ul class="nav-links">
+                <li><a href="/">动画工坊</a></li>
+                <li><a href="/text-art" class="nav-active">文字艺术</a></li>
+                <li><a href="/gallery">画廊</a></li>
+            </ul>
+            <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                GitHub
+            </a>
+        </div>
+    </nav>
+
+    <!-- ═══════════ 文字艺术工作台 ═══════════ -->
+    <main class="ta-main" id="textArt">
+        <div class="container">
+            <header class="ta-head">
+                <h1 class="ta-title">文字<span class="ta-title-accent">艺术</span></h1>
+                <p class="ta-sub">把一段文字或一句描述，变成能在任何终端显示的 ASCII 艺术字。</p>
+            </header>
+
+            <div class="ta-workbench">
+                <!-- 左：输入轨 -->
+                <div class="ta-panel">
+                    <div class="ta-group">
+                        <label class="ta-label" for="taInput">文本或描述</label>
+                        <textarea class="ta-input" id="taInput" rows="4" maxlength="500"
+                                  placeholder="直接生成：输入英文/数字，如 hello（中文会被忽略）&#10;AI 生成：用一句中文描述，如「火焰感的 HELLO」或「画一只猫」"></textarea>
+                    </div>
+
+                    <div class="ta-group">
+                        <label class="ta-label" for="taFont">字体</label>
+                        <select class="ta-select" id="taFont">
+                            <option value="" selected>加载字体中…</option>
+                        </select>
+                        <p class="ta-hint" id="taFontHint">FIGlet 精选字体，选择作品的整体字形。</p>
+                    </div>
+
+                    <div class="ta-group">
+                        <span class="ta-label">AI 模式</span>
+                        <div class="ta-ai-modes" id="taAiModes">
+                            <label class="ta-radio"><input type="radio" name="taAiMode" value="params" checked> AI 解析参数</label>
+                            <label class="ta-radio"><input type="radio" name="taAiMode" value="direct"> AI 直接创作</label>
+                        </div>
+                        <p class="ta-hint" id="taModeHint">AI 从描述中提取文字与字体，本地精确渲染，快且稳定。</p>
+                    </div>
+
+                    <div class="ta-group ta-actions">
+                        <button type="button" class="ta-btn" id="taConvertBtn">生成</button>
+                        <button type="button" class="ta-btn ta-btn-primary" id="taAiBtn">AI 生成</button>
+                    </div>
+
+                    <div class="ta-group ta-settings-group">
+                        <button type="button" class="ta-settings-toggle" id="taSettingsBtn" aria-expanded="false">AI 设置</button>
+                        <div class="ta-settings" id="taSettings" hidden>
+                            <label class="ta-field">Base URL
+                                <input type="text" id="taBaseUrl" autocomplete="off" spellcheck="false"
+                                       placeholder="https://open.bigmodel.cn/api/paas/v4（智谱）">
+                            </label>
+                            <label class="ta-field">Model
+                                <input type="text" id="taModel" autocomplete="off" spellcheck="false"
+                                       placeholder="glm-4-flash · deepseek-chat · qwen2.5:7b">
+                            </label>
+                            <label class="ta-field">API Key
+                                <input type="password" id="taApiKey" autocomplete="new-password"
+                                       placeholder="已保存则留空保持不变">
+                            </label>
+                            <label class="ta-field" id="taAdminField" hidden>管理口令
+                                <input type="password" id="taAdminPwd" autocomplete="new-password"
+                                       placeholder="TERMIFY_ADMIN_PWD">
+                            </label>
+                            <div class="ta-settings-actions">
+                                <button type="button" class="ta-btn" id="taSaveBtn">保存 AI 配置</button>
+                                <span class="ta-status" id="taStatus"></span>
+                            </div>
+                            <p class="ta-hint">API Key 只保存在服务端（data/llm_config.json），不会下发到浏览器，也不进日志。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右：终端输出 -->
+                <div class="ta-stage">
+                    <div class="terminal">
+                        <div class="terminal-header">
+                            <div class="terminal-dot red"></div>
+                            <div class="terminal-dot amber"></div>
+                            <div class="terminal-dot green"></div>
+                            <div class="terminal-title" id="taPreviewTitle">text art</div>
+                        </div>
+                        <div class="terminal-body ta-output" id="taOutput">
+                            <div class="ta-empty">
+                                <span class="ta-empty-prompt">等待生成</span>
+                                <span class="ta-empty-caret" aria-hidden="true"></span>
+                            </div>
+                        </div>
+                        <div class="ta-waitbar" id="taWaitbar" hidden>
+                            <div class="ta-waitbar-track"><div class="ta-waitbar-fill"></div></div>
+                            <span class="ta-waitbar-text" id="taWaitText">正在生成…</span>
+                        </div>
+                    </div>
+
+                    <div class="ta-result-meta" id="taResultMeta" hidden>
+                        <span class="ta-meta-text" id="taMetaText"></span>
+                        <span class="ta-result-actions">
+                            <button type="button" class="ta-btn ta-btn-sm" id="taCopyBtn">复制文本</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taDownloadBtn">下载 .txt</button>
+                            <button type="button" class="ta-btn ta-btn-sm ta-btn-primary" id="taShareBtn">分享到画廊</button>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ═══════════ FOOTER ═══════════ -->
+    <footer>
+        <div class="container">
+            <p class="footer-text"><a href="https://github.com/ZhangJing-gugugaga/Termify">Termify</a> · 万物皆可终端</p>
+            <p class="footer-cta">字符集不够用？<a href="https://github.com/ZhangJing-gugugaga/Termify/issues">来提 Issue →</a></p>
+        </div>
+    </footer>
+
+    <!-- ═══════════ GALLERY SHARE MODAL（共享 include）═══════════ -->
+    {% include '_gallery_modal.html' %}
+
+    <div id="toast"></div>
+
+    <!-- Termify 自定义弹窗（替代浏览器原生 alert/confirm，与主页同款） -->
+    <div class="termify-modal" id="termifyModal" hidden>
+        <div class="termify-modal-backdrop"></div>
+        <div class="termify-modal-box">
+            <button class="termify-modal-close" id="termifyModalClose" title="关闭">×</button>
+            <div class="termify-modal-spinner" id="termifyModalSpinner"></div>
+            <div class="termify-modal-title" id="termifyModalTitle">处理中</div>
+            <div class="termify-modal-text" id="termifyModalText"></div>
+            <div class="termify-modal-progress" id="termifyModalProgressWrap" hidden>
+                <div class="termify-modal-progress-fill" id="termifyModalProgress"></div>
+            </div>
+            <div class="termify-modal-hint">关闭弹窗不会取消正在进行的处理 / Closing this dialog will not cancel the ongoing processing</div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260903f" defer></script>
+</body>
+</html>

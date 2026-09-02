@@ -1,0 +1,330 @@
+/* ═══════════ 文字艺术独立页（/text-art）
+   Design read: Termify 暗色终端语言内的专注创作工具页。
+   VARIANCE 5（不对称工作台）/ MOTION 2（仅反馈动画，尊重 reduced-motion）/ DENSITY 4。
+   单一 accent = --green；零 em-dash；无装饰圆点；radius 沿用 token 阶梯。 ═══════════ */
+
+.ta-main {
+    padding: var(--space-12) 0 var(--space-16);
+    min-height: calc(100vh - 200px);
+}
+
+/* 页头：左对齐，无 eyebrow，h1 + 一句 sub */
+.ta-head {
+    margin-bottom: var(--space-8);
+    max-width: 65ch;
+}
+.ta-title {
+    font-family: var(--font-mono);
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    line-height: 1.1;
+}
+.ta-title-accent { color: var(--green); }
+.ta-sub {
+    color: var(--text-secondary);
+    font-size: 0.98rem;
+    margin-top: var(--space-2);
+}
+
+/* 工作台：不对称双栏（输入轨 340px + 输出弹性），<940px 折叠单列 */
+.ta-workbench {
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    gap: var(--space-8);
+    align-items: start;
+}
+@media (max-width: 940px) {
+    .ta-workbench { grid-template-columns: 1fr; }
+}
+
+/* ── 左：输入轨（单容器，内部分组用分隔线，不叠卡片） ── */
+.ta-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+}
+.ta-group {
+    padding: var(--space-4) 0;
+}
+.ta-group + .ta-group { border-top: 1px solid var(--border-dim); }
+.ta-group:first-child { padding-top: 0; }
+.ta-group:last-child { padding-bottom: 0; }
+
+.ta-label {
+    color: var(--text-secondary);
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    margin-bottom: var(--space-2);
+}
+.ta-input {
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.92rem;
+    line-height: 1.55;
+    min-height: 96px;
+    padding: var(--space-3);
+    resize: vertical;
+    width: 100%;
+}
+.ta-input:focus {
+    border-color: var(--green);
+    box-shadow: 0 0 12px var(--green-glow);
+    outline: none;
+}
+.ta-input::placeholder { color: var(--text-dim); opacity: 0.6; }
+
+.ta-select {
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    padding: 9px 10px;
+    width: 100%;
+}
+.ta-select:focus { border-color: var(--green); outline: none; }
+.ta-select:disabled { opacity: 0.55; }
+
+.ta-hint {
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    line-height: 1.5;
+    margin-top: var(--space-2);
+}
+
+.ta-ai-modes { display: flex; gap: var(--space-5); }
+.ta-radio {
+    align-items: center;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 0.88rem;
+    gap: 6px;
+    white-space: nowrap;
+}
+.ta-radio input { accent-color: var(--green); cursor: pointer; }
+
+.ta-actions { display: flex; gap: var(--space-3); }
+.ta-btn {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.92rem;
+    padding: 10px 18px;
+    transition: border-color var(--transition-fast), color var(--transition-fast),
+                box-shadow var(--transition-fast), transform var(--transition-fast);
+    white-space: nowrap;
+}
+.ta-btn:hover { border-color: var(--green); color: var(--green); }
+.ta-btn:active { transform: translateY(1px); }
+.ta-btn:disabled { cursor: wait; opacity: 0.55; }
+.ta-btn-primary {
+    border-color: var(--green-dim);
+    color: var(--green);
+}
+.ta-btn-primary:hover { box-shadow: 0 0 12px var(--green-glow); }
+.ta-btn-sm { font-size: 0.82rem; padding: 7px 14px; }
+
+/* AI 设置 disclosure */
+.ta-settings-toggle {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+    padding: 0;
+    transition: color var(--transition-fast);
+}
+.ta-settings-toggle:hover { color: var(--green); }
+.ta-settings { margin-top: var(--space-3); }
+.ta-field {
+    color: var(--text-dim);
+    display: flex;
+    flex-direction: column;
+    font-size: 0.78rem;
+    gap: 4px;
+    margin-bottom: var(--space-3);
+}
+.ta-field input {
+    background: var(--bg-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    padding: 8px 10px;
+}
+.ta-field input:focus { border-color: var(--green); outline: none; }
+.ta-settings-actions {
+    align-items: center;
+    display: flex;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
+}
+.ta-status { font-size: 0.8rem; }
+.ta-status.ok { color: var(--green); }
+.ta-status.err { color: var(--red); }
+
+/* ── 右：终端输出 ── */
+.ta-stage { min-width: 0; }
+.ta-output {
+    font-family: var(--font-mono);
+    min-height: 320px;
+    overflow: auto;
+    padding: var(--space-5);
+    white-space: pre;
+}
+.ta-output.has-art { color: var(--green); font-size: 0.62rem; line-height: 1.18; }
+
+/* 空态：等待生成的提示 + 光标（无装饰圆点，光标有真实语义） */
+.ta-empty {
+    align-items: center;
+    color: var(--text-dim);
+    display: flex;
+    font-size: 0.85rem;
+    gap: 6px;
+    height: 100%;
+    justify-content: center;
+    min-height: 280px;
+    white-space: normal;
+}
+.ta-empty-caret {
+    animation: ta-caret 1.1s steps(1) infinite;
+    background: var(--green);
+    display: inline-block;
+    height: 1em;
+    width: 8px;
+}
+@keyframes ta-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+    .ta-empty-caret { animation: none; }
+}
+
+/* 等待态：骨架行 + 缓冲话语 + 不确定进度条（AI 生成可能 5~20 秒） */
+.ta-skeleton { color: var(--text-dim); font-size: 0.8rem; }
+.ta-skeleton-line {
+    animation: ta-shimmer 1.4s ease-in-out infinite;
+    background: var(--bg-hover);
+    border-radius: var(--radius-sm);
+    height: 10px;
+    margin-bottom: 8px;
+}
+.ta-skeleton-line:nth-child(2n) { width: 82%; }
+.ta-skeleton-line:nth-child(3n) { width: 64%; }
+@keyframes ta-shimmer { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+    .ta-skeleton-line { animation: none; opacity: 0.6; }
+}
+
+.ta-waitbar {
+    border-top: 1px solid var(--border-dim);
+    padding: var(--space-3) var(--space-5);
+}
+.ta-waitbar-track {
+    background: var(--bg-hover);
+    border-radius: 999px;
+    height: 4px;
+    overflow: hidden;
+}
+.ta-waitbar-fill {
+    animation: ta-indeterminate 1.2s ease-in-out infinite;
+    background: var(--green);
+    border-radius: 999px;
+    height: 100%;
+    width: 36%;
+}
+@keyframes ta-indeterminate {
+    0% { margin-left: -36%; }
+    100% { margin-left: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ta-waitbar-fill { animation: none; margin-left: 30%; }
+}
+.ta-waitbar-text {
+    color: var(--text-secondary);
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    margin-top: var(--space-2);
+}
+
+/* 错误态：输出区内的行内提示 */
+.ta-error {
+    color: var(--red);
+    font-size: 0.85rem;
+    white-space: normal;
+}
+
+/* 结果元信息行（终端下方） */
+.ta-result-meta {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    justify-content: space-between;
+    margin-top: var(--space-4);
+}
+.ta-meta-text { color: var(--text-dim); font-family: var(--font-mono); font-size: 0.8rem; }
+.ta-result-actions { display: flex; gap: var(--space-2); }
+
+/* ── 页面 1 复用：动画工坊归一区块 + 文字艺术入口 ── */
+.studio-section { padding: var(--space-12) 0 var(--space-16); }
+.studio-block { padding-top: var(--space-10); }
+.studio-block + .studio-block {
+    border-top: 1px solid var(--border-dim);
+    margin-top: var(--space-10);
+}
+.studio-block:first-of-type { padding-top: 0; }
+.studio-sub {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    margin-bottom: var(--space-5);
+}
+.section-title-en {
+    color: var(--text-dim);
+    font-size: 15px;
+    font-weight: 400;
+    letter-spacing: 0;
+    margin-left: var(--space-2);
+    text-transform: uppercase;
+}
+.text-art-cta {
+    align-items: center;
+    background: var(--bg-surface);
+    border: 1px dashed var(--border-active);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 0.86rem;
+    gap: var(--space-3);
+    justify-content: space-between;
+    margin-top: var(--space-5);
+    padding: var(--space-3) var(--space-4);
+}
+.text-art-cta-link {
+    color: var(--green);
+    font-family: var(--font-mono);
+    font-size: 0.86rem;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.text-art-cta-link:hover { text-shadow: 0 0 12px var(--green-glow); }
+
+/* 自定义标签计数 */
+.gallery-form-count.over { color: var(--red); }

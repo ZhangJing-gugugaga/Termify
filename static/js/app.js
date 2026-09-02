@@ -1742,164 +1742,11 @@
     _origHandleFiles(fileList);
   };
 
-  /* ── T33 Text art: FIGlet 直转 + AI 双模式 ── */
-  var TA = { art: "", cols: 0, rows: 0, font: "", text: "", fg: [51, 255, 51] };
-  var taInput = byId("textArtInput");
-  var taFont = byId("textArtFont");
-  var taResult = byId("textResult");
-  var taArt = byId("textResultArt");
-  var taMeta = byId("textResultMeta");
-  var aiSettings = byId("aiSettings");
-
-  fetch("/api/text/fonts").then(function (r) { return r.json(); }).then(function (d) {
-    if (!d.ok || !taFont) return;
-    d.fonts.forEach(function (f) {
-      var o = document.createElement("option");
-      o.value = f.slug; o.textContent = f.name;
-      taFont.appendChild(o);
-    });
-  }).catch(function () {});
-
-  function taShow(d) {
-    TA.art = d.art; TA.cols = d.cols; TA.rows = d.rows;
-    TA.font = d.font || ""; TA.text = d.text || "";
-    if (taArt) taArt.textContent = d.art;
-    var label = d.mode === "direct" ? "AI 直接创作"
-      : (d.mode === "params" ? "AI · " + (d.font || "") : (d.font || ""));
-    if (taMeta) taMeta.textContent = label + " · " + d.cols + "×" + d.rows;
-    if (taResult) taResult.hidden = false;
-  }
-
-  if (byId("textArtConvertBtn")) byId("textArtConvertBtn").addEventListener("click", function () {
-    var text = taInput ? taInput.value : "";
-    if (!text.trim()) { toast("请输入文字 / Enter some text"); return; }
-    var btn = this;
-    btn.disabled = true; btn.textContent = "生成中...";
-    fetch("/api/text/convert", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: text, font: taFont ? taFont.value : "standard" })
-    }).then(function (r) { return r.json(); }).then(function (d) {
-      btn.disabled = false; btn.textContent = "生成 / Convert";
-      if (d.error) { toast(d.error); return; }
-      taShow(d);
-    }).catch(function () {
-      btn.disabled = false; btn.textContent = "生成 / Convert";
-      toast("生成失败 / Conversion failed");
-    });
-  });
-
-  if (byId("textArtAiBtn")) byId("textArtAiBtn").addEventListener("click", function () {
-    var text = taInput ? taInput.value : "";
-    if (!text.trim()) { toast("请描述你想要的作品 / Describe what you want"); return; }
-    var modeEl = document.querySelector('input[name="textAiMode"]:checked');
-    var btn = this;
-    btn.disabled = true; btn.textContent = "AI 生成中...";
-    fetch("/api/text/ai", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: text, mode: modeEl ? modeEl.value : "params" })
-    }).then(function (r) { return r.json(); }).then(function (d) {
-      btn.disabled = false; btn.textContent = "AI 生成 / AI";
-      if (d.error) { toast(d.error); if (d.need_config) openAiSettings(); return; }
-      taShow(d);
-    }).catch(function () {
-      btn.disabled = false; btn.textContent = "AI 生成 / AI";
-      toast("AI 生成失败 / AI generation failed");
-    });
-  });
-
-  if (byId("textCopyBtn")) byId("textCopyBtn").addEventListener("click", function () {
-    if (!TA.art) return;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(TA.art).then(function () { toast("已复制 / Copied"); },
-        function () { toast("复制失败 / Copy failed"); });
-    }
-  });
-  if (byId("textDownloadBtn")) byId("textDownloadBtn").addEventListener("click", function () {
-    if (!TA.art) return;
-    var blob = new Blob([TA.art], { type: "text/plain;charset=utf-8" });
-    var a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "termify_ascii_art.txt";
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(a.href);
-  });
-  if (byId("textShareBtn")) byId("textShareBtn").addEventListener("click", function () {
-    if (!TA.art) { toast("请先生成艺术字 / Generate art first"); return; }
-    openGalleryModal("text");
-  });
-
-  function openAiSettings() {
-    if (!aiSettings) return;
-    aiSettings.hidden = false;
-    fetch("/api/llm/config").then(function (r) { return r.json(); }).then(function (d) {
-      if (!d.ok) return;
-      var bu = byId("aiBaseUrl"), mo = byId("aiModel");
-      if (bu) bu.value = d.base_url || "";
-      if (mo) mo.value = d.model || "";
-      var adminField = byId("aiAdminField");
-      if (adminField) adminField.hidden = !d.requires_admin;
-      var st = byId("aiStatus");
-      if (st) {
-        st.className = "ai-settings-status";
-        st.textContent = d.configured
-          ? ("已配置：" + d.model + (d.has_key ? "（key 已保存）" : "（未设 key，适用于本地端点）"))
-          : "未配置 / Not configured";
-      }
-    }).catch(function () {});
-  }
-  if (byId("aiSettingsBtn")) byId("aiSettingsBtn").addEventListener("click", function () {
-    if (!aiSettings) return;
-    if (aiSettings.hidden) openAiSettings();
-    else aiSettings.hidden = true;
-  });
-  if (byId("aiSaveBtn")) byId("aiSaveBtn").addEventListener("click", function () {
-    var btn = this;
-    var body = {
-      base_url: byId("aiBaseUrl") ? byId("aiBaseUrl").value.trim() : "",
-      model: byId("aiModel") ? byId("aiModel").value.trim() : ""
-    };
-    var keyEl = byId("aiApiKey");
-    if (keyEl && keyEl.value.trim()) body.api_key = keyEl.value.trim();
-    var pwdEl = byId("aiAdminPwd");
-    if (pwdEl && pwdEl.value) body.admin_pwd = pwdEl.value;
-    btn.disabled = true;
-    var st = byId("aiStatus");
-    if (st) { st.textContent = "保存中..."; st.className = "ai-settings-status"; }
-    fetch("/api/llm/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    }).then(function (r) { return r.json(); }).then(function (d) {
-      btn.disabled = false;
-      if (!st) return;
-      if (d.error) { st.textContent = d.error; st.className = "ai-settings-status err"; return; }
-      if (keyEl) keyEl.value = "";
-      if (pwdEl) pwdEl.value = "";
-      st.textContent = "已保存：" + d.model;
-      st.className = "ai-settings-status ok";
-    }).catch(function () {
-      btn.disabled = false;
-      if (st) { st.textContent = "保存失败 / Save failed"; st.className = "ai-settings-status err"; }
-    });
-  });
-
   /* ── Gallery share: open/close modal + submit ── */
   var shareBtn = byId("shareToGalleryBtn");
   var galleryModal = byId("galleryModal");
-  // "task" = 上传任务作品；"text" = 文字艺术字作品（无 source 文件）
-  var galleryMode = "task";
 
-  function openGalleryModal(mode) {
-    galleryMode = (mode === "text") ? "text" : "task";
-    if (galleryMode === "text") {
-      if (!TA.art) { toast("请先生成艺术字 / Generate art first"); return; }
-      galleryModal.classList.add("open");
-      var t = byId("galleryTitle");
-      if (t && !t.value && TA.text) { t.value = TA.text.slice(0, 60); updateCounts(); }
-      return;
-    }
+  function openGalleryModal() {
     var cur = S.fileList[S.selIdx] || {};
     if (!(cur.sourceFile || S.sourceFile)) { toast("请先上传文件 / Please upload a file first"); return; }
     galleryModal.classList.add("open");
@@ -1953,43 +1800,23 @@
     });
   });
 
-  /* ── Submit gallery upload (task 作品) / text art 作品 ── */
-  function submitTextArtToGallery(btn) {
-    var title = byId("galleryTitle").value.trim() || "文字艺术字";
-    var desc = byId("galleryDesc").value.trim();
-    var author = byId("galleryAuthor").value.trim();
-    var isPrivate = document.querySelector('input[name="galleryVis"]:checked').value;
-    var tags = [];
-    document.querySelectorAll('.gallery-tag-checkbox input:checked').forEach(function (cb) {
-      tags.push(cb.value);
-    });
-    var body = {
-      art: TA.art, font: TA.font, fg: TA.fg,
-      title: title, description: desc, author: author,
-      tags: tags, is_private: isPrivate
-    };
-    btn.disabled = true; btn.textContent = "发布中...";
-    fetch("/api/gallery/upload-text", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    }).then(function (r) { return r.json(); }).then(function (d) {
-      btn.disabled = false; btn.textContent = "发布到画廊";
-      if (d.error) { toast(d.error); return; }
-      closeGalleryModal();
-      var url = window.location.origin + d.url;
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).catch(function () {});
-      }
-      showModal("已发布到画廊！", "短链：" + url + "\n已复制到剪贴板，可直接分享。");
-    }).catch(function () {
-      btn.disabled = false; btn.textContent = "发布到画廊";
-      toast("发布失败 / Publish failed");
-    });
+  /* ── Custom tags（T34）：逗号分隔自由输入，与预设标签并存 ── */
+  function readCustomTags() {
+    var el = byId("galleryCustomTags");
+    if (!el) return [];
+    return el.value.split(/[,，、]/).map(function (s) { return s.trim(); })
+      .filter(Boolean).slice(0, 3);
   }
+  function updateCustomTagsCount() {
+    var el = byId("galleryCustomTags"), c = byId("customTagsCount");
+    if (!el || !c) return;
+    c.textContent = readCustomTags().length + "/3";
+    c.classList.toggle("over", readCustomTags().length > 3);
+  }
+  if (byId("galleryCustomTags")) byId("galleryCustomTags").addEventListener("input", updateCustomTagsCount);
 
+  /* ── Submit gallery upload（任务作品；文字作品提交在 text_art.js）── */
   if (byId("gallerySubmitBtn")) byId("gallerySubmitBtn").addEventListener("click", function () {
-    if (galleryMode === "text") { submitTextArtToGallery(this); return; }
     var cur = S.fileList[S.selIdx] || {};
     var src = cur.sourceFile || S.sourceFile;
     if (!src) { toast("请先上传文件 / Please upload a file first"); return; }
@@ -2007,6 +1834,7 @@
     fd.append("description", desc);
     fd.append("author", author);
     fd.append("tags", JSON.stringify(tags));
+    fd.append("custom_tags", JSON.stringify(readCustomTags()));
     fd.append("is_private", isPrivate);
     var params = { charset: S.charset, width: S.width, height: S.height };
     if (S.colorMode === "source") {

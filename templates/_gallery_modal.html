@@ -1,0 +1,45 @@
+<!-- ═══════════ GALLERY SHARE MODAL（共享 include：index / text_art）═══════════ -->
+<div class="gallery-modal-backdrop" id="galleryModal">
+    <div class="gallery-modal-content">
+        <button class="gallery-modal-close" id="galleryModalClose">×</button>
+        <h3 class="gallery-modal-title">分享到画廊</h3>
+        <div class="gallery-form-row">
+            <label class="gallery-form-label">标题 <span class="gallery-form-count" id="titleCount">0/60</span></label>
+            <input type="text" class="gallery-form-input" id="galleryTitle" maxlength="60" placeholder="给你的作品起个名字">
+        </div>
+        <div class="gallery-form-row">
+            <label class="gallery-form-label">描述 <span class="gallery-form-count" id="descCount">0/500</span></label>
+            <textarea class="gallery-form-textarea" id="galleryDesc" maxlength="500" placeholder="描述这张图片的特点或创作意图（可选）"></textarea>
+        </div>
+        <div class="gallery-form-row">
+            <label class="gallery-form-label">标签 <span class="gallery-form-hint">预设最多选 3 个</span></label>
+            <div class="gallery-tag-checkboxes">
+                <label class="gallery-tag-checkbox"><input type="checkbox" value="动画"> 动画</label>
+                <label class="gallery-tag-checkbox"><input type="checkbox" value="几何"> 几何</label>
+                <label class="gallery-tag-checkbox"><input type="checkbox" value="人像"> 人像</label>
+                <label class="gallery-tag-checkbox"><input type="checkbox" value="场景"> 场景</label>
+                <label class="gallery-tag-checkbox"><input type="checkbox" value="抽象"> 抽象</label>
+                <label class="gallery-tag-checkbox"><input type="checkbox" value="像素艺术"> 像素艺术</label>
+                <label class="gallery-tag-checkbox"><input type="checkbox" value="ASCII art"> ASCII art</label>
+            </div>
+        </div>
+        <div class="gallery-form-row">
+            <label class="gallery-form-label">自定义标签 <span class="gallery-form-count" id="customTagsCount">0/3</span></label>
+            <input type="text" class="gallery-form-input" id="galleryCustomTags" maxlength="60"
+                   placeholder="用逗号分隔，例如：赛博朋克, 我的猫">
+            <span class="gallery-form-hint">每个最长 12 字，最多 3 个；会显示在作品页并进入画廊「自定义标签」筛选</span>
+        </div>
+        <div class="gallery-form-row">
+            <label class="gallery-form-label">作者 <span class="gallery-form-count" id="authorCount">0/20</span></label>
+            <input type="text" class="gallery-form-input" id="galleryAuthor" maxlength="20" placeholder="你的名字或昵称">
+        </div>
+        <div class="gallery-form-row">
+            <label class="gallery-form-label">可见性</label>
+            <div class="gallery-vis-radios">
+                <label class="gallery-vis-radio"><input type="radio" name="galleryVis" value="0" checked> 公开</label>
+                <label class="gallery-vis-radio"><input type="radio" name="galleryVis" value="1"> 仅限链接可见</label>
+            </div>
+        </div>
+        <button class="gallery-submit-btn" id="gallerySubmitBtn">发布到画廊</button>
+    </div>
+</div>

@@ -19,10 +19,9 @@
                 <div class="logo-text">Termi<span>fy</span></div>
             </a>
             <ul class="nav-links">
-                <li><a href="/#upload">上传</a></li>
-                <li><a href="/#styles">风格</a></li>
-                <li><a href="/#preview">预览</a></li>
-                <li><a href="/gallery">画廊</a></li>
+                <li><a href="/">动画工坊</a></li>
+                <li><a href="/text-art">文字艺术</a></li>
+                <li><a href="/gallery" class="nav-active">画廊</a></li>
             </ul>
             <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
@@ -47,15 +46,18 @@
                 <button class="sort-tab" data-sort="hot">热门</button>
                 <button class="sort-tab" data-sort="random">随机</button>
             </div>
-            <div class="gallery-tag-chips">
-                <button class="tag-chip active" data-tag="">全部</button>
-                <button class="tag-chip" data-tag="动画">动画</button>
-                <button class="tag-chip" data-tag="几何">几何</button>
-                <button class="tag-chip" data-tag="人像">人像</button>
-                <button class="tag-chip" data-tag="场景">场景</button>
-                <button class="tag-chip" data-tag="抽象">抽象</button>
-                <button class="tag-chip" data-tag="像素艺术">像素艺术</button>
-                <button class="tag-chip" data-tag="ASCII art">ASCII art</button>
+            <div class="gallery-custom-tags">
+                <button type="button" class="custom-tags-toggle" id="customTagsBtn" aria-expanded="false">
+                    自定义标签 <span class="custom-tags-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="custom-tags-panel" id="customTagsPanel" hidden>
+                    <p class="custom-tags-loading" id="customTagsLoading">加载中…</p>
+                    <p class="custom-tags-empty" id="customTagsEmpty" hidden>还没有自定义标签，发布作品时可以自己添加。</p>
+                    <div class="custom-tags-list" id="customTagsList"></div>
+                    <div class="custom-tags-panel-foot" id="customTagsFoot" hidden>
+                        <button type="button" class="custom-tags-clear" id="customTagsClear">清除筛选</button>
+                    </div>
+                </div>
             </div>
         </div>
     </section>
@@ -126,7 +128,7 @@
             toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2200);
         }
 
-        var G = { sort: "latest", tag: "", page: 1, limit: 24, total: 0, hasMore: false };
+        var G = { sort: "latest", tags: [], page: 1, limit: 24, total: 0, hasMore: false };
 
         // 存储型 XSS 防线：服务端只截断不转义，所有插进 innerHTML 的
         // 用户可控字符串（title/author/tags 等）必须先过 escapeHtml。
@@ -141,7 +143,8 @@
         }
 
         function fetchGallery() {
-            var params = new URLSearchParams({ sort: G.sort, tag: G.tag, page: G.page, limit: G.limit });
+            var params = new URLSearchParams({ sort: G.sort, page: G.page, limit: G.limit });
+            if (G.tags.length) params.set("tags", G.tags.join(","));
             fetch("/api/gallery/list?" + params.toString())
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
@@ -201,15 +204,82 @@
             });
         });
 
-        // Tag chips
-        document.querySelectorAll(".tag-chip").forEach(function (chip) {
-            chip.addEventListener("click", function () {
-                document.querySelectorAll(".tag-chip").forEach(function (c) { c.classList.remove("active"); });
-                chip.classList.add("active");
-                G.tag = chip.dataset.tag;
-                G.page = 1;
-                fetchGallery();
+        // Custom tags dropdown（T34）：多选，命中任意标签即返回；按热度排序
+        var ctBtn = document.getElementById("customTagsBtn");
+        var ctPanel = document.getElementById("customTagsPanel");
+        var ctList = document.getElementById("customTagsList");
+        var ctLoading = document.getElementById("customTagsLoading");
+        var ctEmpty = document.getElementById("customTagsEmpty");
+        var ctFoot = document.getElementById("customTagsFoot");
+        var ctLoaded = false;
+
+        function syncCustomTagSelection() {
+            ctList.querySelectorAll(".custom-tag-item").forEach(function (item) {
+                item.classList.toggle("active", G.tags.indexOf(item.dataset.tag) >= 0);
             });
+            var btn = document.getElementById("customTagsBtn");
+            if (btn) {
+                var n = G.tags.length;
+                btn.innerHTML = "自定义标签" + (n ? " (" + n + ") " : "") +
+                    ' <span class="custom-tags-caret" aria-hidden="true">▾</span>';
+                btn.classList.toggle("filtering", n > 0);
+            }
+        }
+        function loadCustomTags() {
+            if (!ctLoading || !ctList || !ctEmpty || !ctFoot) return;
+            ctLoading.hidden = false;
+            ctEmpty.hidden = true;
+            ctFoot.hidden = true;
+            ctList.innerHTML = "";
+            fetch("/api/gallery/custom-tags").then(function (r) { return r.json(); })
+                .then(function (d) {
+                    ctLoading.hidden = true;
+                    var tags = (d && d.tags) || [];
+                    if (!tags.length) { ctEmpty.hidden = false; return; }
+                    tags.forEach(function (t) {
+                        var b = document.createElement("button");
+                        b.type = "button";
+                        b.className = "custom-tag-item";
+                        b.dataset.tag = t.tag;
+                        b.textContent = t.tag + " " + t.count;
+                        b.addEventListener("click", function () {
+                            var i = G.tags.indexOf(t.tag);
+                            if (i >= 0) G.tags.splice(i, 1); else G.tags.push(t.tag);
+                            G.page = 1;
+                            syncCustomTagSelection();
+                            fetchGallery();
+                        });
+                        ctList.appendChild(b);
+                    });
+                    ctFoot.hidden = false;
+                    syncCustomTagSelection();
+                })
+                .catch(function () {
+                    ctLoading.hidden = true;
+                    ctEmpty.hidden = false;
+                    ctEmpty.textContent = "加载失败，请重试";
+                });
+            ctLoaded = true;
+        }
+        if (ctBtn) ctBtn.addEventListener("click", function () {
+            if (!ctPanel) return;
+            var willOpen = ctPanel.hidden;
+            ctPanel.hidden = !willOpen;
+            ctBtn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+            if (willOpen && !ctLoaded) loadCustomTags();
+        });
+        var ctClear = document.getElementById("customTagsClear");
+        if (ctClear) ctClear.addEventListener("click", function () {
+            G.tags = [];
+            G.page = 1;
+            syncCustomTagSelection();
+            fetchGallery();
+        });
+        document.addEventListener("click", function (e) {
+            if (!ctPanel || ctPanel.hidden) return;
+            if (ctPanel.contains(e.target) || (ctBtn && ctBtn.contains(e.target))) return;
+            ctPanel.hidden = true;
+            if (ctBtn) ctBtn.setAttribute("aria-expanded", "false");
         });
 
         // Pagination click delegation
