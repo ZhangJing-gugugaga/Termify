@@ -13,6 +13,7 @@ import base64
 import hashlib
 import ipaddress
 import json
+import logging
 import os
 import re
 import secrets
@@ -28,6 +29,15 @@ from flask import (Flask, abort, jsonify, make_response, redirect,
                    render_template, request, send_file, url_for)
 
 app = Flask(__name__)
+
+# 显式日志 handler：非 debug 模式下 app.logger.warning/error 若无 handler，
+# 错误详情（如视频导入失败原因）会静默丢失，安全事件无从排查。
+if not app.logger.handlers:
+    _log_handler = logging.StreamHandler()
+    _log_handler.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)s [%(name)s] %(message)s"))
+    app.logger.addHandler(_log_handler)
+    app.logger.setLevel(logging.INFO)
 # 从环境变量加载密钥，未设置时自动生成（每次重启会变，仅轻度会话场景安全）
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24).hex())
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # PRD §7.1
@@ -256,6 +266,12 @@ def _parse_rgb(value):
 
 
 _COLOR_MODES = ("mono", "source", "source256")
+
+
+# /v/ 回放页 params 白名单：允许进入页面源码的渲染参数（frames_dir 等服务器
+# 内部字段绝不外发；audio_file 是构造音频直链所需的文件名，非路径）。
+_VIEW_PARAM_KEYS = ("charset", "width", "height", "color", "kind", "interval",
+                    "fg", "bg", "audio_file")
 
 
 def _rgb_or_none(value):
@@ -1308,6 +1324,9 @@ GALLERY_EXT = VALID_EXT  # source image extensions
 
 def _gallery_public_dict(work: dict, request_host: str = "") -> dict:
     """Strip internals before returning to the client."""
+    params = json.loads(work["params_json"]) if work["params_json"] else {}
+    # 服务器绝对路径（视频作品抽帧目录）绝不外发——进页面源码即泄露部署环境
+    params.pop("frames_dir", None)
     return {
         "id": work["id"],
         "title": work["title"],
@@ -1317,7 +1336,7 @@ def _gallery_public_dict(work: dict, request_host: str = "") -> dict:
         "thumbnail_url": url_for("gallery_thumb", work_id=work["id"]),
         "og_url": url_for("gallery_og", work_id=work["id"]),
         "source_url": url_for("gallery_source", work_id=work["id"]),
-        "params": json.loads(work["params_json"]) if work["params_json"] else {},
+        "params": params,
         "view_count": work["view_count"],
         "like_count": work["like_count"],
         "download_count": work["download_count"],
@@ -1455,7 +1474,7 @@ def gallery_upload():
                 return jsonify({"error": str(exc)}), 422
             except Exception as exc:  # noqa: BLE001
                 app.logger.warning("frame conversion failed: %s", exc)
-            return jsonify({"error": "帧转换失败 / Frame conversion failed"}), 500
+                return jsonify({"error": "帧转换失败 / Frame conversion failed"}), 500
         finally:
             _VIDEO_IMPORT_SLOTS.release()
         from termify.video import frames_dir_to_images
@@ -1682,6 +1701,20 @@ def gallery_delete(work_id):
     return jsonify({"ok": True})
 
 
+@app.after_request
+def _security_headers(resp):
+    """防御纵深响应头（CSP 允许内联脚本：页面模板使用内联 <script>）。"""
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    resp.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; media-src 'self' data:; font-src 'self'; "
+        "connect-src 'self'")
+    return resp
+
+
 @app.route("/api/gallery/admin", methods=["GET"])
 def gallery_admin_list():
     """Admin dashboard: list works + pending reports.
@@ -1691,6 +1724,7 @@ def gallery_admin_list():
     hdr_pwd = request.headers.get("X-Termify-Admin-Pwd", "")
     if not _secret_equal(hdr_pwd, _admin_pwd()):
         return jsonify({"error": "Unauthorized"}), 403
+    GALLERY_DB.anonymize_old_report_ips(days=90)  # 隐私最小化：过期举报人 IP 置空
     works = GALLERY_DB.admin_list_works()
     reports = GALLERY_DB.admin_list_reports(status="pending")
     return jsonify({
@@ -1752,6 +1786,8 @@ def gallery_source_frames(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work:
         return jsonify({"error": "Work not found"}), 404
+    if not _work_raw_file_authorized(work):
+        return jsonify({"error": "Unauthorized"}), 403
     original = json.loads(work["params_json"]) if work["params_json"] else {}
     if original.get("kind") != "video":
         return jsonify({"error": "Not a video work"}), 400
@@ -1991,11 +2027,30 @@ _download_dedup: dict[str, dict[str, float]] = {}
 
 # --- proxy routes for source/thumbnail/og (serve files outside static) ---
 
+def _work_raw_file_authorized(work: dict) -> bool:
+    """私有作品的原始媒体直链（source/audio/source-frames）仅创作者/管理员。
+
+    公开作品一律放行；私有作品按"链接分享即预览"模型仅隐藏于列表，
+    但原始文件（源视频/音轨/全量抽帧）要求 ownership cookie、创作者
+    token 头或全局管理密码之一。
+    """
+    if not work.get("is_private"):
+        return True
+    work_id = work["id"]
+    token = (request.headers.get("X-Termify-Admin", "")
+             or request.cookies.get(f"termify_admin_{work_id}", ""))
+    if _secret_equal(token, work["admin_token"]):
+        return True
+    return _secret_equal(request.headers.get("X-Termify-Admin-Pwd", ""), _admin_pwd())
+
+
 @app.route("/gallery/file/<work_id>/source")
 def gallery_source(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work or not os.path.isfile(work["source_path"]):
         abort(404)
+    if not _work_raw_file_authorized(work):
+        abort(403)
     return send_file(work["source_path"])
 
 
@@ -2021,6 +2076,8 @@ def gallery_audio(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work:
         abort(404)
+    if not _work_raw_file_authorized(work):
+        abort(403)
     params = json.loads(work["params_json"]) if work["params_json"] else {}
     name = params.get("audio_file") or ""
     if not name or ".." in name or "/" in name or os.sep in name:
@@ -2044,6 +2101,15 @@ def gallery_view(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work:
         abort(404)
+    # params 白名单：模板会整体 tojson 进页面，服务器内部字段（如 frames_dir
+    # 绝对路径）绝不外发；仅保留回放渲染所需的渲染参数与音频文件名。
+    try:
+        params = json.loads(work["params_json"]) if work["params_json"] else {}
+    except (json.JSONDecodeError, TypeError):
+        params = {}
+    view_params = {k: params[k] for k in _VIEW_PARAM_KEYS if k in params}
+    work = dict(work)
+    work["params_json"] = json.dumps(view_params)
     return render_template("view_work.html", work=work)
 
 
@@ -2061,6 +2127,19 @@ def gallery_admin_page():
 # tmp/gallery_* 下载产物共用同一套 24h TTL 生命周期管理。
 get_store().set_sweep_hook(_sweep_stale_frame_dirs)
 
+from werkzeug.serving import WSGIRequestHandler
+
+
+class _QuietRequestHandler(WSGIRequestHandler):
+    """Strip the Server response header fingerprint (Werkzeug/Python 版本).
+
+    生产部署仍应置于反向代理之后由其覆写/移除该头。
+    """
+
+    server_version = ""
+    sys_version = ""
+
+
 if __name__ == "__main__":
     os.makedirs(paths.uploads_dir(), exist_ok=True)
     os.makedirs(paths.tmp_dir(), exist_ok=True)
@@ -2069,4 +2148,5 @@ if __name__ == "__main__":
     # ponytail: reloader off — the task cache is process-local, so a watchdog
     # restart (e.g. on each /api/generate writing tmp/*.py) would just trigger
     # a cache miss. The metadata is durable in SQLite.
-    app.run(debug=False, use_reloader=False, port=5000)
+    app.run(debug=False, use_reloader=False, port=5000,
+        request_handler=_QuietRequestHandler)
