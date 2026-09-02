@@ -9,6 +9,8 @@ Consumers:
 Only the subset this project emits is handled:
   ESC[38;2;R;G;Bm  foreground TrueColor
   ESC[48;2;R;G;Bm  background TrueColor
+  ESC[38;5;N       foreground xterm-256 (source256 exports)
+  ESC[48;5;N       background xterm-256
   ESC[0m            reset
   ESC[39m           default foreground
   ESC[49m           default background
@@ -20,6 +22,18 @@ import re
 
 # Split on ESC[...m while keeping the delimiter with the following text.
 _TOKEN_RE = re.compile(r"(\x1b\[[0-9;]*m)")
+
+# xterm-256 palette: 6×6×6 cube (16-231) + 24 gray levels (232-255).
+_Q256_LEVELS = (0, 95, 135, 175, 215, 255)
+
+
+def _xterm256_rgb(idx: int) -> tuple[int, int, int]:
+    idx = max(0, min(255, idx))
+    if idx >= 232:
+        g = 8 + (idx - 232) * 10
+        return (g, g, g)
+    n = idx - 16
+    return (_Q256_LEVELS[n // 36], _Q256_LEVELS[(n // 6) % 6], _Q256_LEVELS[n % 6])
 
 
 def ansi_to_html(
@@ -74,6 +88,16 @@ def _apply_code(
         rgb = inner.split(";")
         if len(rgb) == 5:
             return fg, f"rgb({rgb[2]},{rgb[3]},{rgb[4]})"
+    if inner.startswith("38;5;"):
+        toks = inner.split(";")
+        if len(toks) == 3 and toks[2].isdigit():
+            r, g, b = _xterm256_rgb(int(toks[2]))
+            return f"rgb({r},{g},{b})", bg
+    if inner.startswith("48;5;"):
+        toks = inner.split(";")
+        if len(toks) == 3 and toks[2].isdigit():
+            r, g, b = _xterm256_rgb(int(toks[2]))
+            return fg, f"rgb({r},{g},{b})"
     return fg, bg  # leave unknown codes alone rather than crash
 
 

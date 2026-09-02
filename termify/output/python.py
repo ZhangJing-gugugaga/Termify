@@ -139,8 +139,29 @@ def _apply_sgr(codes, fg, bg):
                 except ValueError:
                     pass
                 k += 4
+        elif t == '38' and k + 1 < len(toks) and toks[k + 1] == '5':
+            if k + 2 < len(toks) and toks[k + 2].isdigit():
+                fg = _xterm256_rgb(int(toks[k + 2]))
+            k += 2
+        elif t == '48' and k + 1 < len(toks) and toks[k + 1] == '5':
+            if k + 2 < len(toks) and toks[k + 2].isdigit():
+                bg = _xterm256_rgb(int(toks[k + 2]))
+            k += 2
         k += 1
     return fg, bg
+
+
+_Q256_LEVELS = (0, 95, 135, 175, 215, 255)
+
+
+def _xterm256_rgb(idx):
+    """xterm-256 palette index -> (R, G, B)."""
+    idx = max(0, min(255, int(idx)))
+    if idx >= 232:
+        g = 8 + (idx - 232) * 10
+        return (g, g, g)
+    n = idx - 16
+    return (_Q256_LEVELS[n // 36], _Q256_LEVELS[(n // 6) % 6], _Q256_LEVELS[n % 6])
 
 
 def _encode_ansi_line(parsed_chars):

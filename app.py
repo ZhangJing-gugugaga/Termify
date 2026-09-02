@@ -258,6 +258,20 @@ def _parse_rgb(value):
 _COLOR_MODES = ("mono", "source", "source256")
 
 
+def _rgb_or_none(value):
+    """Accept [r,g,b] list/tuple (gallery params_json) or 'rgb(R,G,B)' string
+    (query param); return a validated (R,G,B) tuple or None."""
+    if isinstance(value, (list, tuple)) and len(value) == 3:
+        try:
+            r, g, b = int(value[0]), int(value[1]), int(value[2])
+        except (TypeError, ValueError):
+            return None
+        if 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255:
+            return (r, g, b)
+        return None
+    return _parse_rgb(value)
+
+
 def _parse_color_mode(value, default="mono"):
     """Validate a color-mode request field.
 
@@ -1785,6 +1799,8 @@ def gallery_preview(work_id):
         request.args.get("color", original.get("color")))
     if err:
         return jsonify({"error": err}), 400
+    fg_color = _rgb_or_none(request.args.get("fg", original.get("fg")))
+    bg_color = _rgb_or_none(request.args.get("bg", original.get("bg")))
 
     from termify import convert
     if original.get("kind") == "video":
@@ -1802,6 +1818,7 @@ def gallery_preview(work_id):
     else:
         try:
             seq = convert(work["source_path"], charset, width, height,
+                          fg_color=fg_color, bg_color=bg_color,
                           color_mode=color_mode)
         except Exception as exc:  # noqa: BLE001
             app.logger.warning("gallery conversion failed: %s", exc)
@@ -1857,6 +1874,8 @@ def gallery_download(work_id):
         request.args.get("color", original.get("color")))
     if err:
         return jsonify({"error": err}), 400
+    fg_color = _rgb_or_none(request.args.get("fg", original.get("fg")))
+    bg_color = _rgb_or_none(request.args.get("bg", original.get("bg")))
 
     from termify import convert
     from termify.output import render
@@ -1870,6 +1889,7 @@ def gallery_download(work_id):
                                        color_mode=color_mode)
     else:
         seq = convert(work["source_path"], charset, width, height,
+                      fg_color=fg_color, bg_color=bg_color,
                       color_mode=color_mode)
     tmp_dir = paths.tmp_dir()
     os.makedirs(tmp_dir, exist_ok=True)

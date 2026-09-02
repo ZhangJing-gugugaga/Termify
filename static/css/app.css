@@ -963,6 +963,104 @@
             background: var(--green-glow);
         }
 
+        /* ── 分辨率滑杆（列数 20-400，行高按素材比例自动） ── */
+        .size-slider-row {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            margin-top: var(--space-3);
+        }
+        .size-slider-row input[type="range"] {
+            flex: 1;
+            height: 4px;
+            appearance: none;
+            -webkit-appearance: none;
+            background: var(--border-dim);
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+        }
+        .size-slider-row input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--green);
+            border: 2px solid var(--bg-primary, #0a0e14);
+            box-shadow: 0 0 6px var(--green-glow);
+            cursor: grab;
+        }
+        .size-slider-row input[type="range"]::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--green);
+            border: 2px solid var(--bg-primary, #0a0e14);
+            cursor: grab;
+        }
+        .size-slider-val {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            min-width: 58px;
+            text-align: right;
+        }
+        .size-slider-val small { opacity: 0.6; }
+        .size-meta {
+            margin-top: var(--space-2);
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text-secondary);
+            opacity: 0.8;
+        }
+        .size-warn {
+            margin-top: var(--space-2);
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--amber, #ffb000);
+        }
+        .size-warn[hidden] { display: none; }
+
+        /* ── 一级配色面板（预览 + py/HTML/MP4 导出同源） ── */
+        .palette-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-2);
+        }
+        .palette-btn {
+            padding: var(--space-2) var(--space-1);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-sm);
+            background: transparent;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            text-align: center;
+            white-space: nowrap;
+        }
+        .palette-btn:hover { border-color: var(--border-active); }
+        .palette-btn.active {
+            border-color: var(--green);
+            color: var(--green);
+            background: var(--green-glow);
+        }
+        .q256-row {
+            display: flex;
+            align-items: flex-start;
+            gap: var(--space-2);
+            margin-top: var(--space-2);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+        .q256-row input { margin-top: 1px; accent-color: var(--green); }
+        .q256-row[hidden] { display: none; }
+
         /* Download button */
         .download-btn {
             width: 100%;
@@ -1280,32 +1378,6 @@
             color: var(--green);
         }
 
-        .palette-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: var(--space-2);
-            margin-top: var(--space-2);
-        }
-        .palette-swatch {
-            aspect-ratio: 1.6;
-            border: 1px solid var(--border-dim);
-            border-radius: var(--radius-sm);
-            font-family: var(--font-mono);
-            font-size: 11px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all var(--transition-fast);
-        }
-        .palette-swatch:hover {
-            border-color: var(--border-active);
-            transform: translateY(-1px);
-        }
-        .palette-swatch.active {
-            border-color: var(--green);
-            box-shadow: 0 0 0 1px var(--green);
-        }
         .custom-ramp-row {
             display: flex;
             gap: var(--space-2);

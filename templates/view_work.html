@@ -6,7 +6,7 @@
     <title>{{ work.title }} — Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260901a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260902c">
 </head>
 <body>
 <div id="toast"></div>
@@ -229,7 +229,7 @@
         <div class="tweak-group"><div class="tweak-label">主题色</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button><button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button><button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button></div></div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260901a"></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260902c"></script>
     <script>
         // ═══════════ Embedded work data ═══════════
         // tojson：JS 字符串上下文的安全转义（反斜杠/引号/HTML 结束标签全覆盖）。
@@ -253,6 +253,40 @@
             var curWidth = params.width || 80;
             var curHeight = params.height || 24;
             var curFormat = "python";
+
+            // ── 配色回放：作品保存的配色在预览与导出中原样重现 ──
+            // color=source/source256 → 本地渲染逐字符原色（256 仅影响 py 导出，
+            // 预览统一 24-bit）；否则回放保存的 fg/bg。
+            var Q256_LEVELS = [0, 95, 135, 175, 215, 255];
+            function xterm256Rgb(idx) {
+                idx = Math.max(0, Math.min(255, idx | 0));
+                if (idx >= 232) { var g = 8 + (idx - 232) * 10; return [g, g, g]; }
+                var n = idx - 16;
+                return [Q256_LEVELS[Math.floor(n / 36)],
+                        Q256_LEVELS[Math.floor(n / 6) % 6],
+                        Q256_LEVELS[n % 6]];
+            }
+            function isRgbArr(v) {
+                return Array.isArray(v) && v.length === 3 &&
+                    v.every(function (x) { return (x | 0) >= 0 && (x | 0) <= 255; });
+            }
+            function viewerRenderOpts() {
+                var o = { fg: null, bg: null };
+                if (params.color === "source" || params.color === "source256") {
+                    o.colorMode = "source";
+                } else {
+                    if (isRgbArr(params.fg)) o.fg = params.fg;
+                    if (isRgbArr(params.bg)) o.bg = params.bg;
+                }
+                return o;
+            }
+            function viewerQueryColors() {
+                var q = "";
+                if (params.color) q += "&color=" + encodeURIComponent(String(params.color));
+                if (isRgbArr(params.fg)) q += "&fg=rgb(" + params.fg.map(function (x) { return x | 0; }).join(",") + ")";
+                if (isRgbArr(params.bg)) q += "&bg=rgb(" + params.bg.map(function (x) { return x | 0; }).join(",") + ")";
+                return q;
+            }
 
             var frames = [], htmlFrames = [], interval = 0.1, totalFrames = 0;
             var currentFrame = 0, playing = false, rafId = null, lastFrameTime = 0;
@@ -303,6 +337,8 @@
                         else if (inner === "49") { bg = "#0a0e14"; }
                         else if (inner.indexOf("38;2;") === 0) { var p = inner.split(";"); fg = "rgb(" + p[2] + "," + p[3] + "," + p[4] + ")"; }
                         else if (inner.indexOf("48;2;") === 0) { var p = inner.split(";"); bg = "rgb(" + p[2] + "," + p[3] + "," + p[4] + ")"; }
+                        else if (inner.indexOf("38;5;") === 0) { var p = inner.split(";"); var cf = xterm256Rgb(parseInt(p[2], 10)); fg = "rgb(" + cf[0] + "," + cf[1] + "," + cf[2] + ")"; }
+                        else if (inner.indexOf("48;5;") === 0) { var p = inner.split(";"); var cb = xterm256Rgb(parseInt(p[2], 10)); bg = "rgb(" + cb[0] + "," + cb[1] + "," + cb[2] + ")"; }
                     } else { buf += t; flush(); }
                 }
                 flush();
@@ -440,7 +476,7 @@
                 // 本地渲染路径：源帧已在内存，瞬时完成
                 if (srcFrames && srcFrames.bitmaps.length) {
                     TermifyRender.renderFrames(srcFrames.bitmaps, curCharset, curWidth, curHeight,
-                        { fg: null, bg: null },
+                        viewerRenderOpts(),
                         function (done, total) {
                             if (myId === latestReq) {
                                 preview.innerHTML = '<div class="view-loading"><span>渲染中 ' +
@@ -460,7 +496,7 @@
                         });
                     return;
                 }
-                var url = "/api/gallery/preview/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight;
+                var url = "/api/gallery/preview/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight + viewerQueryColors();
                 fetch(url).then(function (r) { return r.json(); }).then(function (d) {
                     if (myId !== latestReq) return;
                     preview.style.opacity = "1";
@@ -513,7 +549,7 @@
 
             // ── downloads ──
             function doDownload(fmt, btn) {
-                var url = "/api/gallery/download/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight + "&format=" + fmt;
+                var url = "/api/gallery/download/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight + "&format=" + fmt + viewerQueryColors();
                 if (fmt === "mp4" && btn) {
                     // 视频编码耗时较长：按钮进入等待态 + 预计时间
                     var est = Math.max(5, Math.round((frames.length || 1) * curWidth * curHeight / 100000) + 3);
