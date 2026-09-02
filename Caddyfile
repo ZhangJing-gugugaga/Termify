@@ -26,6 +26,19 @@ YOUR_DOMAIN {
         header_up X-Forwarded-Proto {scheme}
     }
 
+    # --- Security headers（安全审计 M2/M3：生产层防御纵深）----------------
+    # 隐藏后端指纹；Caddy 默认会加自己的 Server 头，一并移除。
+    header {
+        -Server
+        -X-Powered-By
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        # CSP 与 app.py after_request 保持一致（页面模板使用内联脚本）
+        Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; media-src 'self' data:; font-src 'self'; connect-src 'self'"
+    }
+
     # --- Upload size limit ------------------------------------------------
     # 公网 demo 口径统一 20MB：Flask MAX_CONTENT_LENGTH 已硬限 20MB，
     # 视频后端守卫 TERMIFY_MAX_VIDEO_MB 默认同为 20MB。这里只放 multipart

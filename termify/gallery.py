@@ -11,6 +11,7 @@ from __future__ import annotations
 import html
 import os
 import secrets
+from datetime import datetime, timedelta, timezone
 import sqlite3
 import threading
 import time
@@ -404,6 +405,22 @@ class GalleryDB:
                 (work_id, ip, reason, desc, _now_iso()),
             )
             return cur.lastrowid or 0
+
+    def anonymize_old_report_ips(self, days: int = 90) -> int:
+        """Privacy minimisation: blank reporter IPs older than ``days`` days.
+
+        Abuse reports keep the IP only for a bounded window; after that the
+        value is irreversibly emptied (the report row itself stays).
+        """
+        # 与 _now_iso() 同格式（...TZ），保证 ISO 字符串比较稳定
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE reports SET reporter_ip = '' "
+                "WHERE reporter_ip != '' AND created_at < ?",
+                (cutoff,),
+            )
+            return cur.rowcount
 
     def admin_list_reports(self, status: str | None = None) -> list[dict]:
         with self._connect() as conn:
