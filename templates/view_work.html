@@ -349,7 +349,9 @@
                 var lines = frames[idx];
                 var joined = lines.join("\n");
                 if (joined.indexOf("\x1b") !== -1) {
-                    if (!htmlFrames[idx]) htmlFrames[idx] = lines.map(ansiToHtml).join("\n");
+                    // 包进单块容器：flex 列会把一行内的多个着色 span 拆成独立 item（各占一行），
+                    // 彩色帧会被撕碎成纵向碎片列；frame-block 恢复单一文本流。
+                    if (!htmlFrames[idx]) htmlFrames[idx] = '<div class="frame-block">' + lines.map(ansiToHtml).join("\n") + "</div>";
                     preview.innerHTML = htmlFrames[idx];
                 } else {
                     preview.textContent = joined;

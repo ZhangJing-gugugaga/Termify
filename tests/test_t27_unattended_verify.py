@@ -601,8 +601,9 @@ def test_xss_view_work_script_embeds_user_data_via_tojson():
     ("static/js/app.js", "不支持的格式 / Unsupported format"),
     ("static/js/app.js", "支持 MP3/WAV/M4A/AAC/OGG/FLAC / Unsupported music format"),
     ("static/js/app.js", "音乐已就绪，导出时自动合成 / Music ready"),
-    ("static/js/app.js", "下载动画文件 / Download animation"),
-    ("templates/index.html", "下载动画文件 / Download animation"),
+        ("templates/index.html", "导出动画 / Export animation"),
+    ("templates/index.html", "选择导出格式 / Choose export format"),
+    ("templates/index.html", "开始导出 / Start export"),
     ("app.py", "文件过大（上限 20MB） / File too large (max 20MB)"),
     ("app.py", "任务不存在 / Task not found"),
 ])
