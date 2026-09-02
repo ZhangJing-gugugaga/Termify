@@ -339,18 +339,18 @@
 
                     <div class="output-card" id="terminalSizeCard">
                         <div class="output-card-title">终端尺寸 / Terminal size</div>
-                        <div class="size-options">
-                            <button class="size-btn" data-cols="40">40</button>
-                            <button class="size-btn selected" data-cols="80">80</button>
-                            <button class="size-btn" data-cols="120">120</button>
-                            <button class="size-btn" data-cols="160" title="高清 / HD">160</button>
-                            <button class="size-btn" data-cols="200" title="超清 / Ultra">200</button>
-                        </div>
                         <div class="size-slider-row">
                             <input type="range" id="sizeSlider" min="20" max="400" step="2" value="80"
-                                   aria-label="列数 / columns" title="拖动选择列数 / Drag to choose columns">
+                                   list="sizeTicks" aria-label="列数 / columns" title="拖动选择列数 / Drag to choose columns">
                             <span class="size-slider-val"><span id="sizeColsVal">80</span> 列 <small>/ cols</small></span>
                         </div>
+                        <datalist id="sizeTicks">
+                            <option value="40"></option>
+                            <option value="80"></option>
+                            <option value="120"></option>
+                            <option value="160"></option>
+                            <option value="200"></option>
+                        </datalist>
                         <div class="size-meta" id="sizeMeta">80 × 24 · 行数按素材比例自动 / rows auto-fit to source</div>
                         <div class="size-warn" id="sizeWarn" hidden>&gt; 列数 &gt; 320：预览渲染变慢、导出文件增大 / Above 320 columns: slower preview rendering, larger export files</div>
                     </div>

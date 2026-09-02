@@ -1320,15 +1320,6 @@
     if (rerender && S.taskId) requestPreview(S.charset);
   }
 
-  qa(".size-btn").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      qa(".size-btn").forEach(function (b) { b.classList.remove("selected"); });
-      btn.classList.add("selected");
-      applyColumns(parseInt(btn.getAttribute("data-cols"), 10) || 80, true);
-      if (!S.taskId) { toast("切换尺寸将在上传后应用 / Size applies after upload"); }
-    });
-  });
-
   (function initSizeSlider() {
     var slider = byId("sizeSlider");
     if (!slider) return;
@@ -1336,9 +1327,6 @@
     // 拖动中只更新数字（避免高频重渲染），松手（change）才真正重渲染
     slider.addEventListener("input", function () {
       var cols = parseInt(slider.value, 10) || 80;
-      qa(".size-btn").forEach(function (b) {
-        b.classList.toggle("selected", parseInt(b.getAttribute("data-cols"), 10) === cols);
-      });
       var colsVal = byId("sizeColsVal");
       if (colsVal) colsVal.textContent = String(cols);
       var warn = byId("sizeWarn");
@@ -1359,7 +1347,6 @@
     var saved = null;
     try { saved = parseInt(localStorage.getItem("termify_cols"), 10); } catch (e) {}
     if (saved && saved >= 20 && saved <= 400 && saved !== 80) {
-      qa(".size-btn").forEach(function (b) { b.classList.remove("selected"); });
       applyColumns(saved, false);
     }
   })();
