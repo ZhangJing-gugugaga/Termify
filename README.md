@@ -67,6 +67,9 @@ python app.py
 
 点击 7 张风格卡片中的任意一张，预览区立即切换。试试不同风格 — 每次切换都在 100ms 内完成：
 
+> ⚡ **全程本地渲染**：上传完成后，7 种风格 × 5 档尺寸的切换全部在你的浏览器内即时完成（零服务器往返）。服务端预览仅作为旧设备自动回退。
+> ℹ️ 英文提示：After upload, all 7 styles × 5 terminal sizes switch instantly in your browser — no server round-trip.
+
 | 风格 | 字符 | 适合场景 | 颜色 |
 |------|------|---------|------|
 | **经典 ASCII** 灰度 | `@#%*+=-:.` | 复古感、极简、任何终端 | ❌ 灰度 |
@@ -114,6 +117,8 @@ python app.py
 ### Step 06 · 下载
 
 点击 **"下载动画文件"** 按钮，文件就保存到本地了。
+
+> 📦 `.py` 产物的帧数据以 zlib+Base85 压缩内嵌，同等内容体积比早期版本小约 70%（视频动画从 11MB 级降到 1-3MB 级）。运行时自动解压，仍只需 Python 3.6+、零第三方依赖。
 
 ## 命令行用法
 
@@ -231,7 +236,7 @@ A: Python 未安装或未加入 PATH。请安装 Python 3.10+ 并在安装时勾
 
 ## API 文档
 
-如果你想用程序调用 Termify（比如集成到其他项目），提供 5 个接口：
+如果你想用程序调用 Termify（比如集成到其他项目），常用接口如下（另有画廊/音乐等接口见源码；所有接口均有限流）：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -244,6 +249,8 @@ A: Python 未安装或未加入 PATH。请安装 Python 3.10+ 并在安装时勾
 | `GET` | `/api/preview/<task_id>` | 获取帧数据。参数：`charset`（风格，含 `shades`/`custom`）、`width`、`height`、`frame`（某帧）、`fg`/`bg`（颜色，形如 `rgb(255,0,0)`）、`chars`（custom 必填，自定义字符梯，密→疏）。不传 `frame` 返回全部帧。 |
 | `POST` | `/api/generate` | 打包指定字符集+格式（`python`/`html`/`mp4`），返回 `download_url`。`mp4` 为同步编码（限 6 次/分钟，2 路并发），需服务器安装 ffmpeg |
 | `GET` | `/api/download/<filename>` | 下载生成的文件 |
+| `GET` | `/api/task-frames/<task_id>` | 拉取任务的源帧（base64 JPEG，≤400×240），供前端本地渲染；限 30 次/分钟，帧数 >600 或载荷 >40MB 返回 413 |
+| `POST` | `/api/upload-music` | 为任务附加背景音乐（mp3/wav/m4a/aac/ogg/flac ≤20MB），导出时优先于视频原声 |
 
 ### 示例
 
@@ -337,6 +344,7 @@ Termify/
 │   ├── engine.py           # convert() → FrameSequence
 │   ├── ansi_to_html.py     # ANSI → HTML 颜色转换
 │   ├── taskstore.py        # SQLite 任务存储（多 worker 共享）
+│   ├── paths.py            # 产物路径基准（仓库根锚定，TERMIFY_BASE_DIR 可覆盖）
 │   ├── gallery.py          # 画廊功能（SQLite 元数据 + 缩略图生成）
 │   ├── share.py            # 作品分享（.termify + URL 编码）
 │   ├── video.py            # 视频接入（ffmpeg 抽帧，自适应采样）
@@ -348,8 +356,9 @@ Termify/
 ├── templates/index.html    # 前端页面（Jinja2 模板）
 ├── static/
 │   ├── css/{tokens,app}.css
-│   └── js/app.js           # 前端逻辑
-├── tests/                  # pytest 单元测试（217 tests）
+│   ├── js/app.js           # 前端逻辑
+│   └── js/termify-render.js # 浏览器本地渲染器（7 风格镜像实现）
+├── tests/                  # pytest 单元测试（354 tests + JS 渲染一致性脚本）
 ├── ui-mockup.html          # UI 视觉唯一真相源
 └── README.md               # 本文件
 ```
@@ -358,7 +367,7 @@ Termify/
 
 - **后端**：Python 3.10+、Flask、Pillow
 - **前端**：原生 HTML/CSS/JS，无框架依赖
-- **测试**：pytest（217 tests，运行 `pytest -q` 即可）
+- **测试**：pytest（354 tests，运行 `pytest -q` 即可）
 - **主题**：暗色终端美学，JetBrains Mono + Space Grotesk 字体
 
 ## 🐛 反馈与 ISSUE
