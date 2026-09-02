@@ -1524,6 +1524,7 @@
     var q256Row = byId("q256Row");
     S.colorMode = "mono";
     if (key === "source") {
+      S.colorMode = "source";  // 逐字符取源像素真彩（本地渲染 + 导出 color=source）
       var p = PALETTES.source;
       S.fg = null; S.bg = null;
       applyPaletteChrome(p.main, p.dim, p.glow);

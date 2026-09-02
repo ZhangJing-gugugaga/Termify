@@ -1060,6 +1060,7 @@
         }
         .q256-row input { margin-top: 1px; accent-color: var(--green); }
         .q256-row[hidden] { display: none; }
+        .color-picker-row[hidden] { display: none; }
 
         /* Download button */
         .download-btn {

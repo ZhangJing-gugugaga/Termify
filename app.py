@@ -1188,12 +1188,18 @@ def generate():
 
     content = render(seq, fmt, audio_b64=audio_b64, audio_mime=audio_mime)
 
+    # 产物名带配色模式段：不同 color_mode 的产物不互相覆盖（mono 缺省省略）
+    color_tag = ""
+    if color_mode == "source":
+        color_tag = "_src"
+    elif color_mode == "source256":
+        color_tag = "_src256"
     ext = "py" if fmt == "python" else "html"
-    filename = f"{task_id}_{charset}.{ext}"
+    filename = f"{task_id}_{charset}{color_tag}.{ext}"
     if charset == "custom":
         # Different ramps must not overwrite each other's artifacts.
         digest = hashlib.sha256((charset_ramp or "").encode("utf-8")).hexdigest()[:8]
-        filename = f"{task_id}_custom_{digest}.{ext}"
+        filename = f"{task_id}_custom_{digest}{color_tag}.{ext}"
     out_path = _tmp_out_path(filename)
     Path(out_path).write_text(content, encoding="utf-8")
 
@@ -1230,11 +1236,16 @@ def _generate_video(task_id, charset, width, height, fg_color, bg_color,
         return jsonify({"error": f"帧数过多 ({len(seq.lines_per_frame)})，"
                                  f"视频导出上限 {video_mod.MAX_VIDEO_FRAMES} 帧"}), 400
 
+    color_tag = ""
+    if color_mode == "source":
+        color_tag = "_src"
+    elif color_mode == "source256":
+        color_tag = "_src256"
     ext = "mp4"
-    filename = f"{task_id}_{charset}.{ext}"
+    filename = f"{task_id}_{charset}{color_tag}.{ext}"
     if charset == "custom":
         digest = hashlib.sha256((charset_ramp or "").encode("utf-8")).hexdigest()[:8]
-        filename = f"{task_id}_custom_{digest}.{ext}"
+        filename = f"{task_id}_custom_{digest}{color_tag}.{ext}"
     out_path = _tmp_out_path(filename)
 
     if not _VIDEO_PROC_SLOTS.acquire(blocking=False):
