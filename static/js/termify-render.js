@@ -418,7 +418,10 @@
     // 返回原始 RGBA；命中缓存时跳过 drawImage + getImageData。
     // blocks 与原色模式都缓存 RGBA（原色下各风格互切共享同一份像素）。
     function scaledData(i) {
-      var key = "r:" + i;
+      // 缓存键必须含 dims：不同 charset 的放大尺寸不同（blocks width*2/height*2、
+      // braille width*2/height*4），同 key 会串尺寸——braille 命中 ascii 的短
+      // lums 后越界读 undefined，点阵整帧空白（只留顶部碎片）。
+      var key = "r:" + dims.w + "x" + dims.h + ":" + i;
       var cacheData = charset === "blocks" || sourceMode;
       var hit = cacheData ? cacheGet(cache, key) : null;
       if (hit) return hit;
@@ -437,7 +440,7 @@
 
     // 亮度只算一次：非 blocks 风格同尺寸互切时直接复用缓存
     function lumsFor(i) {
-      var key = "l:" + i;
+      var key = "l:" + dims.w + "x" + dims.h + ":" + i;
       var hit = cacheGet(cache, key);
       if (hit) return hit;
       var lums = luminance(scaledData(i));

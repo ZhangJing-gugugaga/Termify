@@ -2032,3 +2032,98 @@
         @keyframes view-spin { to { transform: rotate(360deg); } }
         .view-style-grid .style-card { cursor: pointer; }
         .view-format-options .format-option { cursor: pointer; }
+
+        /* ── 导出格式弹窗（两步确认）── */
+        .export-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 90;
+            background: rgba(4, 8, 6, 0.72);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--space-4);
+        }
+        .export-backdrop[hidden] { display: none; }
+        .export-modal {
+            width: min(520px, 100%);
+            background: var(--bg-surface, #10151c);
+            border: 1px solid var(--border-active, rgba(0, 255, 65, 0.45));
+            border-radius: var(--radius-md, 8px);
+            padding: var(--space-6);
+            box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+        }
+        .export-modal-title {
+            font-family: var(--font-mono);
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--green, #00ff41);
+            margin-bottom: var(--space-5);
+        }
+        .export-options {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+        }
+        .export-option {
+            display: flex;
+            align-items: center;
+            gap: var(--space-4);
+            padding: var(--space-3) var(--space-4);
+            background: transparent;
+            border: 1px solid var(--border-dim, rgba(255, 255, 255, 0.14));
+            border-radius: var(--radius-sm, 6px);
+            color: var(--text-secondary, #9aa4b2);
+            font-family: var(--font-mono);
+            text-align: left;
+            cursor: pointer;
+            transition: border-color var(--transition-fast, 0.15s), color var(--transition-fast, 0.15s);
+        }
+        .export-option:hover { border-color: var(--border-active, rgba(0, 255, 65, 0.45)); }
+        .export-option.selected {
+            border-color: var(--green, #00ff41);
+            color: var(--green, #00ff41);
+            background: var(--green-glow, rgba(0, 255, 65, 0.08));
+        }
+        .export-icon {
+            font-size: 12px;
+            min-width: 44px;
+            opacity: 0.9;
+        }
+        .export-label { display: flex; flex-direction: column; gap: 2px; }
+        .export-label b { font-size: 13px; font-weight: 600; }
+        .export-label i { font-style: normal; font-size: 11px; opacity: 0.72; }
+        .export-modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--space-3);
+            margin-top: var(--space-6);
+        }
+        .export-cancel, .export-confirm {
+            padding: var(--space-2) var(--space-5);
+            border-radius: var(--radius-sm, 6px);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all var(--transition-fast, 0.15s);
+        }
+        .export-cancel {
+            background: transparent;
+            border: 1px solid var(--border-dim, rgba(255, 255, 255, 0.14));
+            color: var(--text-secondary, #9aa4b2);
+        }
+        .export-cancel:hover { border-color: var(--border-active, rgba(0, 255, 65, 0.45)); }
+        .export-confirm {
+            background: var(--green, #00ff41);
+            border: 1px solid var(--green, #00ff41);
+            color: #04140a;
+            font-weight: 600;
+        }
+        .export-confirm:hover { filter: brightness(1.1); }
+
+        /* ANSI 帧统一包进单块容器：flex 列容器会把一行内的多个着色 span /
+           空白段拆成独立 item（各占一行），彩色帧会被撕碎成纵向碎片列。
+           frame-block 恢复为单一文本流，white-space:pre 保证 \n 换行。 */
+        .animation-terminal .terminal-body .frame-block {
+            white-space: pre;
+        }

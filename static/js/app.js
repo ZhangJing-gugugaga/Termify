@@ -13,7 +13,6 @@
   };
   var latestReq = 0;
   var currentFrame = 0, playing = false, rafId = null, lastFrameTime = 0;
-  var FO = ".form" + "at-option";
   var preview = document.getElementById("animPreview");
   var progressFill = document.querySelector(".progress-fill");
   var progressBar = document.querySelector(".progress-bar");
@@ -249,7 +248,10 @@
       var joined = lines.join("\n");
       var hasAnsi = joined.indexOf("\x1b") !== -1;
       if (hasAnsi) {
-        preview.innerHTML = S.htmlFrames[idx] || lines.map(ansiToHtml).join("\n");
+        // 包进单块容器：flex 列会把一行内的多个着色 span 拆成独立 item（各占一行），
+        // 彩色帧（原色/点阵）会被撕碎成纵向碎片列；frame-block 恢复单一文本流。
+        preview.innerHTML = '<div class="frame-block">' +
+          (S.htmlFrames[idx] || lines.map(ansiToHtml).join("\n")) + "</div>";
       } else {
         preview.textContent = joined;
       }
@@ -458,7 +460,7 @@
       var item = document.createElement("div");
       item.className = "file-list-item" + (i === S.selIdx ? " active" : "");
       item.textContent = f.filename;
-      item.title = f.filename + " — 点击下载切换";
+      item.title = f.filename + " · 点击下载切换";
       item.addEventListener("click", function () { selectFile(i); });
       container.appendChild(item);
     });
@@ -1002,16 +1004,6 @@
     if (matchSel) qa(matchSel).forEach(function (el) { el.classList.add("selected"); });
   }
 
-  function selectedFormat() {
-    var opts = qa(FO);
-    for (var i = 0; i < opts.length; i++) {
-      if (opts[i].classList.contains("selected")) {
-        var fmt = opts[i].getAttribute("data-format");
-        return fmt ? fmt : (i === 0 ? "python" : "html");
-      }
-    }
-    return "python";
-  }
 
   /* ══════════ T25 背景音乐 ══════════
      视频自带音频：服务端上传时自动抽取，MP4/HTML 导出自动合成。
@@ -1103,7 +1095,7 @@
       }
       S.musicFile = f;
       refreshMusicRows();
-      toast("音乐已就绪，导出时自动合成 / Music ready — will be merged on export");
+      toast("音乐已就绪，导出时自动合成 / Music ready, merged on export");
       input.value = "";
     });
     if (rmBtn) rmBtn.addEventListener("click", function () {
@@ -1114,14 +1106,48 @@
     });
   }
 
-  /* ── Download ── */
+  /* ── 导出格式弹窗（两步确认：选格式 → 开始导出）── */
+  function openExportModal() {
+    var backdrop = byId("exportBackdrop");
+    if (!backdrop) { runExport("python"); return; }  // 弹窗缺失时兜底直出默认格式
+    backdrop.hidden = false;
+    markSelected(".export-option", '.export-option[data-format="python"]');
+  }
+  function closeExportModal() {
+    var backdrop = byId("exportBackdrop");
+    if (backdrop) backdrop.hidden = true;
+  }
+  qa(".export-option").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      markSelected(".export-option", '.export-option[data-format="' +
+        btn.getAttribute("data-format") + '"]');
+    });
+  });
+  var exportCancelBtn = byId("exportCancelBtn");
+  if (exportCancelBtn) exportCancelBtn.addEventListener("click", closeExportModal);
+  var exportBackdrop = byId("exportBackdrop");
+  if (exportBackdrop) exportBackdrop.addEventListener("click", function (e) {
+    if (e.target === exportBackdrop) closeExportModal();  // 点遮罩取消
+  });
+  var exportConfirmBtn = byId("exportConfirmBtn");
+  if (exportConfirmBtn) exportConfirmBtn.addEventListener("click", function () {
+    var sel = document.querySelector(".export-option.selected");
+    var fmt = (sel && sel.getAttribute("data-format")) || "python";
+    closeExportModal();
+    runExport(fmt);
+  });
+
+  /* ── Export：下载按钮只做校验并弹出格式选择（两步确认），runExport 执行 ── */
   function doDownload() {
     if (!S.taskId && !S.localVideo) { toast("请先上传文件 / Please upload a file first"); return; }
     if (S.charset === "custom" && !TermifyRender.sanitizeRamp(S.ramp || "").length) {
       toast("请先在 Tweaks 面板填写有效自定义字符 / Please set a valid custom ramp in Tweaks");
       return;
     }
-    var fmt = selectedFormat();
+    openExportModal();
+  }
+
+  function runExport(fmt) {
     function ensureMusicUploaded(taskId) {
       // 音乐随首次导出一并交给服务器（懒上传），已传过则跳过
       if (!S.musicFile || S.musicUploadedFor === taskId) {
@@ -1281,16 +1307,6 @@
     });
   });
 
-  // Format options
-  qa(FO).forEach(function (opt) {
-    opt.addEventListener("click", function () {
-      qa(FO).forEach(function (o) { o.classList.remove("selected"); });
-      opt.classList.add("selected");
-      var svg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
-      if (byId("terminalSizeCard")) byId("terminalSizeCard").style.display = "";
-      if (downloadBtn) downloadBtn.innerHTML = svg + "下载动画文件 / Download animation";
-    });
-  });
 
   /* ══════════ 分辨率：列数滑杆 + 行高按素材比例自动推导 ══════════
      服务端宽高钳制 1-400；行数 = 列数 × 素材高宽比 ÷ 2（字符格 1:2），
@@ -1320,15 +1336,6 @@
     if (rerender && S.taskId) requestPreview(S.charset);
   }
 
-  qa(".size-btn").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      qa(".size-btn").forEach(function (b) { b.classList.remove("selected"); });
-      btn.classList.add("selected");
-      applyColumns(parseInt(btn.getAttribute("data-cols"), 10) || 80, true);
-      if (!S.taskId) { toast("切换尺寸将在上传后应用 / Size applies after upload"); }
-    });
-  });
-
   (function initSizeSlider() {
     var slider = byId("sizeSlider");
     if (!slider) return;
@@ -1336,9 +1343,6 @@
     // 拖动中只更新数字（避免高频重渲染），松手（change）才真正重渲染
     slider.addEventListener("input", function () {
       var cols = parseInt(slider.value, 10) || 80;
-      qa(".size-btn").forEach(function (b) {
-        b.classList.toggle("selected", parseInt(b.getAttribute("data-cols"), 10) === cols);
-      });
       var colsVal = byId("sizeColsVal");
       if (colsVal) colsVal.textContent = String(cols);
       var warn = byId("sizeWarn");
@@ -1359,7 +1363,6 @@
     var saved = null;
     try { saved = parseInt(localStorage.getItem("termify_cols"), 10); } catch (e) {}
     if (saved && saved >= 20 && saved <= 400 && saved !== 80) {
-      qa(".size-btn").forEach(function (b) { b.classList.remove("selected"); });
       applyColumns(saved, false);
     }
   })();

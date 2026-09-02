@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ work.title }} — Termify</title>
+    <title>{{ work.title }} · Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903c">
 </head>
 <body>
 <div id="toast"></div>
@@ -213,7 +213,7 @@
     <!-- ═══════════ FOOTER ═══════════ -->
     <footer>
         <div class="container">
-            <p class="footer-text"><a href="https://github.com/ZhangJing-gugugaga/Termify">Termify</a> — 万物皆可终端</p>
+            <p class="footer-text"><a href="https://github.com/ZhangJing-gugugaga/Termify">Termify</a> · 万物皆可终端</p>
             <p class="footer-cta">字符集不够用？<a href="https://github.com/ZhangJing-gugugaga/Termify/issues">来提 Issue →</a></p>
         </div>
     </footer>
@@ -229,7 +229,7 @@
         <div class="tweak-group"><div class="tweak-label">主题色</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button><button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button><button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button></div></div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903a"></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903c"></script>
     <script>
         // ═══════════ Embedded work data ═══════════
         // tojson：JS 字符串上下文的安全转义（反斜杠/引号/HTML 结束标签全覆盖）。
@@ -349,7 +349,9 @@
                 var lines = frames[idx];
                 var joined = lines.join("\n");
                 if (joined.indexOf("\x1b") !== -1) {
-                    if (!htmlFrames[idx]) htmlFrames[idx] = lines.map(ansiToHtml).join("\n");
+                    // 包进单块容器：flex 列会把一行内的多个着色 span 拆成独立 item（各占一行），
+                    // 彩色帧会被撕碎成纵向碎片列；frame-block 恢复单一文本流。
+                    if (!htmlFrames[idx]) htmlFrames[idx] = '<div class="frame-block">' + lines.map(ansiToHtml).join("\n") + "</div>";
                     preview.innerHTML = htmlFrames[idx];
                 } else {
                     preview.textContent = joined;
@@ -489,7 +491,7 @@
                             interval = srcFrames.interval;
                             htmlFrames = [];
                             totalFrames = lf.length;
-                            if (previewTitle) previewTitle.textContent = "animation preview — " + curCharset + " " + curWidth + "x" + curHeight;
+                            if (previewTitle) previewTitle.textContent = "animation preview · " + curCharset + " " + curWidth + "x" + curHeight;
                             fitViewFontSize();
                             renderFrame(0);
                             if (frames.length >= 2) startPlayer();
@@ -505,7 +507,7 @@
                     interval = d.interval || 0.1;
                     htmlFrames = [];
                     totalFrames = frames.length;
-                    if (previewTitle) previewTitle.textContent = "animation preview — " + curCharset + " " + curWidth + "x" + curHeight;
+                    if (previewTitle) previewTitle.textContent = "animation preview · " + curCharset + " " + curWidth + "x" + curHeight;
                     fitViewFontSize();
                     renderFrame(0);
                     if (frames.length >= 2) startPlayer();

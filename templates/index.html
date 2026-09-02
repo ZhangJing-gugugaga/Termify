@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Termify — 万物皆可终端</title>
+    <title>Termify · 万物皆可终端</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260903a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260903c">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903c">
 </head>
 <body>
 <div id="toast"></div>
@@ -35,7 +35,6 @@
     <!-- ═══════════ HERO ═══════════ -->
     <section class="hero">
         <div class="container">
-            <div class="hero-badge">Open Source</div>
             <h1>万物皆可<span class="highlight">终端</span></h1>
             <p class="hero-subtitle">
                 上传任何 GIF、图片或视频，选择渲染风格，下载能在任何终端播放的动画文件。
@@ -73,7 +72,6 @@
     <!-- ═══════════ UPLOAD ═══════════ -->
     <section class="upload-section" id="upload">
         <div class="container">
-            <div class="section-label">Step 01</div>
             <h2 class="section-title">上传你的素材</h2>
             <div class="upload-zone" id="uploadZone">
                 <div class="upload-icon">
@@ -85,7 +83,7 @@
                 </div>
                 <div class="upload-text">
                     <h3>拖拽文件到这里，或 <span class="browse-link">点击选择</span> / Drag files here, or <span class="browse-link">click to browse</span></h3>
-                    <p>支持 GIF、PNG、JPG、MP4、WEBM，最大 20MB，可一次选择多个文件 / Supports GIF, PNG, JPG, MP4, WEBM — max 20MB, multiple files allowed</p>
+                    <p>支持 GIF、PNG、JPG、MP4、WEBM，最大 20MB，可一次选择多个文件 / Supports GIF, PNG, JPG, MP4, WEBM, up to 20MB each, multiple files allowed</p>
                 </div>
                 <div class="upload-formats">
                     <span class="format-tag">.GIF</span>
@@ -102,7 +100,7 @@
                 <span class="url-fetch-label">或粘贴链接 / Or paste a link：</span>
                 <input type="text" class="url-fetch-input" id="urlInput"
                        placeholder="https://example.com/image.gif" />
-                <button class="url-fetch-btn" id="urlFetchBtn" title="下载 / Fetch">下载 / Fetch</button>
+                <button class="url-fetch-btn" id="urlFetchBtn" title="抓取 / Fetch">抓取 / Fetch</button>
             </div>
         </div>
     </section>
@@ -110,7 +108,6 @@
     <!-- ═══════════ STYLE SELECTION ═══════════ -->
     <section class="preview-section" id="styles">
         <div class="container">
-            <div class="section-label">Step 02</div>
             <h2 class="section-title">选择渲染风格</h2>
             <div class="style-grid">
 
@@ -235,7 +232,6 @@
     <!-- ═══════════ ANIMATION PREVIEW ═══════════ -->
     <section class="animation-section" id="preview">
         <div class="container">
-            <div class="section-label">Step 03</div>
             <h2 class="section-title">预览 & 下载</h2>
             <div class="animation-layout">
 
@@ -246,7 +242,7 @@
                             <div class="terminal-dot red"></div>
                             <div class="terminal-dot amber"></div>
                             <div class="terminal-dot green"></div>
-                            <div class="terminal-title">animation preview — blocks style</div>
+                            <div class="terminal-title">animation preview · blocks style</div>
                         </div>
                         <div class="terminal-body" id="animPreview">
           ████████████████████████████████
@@ -285,36 +281,6 @@
 
                 <!-- Right: Output panel -->
                 <div class="output-panel">
-                    <div class="output-card">
-                        <div class="output-card-title">输出格式</div>
-                        <div class="format-options">
-                            <div class="format-option selected">
-                                <div class="format-radio"></div>
-                                <div class="format-label">
-                                    <div class="format-label-name">Python 脚本</div>
-                                    <div class="format-label-desc">python play.py 直接运行</div>
-                                </div>
-                                <div class="format-icon">.py</div>
-                            </div>
-                            <div class="format-option">
-                                <div class="format-radio"></div>
-                                <div class="format-label">
-                                    <div class="format-label-name">HTML 页面</div>
-                                    <div class="format-label-desc">浏览器打开即播放</div>
-                                </div>
-                                <div class="format-icon">.html</div>
-                            </div>
-                            <div class="format-option" data-format="mp4">
-                                <div class="format-radio"></div>
-                                <div class="format-label">
-                                    <div class="format-label-name">MP4 视频</div>
-                                    <div class="format-label-desc">微信/手机直接播放，分享零门槛</div>
-                                </div>
-                                <div class="format-icon">.mp4</div>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="output-card" id="paletteCard">
                         <div class="output-card-title">配色 / Color scheme</div>
                         <div class="palette-row">
@@ -343,27 +309,20 @@
 
                     <div class="output-card" id="terminalSizeCard">
                         <div class="output-card-title">终端尺寸 / Terminal size</div>
-                        <div class="size-options">
-                            <button class="size-btn" data-cols="40">40</button>
-                            <button class="size-btn selected" data-cols="80">80</button>
-                            <button class="size-btn" data-cols="120">120</button>
-                            <button class="size-btn" data-cols="160" title="高清 / HD">160</button>
-                            <button class="size-btn" data-cols="200" title="超清 / Ultra">200</button>
-                        </div>
                         <div class="size-slider-row">
                             <input type="range" id="sizeSlider" min="20" max="400" step="2" value="80"
                                    aria-label="列数 / columns" title="拖动选择列数 / Drag to choose columns">
                             <span class="size-slider-val"><span id="sizeColsVal">80</span> 列 <small>/ cols</small></span>
                         </div>
                         <div class="size-meta" id="sizeMeta">80 × 24 · 行数按素材比例自动 / rows auto-fit to source</div>
-                        <div class="size-warn" id="sizeWarn" hidden>⚡ 列数 &gt; 320：预览渲染变慢、导出文件增大 / Above 320 columns: slower preview rendering, larger export files</div>
+                        <div class="size-warn" id="sizeWarn" hidden>&gt; 列数 &gt; 320：预览渲染变慢、导出文件增大 / Above 320 columns: slower preview rendering, larger export files</div>
                     </div>
 
                     <div class="output-card" id="musicCard" style="display:none;">
                         <div class="output-card-title">背景音乐 / Background music <span class="music-note">♪ 视频自带音频会自动合成 / Built-in video audio is merged automatically</span></div>
                         <div class="music-row" id="musicEmptyRow">
                             <button class="music-add-btn" id="musicAddBtn" type="button">＋ 添加音乐文件 / Add music file</button>
-                            <div class="music-hint">MP3/WAV/M4A 等，≤20MB，将替换视频原声并合成进 MP4/HTML / MP3/WAV/M4A etc., max 20MB — replaces the video's own audio and is merged into MP4/HTML</div>
+                            <div class="music-hint">MP3/WAV/M4A 等，≤20MB，将替换视频原声并合成进 MP4/HTML / MP3/WAV/M4A etc., max 20MB; replaces the video's own audio and is merged into MP4/HTML</div>
                         </div>
                         <div class="music-row" id="musicChosenRow" style="display:none;">
                             <span class="music-chip" id="musicChip">♪ music.mp3</span>
@@ -377,12 +336,11 @@
                             <polyline points="7 10 12 15 17 10"/>
                             <line x1="12" y1="15" x2="12" y2="3"/>
                         </svg>
-                        下载动画文件 / Download animation
+                        导出动画 / Export animation
                     </button>
 
                     <button class="gallery-share-btn" id="shareToGalleryBtn" style="display:none;">分享到画廊 / Share to gallery</button>
 
-                    <div class="tweak-hint" style="margin-top:10px;">⚡ 上传后 7 种风格 × 20–400 列任意尺寸的切换全部在浏览器本地即时完成，无需等待服务器 / After upload, all 7 styles × any size from 20–400 columns switch instantly in your browser — no server round-trip</div>
                 </div>
 
             </div>
@@ -392,7 +350,6 @@
     <!-- ═══════════ FEATURES ═══════════ -->
     <section class="features-section">
         <div class="container">
-            <div class="section-label">Why Termify</div>
             <h2 class="section-title">为什么选择 Termify</h2>
             <div class="features-grid">
                 <div class="feature-card">
@@ -401,9 +358,9 @@
                     <p class="feature-desc">从经典ASCII到Unicode色块，从Braille点阵到自定义字符集。总有一款适合你的终端。</p>
                 </div>
                 <div class="feature-card">
-                    <div class="feature-icon-box">⚡</div>
+                    <div class="feature-icon-box">&gt;_</div>
                     <h3 class="feature-title">即下即玩</h3>
-                    <p class="feature-desc">Python脚本、HTML页面——零依赖，双击就能播放。发微信、开浏览器、进终端，随时随地播放你的动画。</p>
+                    <p class="feature-desc">Python脚本、HTML页面零依赖，双击就能播放。发微信、开浏览器、进终端，随时随地播放你的动画。</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon-box">∞</div>
@@ -418,7 +375,7 @@
     <footer>
         <div class="container">
             <p class="footer-text">
-                <a href="https://github.com/ZhangJing-gugugaga/Termify">Termify</a> — 万物皆可终端 · MIT License
+                <a href="https://github.com/ZhangJing-gugugaga/Termify">Termify</a> · 万物皆可终端（MIT License）
             </p>
             <p class="footer-cta">
                 字符集不够用？<a href="https://github.com/ZhangJing-gugugaga/Termify/issues">来提 Issue →</a>
@@ -497,6 +454,31 @@
                 <button class="tweak-opt" id="customRampApply">应用</button>
             </div>
             <div class="tweak-hint">应用后点击左侧"自定义字符"风格卡片预览；前景/背景色在右侧「配色」面板 / Custom ramp lives here; fg/bg colors moved to the Color scheme panel</div>
+        </div>
+    </div>
+
+    <!-- ═══════════ 导出格式弹窗（两步：选格式 → 确认导出） ═══════════ -->
+    <div class="export-backdrop" id="exportBackdrop" hidden>
+        <div class="export-modal" role="dialog" aria-modal="true" aria-labelledby="exportModalTitle">
+            <div class="export-modal-title" id="exportModalTitle">选择导出格式 / Choose export format</div>
+            <div class="export-options">
+                <button class="export-option selected" data-format="python" type="button">
+                    <span class="export-icon">.py</span>
+                    <span class="export-label"><b>Python 脚本</b><i>终端直接运行 / Runs in any terminal</i></span>
+                </button>
+                <button class="export-option" data-format="html" type="button">
+                    <span class="export-icon">.html</span>
+                    <span class="export-label"><b>HTML 页面</b><i>浏览器打开即播 / Plays in any browser</i></span>
+                </button>
+                <button class="export-option" data-format="mp4" type="button">
+                    <span class="export-icon">.mp4</span>
+                    <span class="export-label"><b>MP4 视频</b><i>微信/手机直接播放 / Plays anywhere, share-ready</i></span>
+                </button>
+            </div>
+            <div class="export-modal-actions">
+                <button class="export-cancel" id="exportCancelBtn" type="button">取消 / Cancel</button>
+                <button class="export-confirm" id="exportConfirmBtn" type="button">开始导出 / Start export</button>
+            </div>
         </div>
     </div>
 
@@ -607,8 +589,8 @@
         }
         requestAnimationFrame(demoTick);
     </script>
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903a"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260903a" defer></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903c"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260903c" defer></script>
 
     <!-- Termify 自定义弹窗（替代浏览器原生 alert/confirm） -->
     <div class="termify-modal" id="termifyModal" hidden>
