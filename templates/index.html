@@ -590,23 +590,7 @@
             });
         });
 
-        // Tweaks: theme color
-        document.querySelectorAll('[data-tweak^="theme-"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('[data-tweak^="theme-"]').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                const theme = btn.dataset.tweak.replace('theme-', '');
-                const colors = {
-                    green: { main: '#00ff41', dim: '#00cc33', glow: 'rgba(0,255,65,0.15)' },
-                    amber: { main: '#ffb000', dim: '#cc8d00', glow: 'rgba(255,176,0,0.12)' },
-                    cyan:  { main: '#00d4ff', dim: '#00a8cc', glow: 'rgba(0,212,255,0.12)' }
-                };
-                const c = colors[theme];
-                document.documentElement.style.setProperty('--green', c.main);
-                document.documentElement.style.setProperty('--green-dim', c.dim);
-                document.documentElement.style.setProperty('--green-glow', c.glow);
-            });
-        });
+        // 主题色选择已迁移至输出面板「配色 / Color scheme」（app.js applyPalette）
 
         // ═══════════ Progress bar animation（秒制匀速假演示） ═══════════
         const progressFill = document.querySelector('.progress-fill');

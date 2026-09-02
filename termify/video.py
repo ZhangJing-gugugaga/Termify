@@ -290,11 +290,13 @@ def _scale_dims(charset: str, width: int, height: int) -> tuple[int, int]:
 
 def sequence_from_frames_dir(frames_dir: str, charset: str, width: int, height: int,
                              interval: float, charset_ramp=None,
-                             color_mode="mono"):
+                             color_mode="mono", fg_color=None, bg_color=None):
     """Rebuild a FrameSequence from a persisted per-task frames directory.
 
     Used for video tasks: no ffmpeg re-extraction, just PIL re-rendering, so
-    switching charset / size after upload stays fast.
+    switching charset / size after upload stays fast. fg/bg_color feed the
+    same single-colour override path as convert() so exported video-task
+    products match the preview palette.
     """
     from termify.engine import FrameSequence, render_frame, scale_frame
     from PIL import Image
@@ -305,6 +307,8 @@ def sequence_from_frames_dir(frames_dir: str, charset: str, width: int, height: 
         img = Image.open(fpath).convert("RGB")
         scaled = scale_frame(img, sw, sh)
         lines_per_frame.append(render_frame(scaled, charset, sw, sh,
+                                            fg_color=fg_color,
+                                            bg_color=bg_color,
                                             charset_ramp=charset_ramp,
                                             color_mode=color_mode))
     return FrameSequence(

@@ -261,13 +261,17 @@ _COLOR_MODES = ("mono", "source", "source256")
 def _rgb_or_none(value):
     """Accept [r,g,b] list/tuple (gallery params_json) or 'rgb(R,G,B)' string
     (query param); return a validated (R,G,B) tuple or None."""
-    if isinstance(value, (list, tuple)) and len(value) == 3:
+    if isinstance(value, (list, tuple)):
+        if len(value) != 3:
+            return None
         try:
             r, g, b = int(value[0]), int(value[1]), int(value[2])
         except (TypeError, ValueError):
             return None
         if 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255:
             return (r, g, b)
+        return None
+    if not isinstance(value, str):
         return None
     return _parse_rgb(value)
 
@@ -858,6 +862,7 @@ def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=
             filepath, charset, width, height,
             interval=task.get("interval") or 0.1,
             charset_ramp=charset_ramp, color_mode=color_mode,
+            fg_color=fg_color, bg_color=bg_color,
         )
         _cache_put(task_id, key, seq)
         return seq
@@ -1822,7 +1827,8 @@ def gallery_preview(work_id):
         try:
             seq = sequence_from_frames_dir(fd, charset, width, height,
                                            interval=original.get("interval") or 0.1,
-                                           color_mode=color_mode)
+                                           color_mode=color_mode,
+                                           fg_color=fg_color, bg_color=bg_color)
         except Exception as exc:  # noqa: BLE001
             app.logger.warning("gallery conversion failed: %s", exc)
             return jsonify({"error": "转换失败 / Conversion failed"}), 400
@@ -1887,6 +1893,12 @@ def gallery_download(work_id):
         return jsonify({"error": err}), 400
     fg_color = _rgb_or_none(request.args.get("fg", original.get("fg")))
     bg_color = _rgb_or_none(request.args.get("bg", original.get("bg")))
+    # 与 /api/generate 一致：产物名带配色段，防并发互覆（mono 缺省省略）
+    color_tag = ""
+    if color_mode == "source":
+        color_tag = "_src"
+    elif color_mode == "source256":
+        color_tag = "_src256"
 
     from termify import convert
     from termify.output import render
@@ -1897,7 +1909,8 @@ def gallery_download(work_id):
             return jsonify({"error": "Video frames missing"}), 410
         seq = sequence_from_frames_dir(fd, charset, width, height,
                                        interval=original.get("interval") or 0.1,
-                                       color_mode=color_mode)
+                                       color_mode=color_mode,
+                                       fg_color=fg_color, bg_color=bg_color)
     else:
         seq = convert(work["source_path"], charset, width, height,
                       fg_color=fg_color, bg_color=bg_color,
@@ -1918,7 +1931,7 @@ def gallery_download(work_id):
         if len(seq.lines_per_frame) > video_mod.MAX_VIDEO_FRAMES:
             return jsonify({"error": f"帧数过多 ({len(seq.lines_per_frame)})，"
                                      f"视频导出上限 {video_mod.MAX_VIDEO_FRAMES} 帧"}), 400
-        filename = f"gallery_{work_id}_{charset}.mp4"
+        filename = f"gallery_{work_id}_{charset}{color_tag}.mp4"
         out_path = _tmp_out_path(filename, root=tmp_dir)
         work_audio = None
         if original.get("audio_file"):
@@ -1951,7 +1964,7 @@ def gallery_download(work_id):
         content = render(seq, fmt)
 
     ext = "py" if fmt == "python" else "html"
-    filename = f"gallery_{work_id}_{charset}.{ext}"
+    filename = f"gallery_{work_id}_{charset}{color_tag}.{ext}"
     out_path = _tmp_out_path(filename, root=tmp_dir)
     Path(out_path).write_text(content, encoding="utf-8")
 

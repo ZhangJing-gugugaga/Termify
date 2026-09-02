@@ -134,6 +134,33 @@ def test_mono_mode_byte_identical_to_default():
                 == render_frame(scaled, charset, 4, 4, color_mode="mono"))
 
 
+def test_mono_braille_byte_identical_with_fg_bg():
+    # 审查指出的缺口：braille 单色路径（含 fg/bg 着色）必须与缺省字节一致
+    img = Image.new("RGB", (4, 8), (0, 0, 0))
+    for y in range(8):
+        for x in range(4):
+            if (x + y) % 2 == 0:
+                img.putpixel((x, y), (255, 0, 0))
+    scaled = scale_frame(img, 8, 16)
+    for fg, bg in [(None, None), ((0, 255, 65), None), ((255, 176, 0), (10, 14, 20))]:
+        assert (render_frame(scaled, "braille", 8, 16, fg_color=fg, bg_color=bg)
+                == render_frame(scaled, "braille", 8, 16, fg_color=fg,
+                                bg_color=bg, color_mode="mono"))
+
+
+def test_rgb_or_none_rejects_out_of_range():
+    from app import _rgb_or_none
+    assert _rgb_or_none([0, 0, 0]) == (0, 0, 0)
+    assert _rgb_or_none((255, 255, 255)) == (255, 255, 255)
+    assert _rgb_or_none("rgb(1,2,3)") == (1, 2, 3)
+    assert _rgb_or_none([256, 0, 0]) is None      # 越界
+    assert _rgb_or_none([0, -1, 0]) is None       # 负值
+    assert _rgb_or_none([1, 2]) is None           # 长度不足
+    assert _rgb_or_none(["a", 2, 3]) is None      # 非数字
+    assert _rgb_or_none("junk") is None           # 非 rgb() 字符串
+    assert _rgb_or_none(None) is None
+
+
 def test_invalid_color_mode_raises():
     with pytest.raises(ValueError, match="color_mode"):
         render_frame(_img(), "ascii", 4, 4, color_mode="bogus")
@@ -243,3 +270,26 @@ def test_api_cache_distinguishes_color_modes(client):
     # 再取一次 mono，命中缓存且仍是 mono（不被 source 覆盖）
     r3 = client.get(f"/api/preview/{task_id}?charset=ascii&width=8&height=4&color=mono")
     assert json.loads(r3.data)["frames"] == b1["frames"]
+
+
+def test_api_generate_artifact_names_carry_color_tag(client):
+    """source/source256 产物名带 _src/_src256 段，与 mono 互不覆盖。"""
+    import os
+    task_id = _upload(client)
+    r_mono = client.post("/api/generate", json={
+        "task_id": task_id, "charset": "ascii", "format": "html",
+        "width": 8, "height": 4})
+    r_src = client.post("/api/generate", json={
+        "task_id": task_id, "charset": "ascii", "format": "html",
+        "width": 8, "height": 4, "color": "source"})
+    r_256 = client.post("/api/generate", json={
+        "task_id": task_id, "charset": "ascii", "format": "html",
+        "width": 8, "height": 4, "color": "source256"})
+    assert all(r.status_code == 200 for r in (r_mono, r_src, r_256))
+    names = [json.loads(r.data)["download_url"] for r in (r_mono, r_src, r_256)]
+    assert names[0] == f"/api/download/{task_id}_ascii.html"
+    assert names[1] == f"/api/download/{task_id}_ascii_src.html"
+    assert names[2] == f"/api/download/{task_id}_ascii_src256.html"
+    assert len(set(names)) == 3
+    assert all(os.path.isfile(os.path.join("tmp", n.rsplit("/", 1)[-1]))
+               for n in names)

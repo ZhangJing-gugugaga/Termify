@@ -407,6 +407,7 @@
       if (animTerminal) animTerminal.classList.add("rendering");
       ensureTaskFrames(S.taskId).then(function (entry) {
         if (myId !== latestReq) return;
+        syncSourceAspect(entry);  // 真实素材比例到手 → 重推行高再渲染
         renderTaskFramesLocally(entry, charset, myId);
       }, function () {
         // 404 / 413 / 解码 / 网络失败 → 回退服务端 /api/preview（旧路径）
@@ -758,6 +759,7 @@
           if (!usable.length) throw new Error("frame decode failed");
           entry.bitmaps = usable;
           entry.interval = d.interval || 0.1;
+          entry.srcW = d.w; entry.srcH = d.h;  // 消费方按此重推行高
           S.srcW = d.w; S.srcH = d.h;  // 源帧原始尺寸 → 行高自动推导
           entry.state = "ok";
           // 估算常驻字节数并执行 FIFO 预算淘汰（绝不淘汰当前任务）
@@ -807,6 +809,21 @@
       lumCaches[key] = c;
     }
     return c;
+  }
+
+  /* selectFile 时 S.srcW/srcH 可能还是 0（首传）或上一个素材的旧值（多文件
+     切换），真实尺寸随 task-frames 异步到手——此处重推行高，保证首次渲染
+     与导出就用推导后的行数（宽度尊重用户已选列数，只重推行数）。 */
+  function syncSourceAspect(entry) {
+    if (!entry || !entry.srcW || !entry.srcH) return;
+    if (entry.srcW === S.srcW && entry.srcH === S.srcH) return;
+    S.srcW = entry.srcW;
+    S.srcH = entry.srcH;
+    S.height = rowsForCols(S.width);
+    var meta = byId("sizeMeta");
+    if (meta) {
+      meta.textContent = S.width + " × " + S.height + " · 行数按素材比例自动 / rows auto-fit to source";
+    }
   }
 
   function renderTaskFramesLocally(entry, charset, myReq) {
@@ -1580,9 +1597,18 @@
 
   /* ── 原色模式的 py 256 色兼容选项 ── */
   var q256Toggle = byId("q256Toggle");
-  if (q256Toggle) q256Toggle.addEventListener("change", function () {
-    S.colorDepth = q256Toggle.checked ? "256" : "truecolor";
-  });
+  if (q256Toggle) {
+    try {  // 色深偏好与配色一起持久化，刷新后导出色深不漂移
+      if (localStorage.getItem("termify_color_depth") === "256") {
+        q256Toggle.checked = true;
+        S.colorDepth = "256";
+      }
+    } catch (e) {}
+    q256Toggle.addEventListener("change", function () {
+      S.colorDepth = q256Toggle.checked ? "256" : "truecolor";
+      try { localStorage.setItem("termify_color_depth", S.colorDepth); } catch (e) {}
+    });
+  }
 
   // 恢复上次会话的配色偏好；默认「磷光绿」——预览与导出从第一帧起同色
   // （历史 bug：预览 chrome 绿而导出无色，根因即默认不进导出链路）。
