@@ -236,7 +236,104 @@ def _emit(char: str, fg, bg) -> str:
     return "".join(parts)
 
 
-def _render_ramp(img, width, height, fg, bg, chars):
+# ── 原色（source color）模式 ──
+# color_mode 语义：mono = 整帧单色 fg/bg（现状，缺省）；source = 逐字符取源
+# 像素 TrueColor；source256 = 逐字符取源像素并量化到 xterm-256（老终端兼容，
+# py 产物用）。blocks 字符集本身即原色，color_mode 对其无效。
+
+COLOR_MODES = ("mono", "source", "source256")
+
+# xterm-256 调色板：6×6×6 色立方（16-231）+ 24 级灰度（232-255）
+_Q256_LEVELS = (0, 95, 135, 175, 215, 255)
+_Q256_GRAYS = tuple(8 + 10 * i for i in range(24))
+
+
+def quantize_256(r: int, g: int, b: int) -> int:
+    """Map an RGB triple to the nearest xterm-256 palette index.
+
+    Compares the closest 6×6×6 cube colour against the closest gray level
+    by squared Euclidean distance so pure grays land on 232-255 instead of
+    the cube.
+    """
+    ri = min(range(6), key=lambda i: abs(_Q256_LEVELS[i] - r))
+    gi = min(range(6), key=lambda i: abs(_Q256_LEVELS[i] - g))
+    bi = min(range(6), key=lambda i: abs(_Q256_LEVELS[i] - b))
+    cr, cg, cb = _Q256_LEVELS[ri], _Q256_LEVELS[gi], _Q256_LEVELS[bi]
+    d_cube = (cr - r) ** 2 + (cg - g) ** 2 + (cb - b) ** 2
+    # 灰度候选只在输入本身接近灰色时才可能胜出；先算灰度距离再决定
+    best_gray = None
+    d_gray = None
+    if abs(r - g) + abs(g - b) + abs(r - b) <= 60:  # 近灰输入才考虑灰阶层
+        lum = round((r + g + b) / 3)
+        for i, gv in enumerate(_Q256_GRAYS):
+            d = (gv - r) ** 2 + (gv - g) ** 2 + (gv - b) ** 2
+            if d_gray is None or d < d_gray:
+                d_gray = d
+                best_gray = 232 + i
+    if best_gray is not None and d_gray < d_cube:
+        return best_gray
+    return 16 + 36 * ri + 6 * gi + bi
+
+
+def _rgb_bytes(img) -> tuple[bytes, int]:
+    """Raw RGB(A) byte buffer + per-pixel step (single tobytes() pass)."""
+    if img.mode == "RGBA":
+        return img.tobytes(), 4
+    if img.mode == "RGB":
+        return img.tobytes(), 3
+    return img.convert("RGB").tobytes(), 3
+
+
+# 暗部可见性地板：纯黑像素 fg=黑在黑底终端不可见（binary 的黑 █ 会被整体
+# 吞掉）。按色相等比放大亮度到 floor，保持颜色倾向。
+_SOURCE_LUM_FLOOR = 56
+
+
+def _boost_visible(rgb) -> tuple[int, int, int]:
+    lum = _luminance(*rgb)
+    if lum >= _SOURCE_LUM_FLOOR:
+        return rgb
+    if lum == 0:
+        return (_SOURCE_LUM_FLOOR, _SOURCE_LUM_FLOOR, _SOURCE_LUM_FLOOR)
+    k = _SOURCE_LUM_FLOOR / lum
+    return (min(255, round(rgb[0] * k)),
+            min(255, round(rgb[1] * k)),
+            min(255, round(rgb[2] * k)))
+
+
+def _fg_ansi_depth(rgb, depth: str) -> str:
+    if depth == "256":
+        return f"\x1b[38;5;{quantize_256(*rgb)}m"
+    return _ansi_fg(rgb)
+
+
+def _colorize_row(cells, buf, step, pos, width, depth) -> str:
+    """One row of chars colored per-cell from source pixels.
+
+    Adjacent same-colour cells share one SGR (run-length), spaces stay
+    bare (they are background), and the row ends with a reset only when a
+    colour was actually emitted.
+    """
+    parts = []
+    last = None
+    for x in range(width):
+        ch = cells[x]
+        if ch == " ":
+            parts.append(" ")
+            last = None
+            continue
+        o = (pos + x) * step
+        c = _boost_visible((buf[o], buf[o + 1], buf[o + 2]))
+        if c != last:
+            parts.append(_fg_ansi_depth(c, depth))
+            last = c
+        parts.append(ch)
+    if last is not None:
+        parts.append("\x1b[0m")
+    return "".join(parts)
+
+
+def _render_ramp(img, width, height, fg, bg, chars, color_mode="mono"):
     """Shared grayscale-ramp renderer (ascii / shades / custom).
 
     ``chars`` is ordered dense -> sparse (black -> white); the adaptive LUT
@@ -252,6 +349,16 @@ def _render_ramp(img, width, height, fg, bg, chars):
         cell = [chars[(n - 1) - lut[g] * (n - 1) // 255] for g in range(256)]
     else:
         cell = [chars[lut[g] * (n - 1) // 255] for g in range(256)]
+    if color_mode in ("source", "source256"):
+        depth = "256" if color_mode == "source256" else "truecolor"
+        buf, step = _rgb_bytes(img)
+        lines = []
+        pos = 0
+        for _y in range(height):
+            cells = [cell[v] for v in lums[pos:pos + width]]
+            lines.append(_colorize_row(cells, buf, step, pos, width, depth))
+            pos += width
+        return lines
     colorize = fg is not None or bg is not None
     lines = []
     pos = 0
@@ -266,12 +373,14 @@ def _render_ramp(img, width, height, fg, bg, chars):
     return lines
 
 
-def _render_ascii(img, width, height, fg=None, bg=None):
-    return _render_ramp(img, width, height, fg, bg, CHARSETS["ascii"]["chars"])
+def _render_ascii(img, width, height, fg=None, bg=None, color_mode="mono"):
+    return _render_ramp(img, width, height, fg, bg, CHARSETS["ascii"]["chars"],
+                        color_mode)
 
 
-def _render_shades(img, width, height, fg=None, bg=None):
-    return _render_ramp(img, width, height, fg, bg, CHARSETS["shades"]["chars"])
+def _render_shades(img, width, height, fg=None, bg=None, color_mode="mono"):
+    return _render_ramp(img, width, height, fg, bg, CHARSETS["shades"]["chars"],
+                        color_mode)
 
 
 def _render_blocks(img, width, height):
@@ -338,7 +447,7 @@ def _braille_coord_table(src_w: int, src_h: int, out_w: int, out_h: int) -> list
     return table
 
 
-def _render_braille(img, width, height, fg=None, bg=None):
+def _render_braille(img, width, height, fg=None, bg=None, color_mode="mono"):
     src_w, src_h = img.size
     cell_w, cell_h = 2, 4
     out_w = max(1, width // cell_w)
@@ -348,12 +457,18 @@ def _render_braille(img, width, height, fg=None, bg=None):
     threshold, minority_is_bright = _otsu_threshold(lums)
     coord_table = _braille_coord_table(src_w, src_h, out_w, out_h)
 
+    source = color_mode in ("source", "source256")
+    if source:
+        depth = "256" if color_mode == "source256" else "truecolor"
+        buf, step = _rgb_bytes(img)
+
     lines = []
     pos = 0
     for _by in range(out_h):
         row = []
         for _bx in range(out_w):
             bits = 0
+            sr = sg = sb = nlit = 0
             for offset, mask in coord_table[pos:pos + 8]:
                 lum = lums[offset]
                 if minority_is_bright:
@@ -364,15 +479,27 @@ def _render_braille(img, width, height, fg=None, bg=None):
                     # Subject is dark → dots for dark pixels
                     if lum < threshold:
                         bits |= mask
+                if source and bits & mask:
+                    o = offset * step
+                    sr += buf[o]
+                    sg += buf[o + 1]
+                    sb += buf[o + 2]
+                    nlit += 1
             pos += 8
-            row.append(_emit(chr(0x2800 + bits), fg, bg))
-        if fg is not None or bg is not None:
+            if source and bits:
+                c = _boost_visible((sr // nlit, sg // nlit, sb // nlit))
+                row.append(_fg_ansi_depth(c, depth) + chr(0x2800 + bits))
+            else:
+                row.append(_emit(chr(0x2800 + bits), fg, bg))
+        if (fg is not None or bg is not None) and not source:
+            row.append("\x1b[0m")
+        elif source and any(len(t) > 1 for t in row):
             row.append("\x1b[0m")
         lines.append("".join(row))
     return lines
 
 
-def _render_geometric(img, width, height, fg=None, bg=None):
+def _render_geometric(img, width, height, fg=None, bg=None, color_mode="mono"):
     chars = CHARSETS["geometric"]["chars"]
     n = len(chars)
     # Use direct linear luminance → index mapping (NOT adaptive LUT).
@@ -387,6 +514,16 @@ def _render_geometric(img, width, height, fg=None, bg=None):
         cell = [chars[(n - 1) - g * (n - 1) // 255] for g in range(256)]
     else:
         cell = [chars[g * (n - 1) // 255] for g in range(256)]
+    if color_mode in ("source", "source256"):
+        depth = "256" if color_mode == "source256" else "truecolor"
+        buf, step = _rgb_bytes(img)
+        lines = []
+        pos = 0
+        for _y in range(height):
+            cells = [cell[v] for v in lums[pos:pos + width]]
+            lines.append(_colorize_row(cells, buf, step, pos, width, depth))
+            pos += width
+        return lines
     colorize = fg is not None or bg is not None
     lines = []
     pos = 0
@@ -401,17 +538,26 @@ def _render_geometric(img, width, height, fg=None, bg=None):
     return lines
 
 
-def _render_binary(img, width, height, fg=None, bg=None):
+def _render_binary(img, width, height, fg=None, bg=None, color_mode="mono"):
     # Otsu threshold + minority-is-subject (same logic as braille),
     # single luminance pass.
     lums = _luminance_array(img)
     threshold, minority_is_bright = _otsu_threshold(lums)
-    colorize = fg is not None or bg is not None
     if minority_is_bright:
         cell = ["█" if g >= threshold else " " for g in range(256)]
     else:
         cell = ["█" if g < threshold else " " for g in range(256)]
-
+    if color_mode in ("source", "source256"):
+        depth = "256" if color_mode == "source256" else "truecolor"
+        buf, step = _rgb_bytes(img)
+        lines = []
+        pos = 0
+        for _y in range(height):
+            cells = [cell[v] for v in lums[pos:pos + width]]
+            lines.append(_colorize_row(cells, buf, step, pos, width, depth))
+            pos += width
+        return lines
+    colorize = fg is not None or bg is not None
     lines = []
     pos = 0
     for _y in range(height):
@@ -436,7 +582,7 @@ _RENDERERS = {
 
 
 def render_frame(img, charset_name, width, height, fg_color=None, bg_color=None,
-                 charset_ramp=None):
+                 charset_ramp=None, color_mode="mono"):
     """Map a PIL.Image (already scaled to width x height) to text lines.
 
     fg_color / bg_color are (R, G, B) tuples or None. When provided, non-block
@@ -444,7 +590,14 @@ def render_frame(img, charset_name, width, height, fg_color=None, bg_color=None,
     the default look. blocks ignores these (pixel colour wins).
     charset_ramp is the user-supplied character sequence, required when
     charset_name is "custom" (ignored otherwise).
+    color_mode: "mono" (default, fg_color/bg_color as above), "source"
+    (per-character TrueColor from source pixels) or "source256" (same but
+    quantized to xterm-256). Ignored by blocks (already truecolor).
     """
+    if color_mode not in COLOR_MODES:
+        raise ValueError(
+            f"Unknown color_mode: {color_mode!r} (expected one of {list(COLOR_MODES)})"
+        )
     if charset_name not in CHARSETS:
         raise ValueError(
             f"Unknown charset: {charset_name!r} (expected one of {sorted(CHARSETS)})"
@@ -457,5 +610,7 @@ def render_frame(img, charset_name, width, height, fg_color=None, bg_color=None,
         return _render_blocks(img, width, height)
     if charset_name == "custom":
         ramp = sanitize_ramp(charset_ramp or "")
-        return _render_ramp(img, width, height, fg_color, bg_color, ramp)
-    return _RENDERERS[charset_name](img, width, height, fg_color, bg_color)
+        return _render_ramp(img, width, height, fg_color, bg_color, ramp,
+                            color_mode)
+    return _RENDERERS[charset_name](img, width, height, fg_color, bg_color,
+                                    color_mode)

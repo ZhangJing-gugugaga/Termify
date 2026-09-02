@@ -7,7 +7,9 @@
    - TermifyRender.renderFrames(sources, charset, width, height, opts, onProgress)
        -> Promise<string[][]>  ANSI 帧数组；分块异步让出主线程
        sources: 可绘制对象数组（canvas / ImageBitmap / img）
-       opts: { ramp(自定义字符梯), fg, bg, cache(跨调用亮度缓存), cacheBudget(字节上限) }
+       opts: { ramp(自定义字符梯), fg, bg, colorMode("source"=逐字符取源像素原色,
+         传入时 fg/bg 被忽略；缺省 mono=整帧单色), cache(跨调用亮度缓存),
+         cacheBudget(字节上限) }
        onProgress(done, total)
    - TermifyRender.renderRaw(data, w, h, charset, opts) -> string[]
        对「已缩放」的原始 RGBA 像素渲染单帧 ANSI（renderFrames 每帧的核心路径），
@@ -132,8 +134,47 @@
   function ansiFg(rgb) { return ESC + "[38;2;" + rgb[0] + ";" + rgb[1] + ";" + rgb[2] + "m"; }
   function ansiBg(rgb) { return ESC + "[48;2;" + rgb[0] + ";" + rgb[1] + ";" + rgb[2] + "m"; }
 
-  /* ── 各字符集渲染（输入：行主序亮度数组 + 源宽高） ── */
-  function renderRamp(lums, w, h, chars, fg, bg) {
+  /* ── 原色（source color）模式 ──
+     镜像 Python charset.py：每字符取源像素色为前景，同色 run-length 合并，
+     空格不上色，行尾 reset；暗部提升地板 56 防纯黑被黑底终端吞没。 */
+  var SOURCE_LUM_FLOOR = 56;
+
+  function boostVisible(rgb) {
+    var lum = pyRound(0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]);
+    if (lum >= SOURCE_LUM_FLOOR) return rgb;
+    if (lum === 0) return [SOURCE_LUM_FLOOR, SOURCE_LUM_FLOOR, SOURCE_LUM_FLOOR];
+    var k = SOURCE_LUM_FLOOR / lum;
+    return [Math.min(255, pyRound(rgb[0] * k)),
+            Math.min(255, pyRound(rgb[1] * k)),
+            Math.min(255, pyRound(rgb[2] * k))];
+  }
+
+  function assembleSource(data, lums, w, h, cell) {
+    var lines = [];
+    for (var y = 0; y < h; y++) {
+      var row = "";
+      var last = null;
+      var base = y * w;
+      for (var x = 0; x < w; x++) {
+        var ch = cell[lums[base + x]];
+        if (ch === " ") { row += " "; last = null; continue; }
+        var p = (base + x) * 4;
+        var c = boostVisible([data[p], data[p + 1], data[p + 2]]);
+        if (last === null || c[0] !== last[0] || c[1] !== last[1] || c[2] !== last[2]) {
+          row += ansiFg(c);
+          last = c;
+        }
+        row += ch;
+      }
+      if (last !== null) row += ESC + "[0m";
+      lines.push(row);
+    }
+    return lines;
+  }
+
+  /* ── 各字符集渲染（输入：行主序亮度数组 + 源宽高） ──
+     data = 已缩放 RGBA 像素：传入时走原色分支（逐字符源色），fg/bg 被忽略 */
+  function renderRamp(lums, w, h, chars, fg, bg, data) {
     var n = chars.length;
     var lut = adaptiveLut(lums);
     var mib = otsu(lums)[1];
@@ -144,20 +185,22 @@
                     : Math.floor(gray * (n - 1) / 255);
       cell[g] = chars[idx];
     }
+    if (data) return assembleSource(data, lums, w, h, cell);
     return assemble(lums, w, h, cell, fg, bg);
   }
 
-  function renderBinary(lums, w, h, fg, bg) {
+  function renderBinary(lums, w, h, fg, bg, data) {
     var ots = otsu(lums);
     var threshold = ots[0], mib = ots[1];
     var cell = new Array(256);
     for (var g = 0; g < 256; g++) {
       cell[g] = mib ? (g >= threshold ? "█" : " ") : (g < threshold ? "█" : " ");
     }
+    if (data) return assembleSource(data, lums, w, h, cell);
     return assemble(lums, w, h, cell, fg, bg);
   }
 
-  function renderGeometric(lums, w, h, fg, bg) {
+  function renderGeometric(lums, w, h, fg, bg, data) {
     var chars = RAMP_ARRAYS.geometric;
     var n = chars.length;
     var mib = otsu(lums)[1];
@@ -167,6 +210,7 @@
                     : Math.floor(g * (n - 1) / 255);
       cell[g] = chars[idx];
     }
+    if (data) return assembleSource(data, lums, w, h, cell);
     return assemble(lums, w, h, cell, fg, bg);
   }
 
@@ -211,7 +255,7 @@
     return { table: table, outW: outW, outH: outH };
   }
 
-  function renderBraille(lums, srcW, srcH, fg, bg) {
+  function renderBraille(lums, srcW, srcH, fg, bg, data) {
     var bc = brailleCoords(srcW, srcH);
     var table = bc.table;
     var ots = otsu(lums);
@@ -220,20 +264,36 @@
     var pos = 0;
     for (var by = 0; by < bc.outH; by++) {
       var row = "";
+      var emitted = false;
       for (var bx = 0; bx < bc.outW; bx++) {
         var bits = 0;
+        var sr = 0, sg = 0, sb = 0, nlit = 0;
         for (var d = 0; d < 8; d++) {
-          var lum = lums[table[pos + d][0]];
+          var pix = table[pos + d][0];
+          var lum = lums[pix];
           var mask = table[pos + d][1];
-          if (mib ? lum >= threshold : lum < threshold) bits |= mask;
+          if (mib ? lum >= threshold : lum < threshold) {
+            bits |= mask;
+            if (data) {
+              var p = pix * 4;
+              sr += data[p]; sg += data[p + 1]; sb += data[p + 2];
+              nlit++;
+            }
+          }
         }
         pos += 8;
         var ch = String.fromCharCode(0x2800 + bits);
-        if (fg) row += ansiFg(fg);
-        if (bg) row += ansiBg(bg);
-        row += ch;
+        if (data && bits) {
+          var c = boostVisible([Math.floor(sr / nlit), Math.floor(sg / nlit), Math.floor(sb / nlit)]);
+          row += ansiFg(c) + ch;
+          emitted = true;
+        } else {
+          if (fg) row += ansiFg(fg);
+          if (bg) row += ansiBg(bg);
+          row += ch;
+        }
       }
-      if (fg || bg) row += ESC + "[0m";
+      if ((fg || bg) || emitted) row += ESC + "[0m";
       lines.push(row);
     }
     return lines;
@@ -303,20 +363,21 @@
     opts = opts || {};
     var fg = opts.fg || null;
     var bg = opts.bg || null;
+    var src = opts.colorMode === "source" ? data : null;
     if (charset === "blocks") {
       return renderBlocks(data, w, h);
     }
     var lums = luminance(data);
-    if (charset === "ascii") return renderRamp(lums, w, h, RAMP_ARRAYS.ascii, fg, bg);
-    if (charset === "shades") return renderRamp(lums, w, h, RAMP_ARRAYS.shades, fg, bg);
+    if (charset === "ascii") return renderRamp(lums, w, h, RAMP_ARRAYS.ascii, fg, bg, src);
+    if (charset === "shades") return renderRamp(lums, w, h, RAMP_ARRAYS.shades, fg, bg, src);
     if (charset === "custom") {
       var ramp = sanitizeRamp(opts.ramp);
-      return renderRamp(lums, w, h, ramp.length ? ramp : RAMP_ARRAYS.ascii, fg, bg);
+      return renderRamp(lums, w, h, ramp.length ? ramp : RAMP_ARRAYS.ascii, fg, bg, src);
     }
-    if (charset === "binary") return renderBinary(lums, w, h, fg, bg);
-    if (charset === "geometric") return renderGeometric(lums, w, h, fg, bg);
-    if (charset === "braille") return renderBraille(lums, w, h, fg, bg);
-    return renderRamp(lums, w, h, RAMP_ARRAYS.ascii, fg, bg);
+    if (charset === "binary") return renderBinary(lums, w, h, fg, bg, src);
+    if (charset === "geometric") return renderGeometric(lums, w, h, fg, bg, src);
+    if (charset === "braille") return renderBraille(lums, w, h, fg, bg, src);
+    return renderRamp(lums, w, h, RAMP_ARRAYS.ascii, fg, bg, src);
   }
 
   /* ── 缓存存取：预算内按帧缓存亮度（非 blocks）或 RGBA（blocks），
@@ -339,6 +400,7 @@
     opts = opts || {};
     var fg = opts.fg || null;
     var bg = opts.bg || null;
+    var sourceMode = opts.colorMode === "source";
     var cache = opts.cache || null;
     var dims = scaleDims(charset, width, height);
     var work = document.createElement("canvas");
@@ -354,9 +416,11 @@
 
     // 等比缩放 + 黑底居中画进工作画布（镜像 Python scale_frame，绝不拉伸），
     // 返回原始 RGBA；命中缓存时跳过 drawImage + getImageData。
+    // blocks 与原色模式都缓存 RGBA（原色下各风格互切共享同一份像素）。
     function scaledData(i) {
       var key = "r:" + i;
-      var hit = charset === "blocks" ? cacheGet(cache, key) : null;
+      var cacheData = charset === "blocks" || sourceMode;
+      var hit = cacheData ? cacheGet(cache, key) : null;
       if (hit) return hit;
       var srcW = sources[i].width || dims.w;
       var srcH = sources[i].height || dims.h;
@@ -367,7 +431,7 @@
       wctx.imageSmoothingQuality = "high";
       wctx.drawImage(sources[i], fit.x, fit.y, fit.w, fit.h);
       var idata = wctx.getImageData(0, 0, dims.w, dims.h);
-      if (charset === "blocks") cachePut(cache, key, idata.data, dims.w * dims.h * 4);
+      if (cacheData) cachePut(cache, key, idata.data, dims.w * dims.h * 4);
       return idata.data;
     }
 
@@ -383,14 +447,15 @@
 
     function renderOne(i) {
       if (charset === "blocks") return renderBlocks(scaledData(i), dims.w, dims.h);
+      var data = sourceMode ? scaledData(i) : null;
       var lums = lumsFor(i);
-      if (charset === "ascii") return renderRamp(lums, dims.w, dims.h, RAMP_ARRAYS.ascii, fg, bg);
-      if (charset === "shades") return renderRamp(lums, dims.w, dims.h, RAMP_ARRAYS.shades, fg, bg);
-      if (charset === "custom") return renderRamp(lums, dims.w, dims.h, customRamp, fg, bg);
-      if (charset === "binary") return renderBinary(lums, dims.w, dims.h, fg, bg);
-      if (charset === "geometric") return renderGeometric(lums, dims.w, dims.h, fg, bg);
-      if (charset === "braille") return renderBraille(lums, dims.w, dims.h, fg, bg);
-      return renderRamp(lums, dims.w, dims.h, RAMP_ARRAYS.ascii, fg, bg);
+      if (charset === "ascii") return renderRamp(lums, dims.w, dims.h, RAMP_ARRAYS.ascii, fg, bg, data);
+      if (charset === "shades") return renderRamp(lums, dims.w, dims.h, RAMP_ARRAYS.shades, fg, bg, data);
+      if (charset === "custom") return renderRamp(lums, dims.w, dims.h, customRamp, fg, bg, data);
+      if (charset === "binary") return renderBinary(lums, dims.w, dims.h, fg, bg, data);
+      if (charset === "geometric") return renderGeometric(lums, dims.w, dims.h, fg, bg, data);
+      if (charset === "braille") return renderBraille(lums, dims.w, dims.h, fg, bg, data);
+      return renderRamp(lums, dims.w, dims.h, RAMP_ARRAYS.ascii, fg, bg, data);
     }
 
     return new Promise(function (resolve, reject) {

@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Termify — 万物皆可终端</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260902b">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260902b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260902c">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260902c">
 </head>
 <body>
 <div id="toast"></div>
@@ -315,15 +315,48 @@
                         </div>
                     </div>
 
-                    <div class="output-card" id="terminalSizeCard">
-                        <div class="output-card-title">终端尺寸</div>
-                        <div class="size-options">
-                            <button class="size-btn">40×20</button>
-                            <button class="size-btn selected">80×24</button>
-                            <button class="size-btn">120×36</button>
-                            <button class="size-btn">160×48 <small>高清</small></button>
-                            <button class="size-btn">200×60 <small>超清</small></button>
+                    <div class="output-card" id="paletteCard">
+                        <div class="output-card-title">配色 / Color scheme</div>
+                        <div class="palette-row">
+                            <button class="palette-btn" data-palette="mono" title="白字黑底 / White on black">黑白</button>
+                            <button class="palette-btn active" data-palette="green" title="磷光绿 / Phosphor green">磷光绿</button>
+                            <button class="palette-btn" data-palette="amber" title="琥珀橘 / Amber orange">琥珀橘</button>
+                            <button class="palette-btn" data-palette="ice" title="冰蓝 / Ice blue">冰蓝</button>
+                            <button class="palette-btn" data-palette="source" title="逐字符取源像素真彩色 / Per-character truecolor from source">原色</button>
+                            <button class="palette-btn" data-palette="custom" title="自选前景/背景色 / Pick fg/bg">自定义</button>
                         </div>
+                        <div id="customColorRow" class="color-picker-row" hidden>
+                            <label class="color-picker-label">前景 FG
+                                <input type="color" id="fgColorPicker" value="#ffffff" title="字符颜色 / Character color">
+                            </label>
+                            <label class="color-picker-label">背景 BG
+                                <input type="color" id="bgColorPicker" value="#0a0e14" title="背景颜色 / Background color">
+                            </label>
+                            <button class="color-reset-btn" id="colorResetBtn" title="恢复默认 / Reset">↺</button>
+                        </div>
+                        <label class="q256-row" id="q256Row" hidden>
+                            <input type="checkbox" id="q256Toggle">
+                            <span>py 用 256 色兼容老终端（色彩略降） / py in 256-color for legacy terminals (slight color loss)</span>
+                        </label>
+                        <div class="tweak-hint">配色同时作用于预览窗口与 py / HTML / MP4 导出 / The scheme drives the preview window and py / HTML / MP4 exports alike</div>
+                    </div>
+
+                    <div class="output-card" id="terminalSizeCard">
+                        <div class="output-card-title">终端尺寸 / Terminal size</div>
+                        <div class="size-options">
+                            <button class="size-btn" data-cols="40">40</button>
+                            <button class="size-btn selected" data-cols="80">80</button>
+                            <button class="size-btn" data-cols="120">120</button>
+                            <button class="size-btn" data-cols="160" title="高清 / HD">160</button>
+                            <button class="size-btn" data-cols="200" title="超清 / Ultra">200</button>
+                        </div>
+                        <div class="size-slider-row">
+                            <input type="range" id="sizeSlider" min="20" max="400" step="2" value="80"
+                                   aria-label="列数 / columns" title="拖动选择列数 / Drag to choose columns">
+                            <span class="size-slider-val"><span id="sizeColsVal">80</span> 列 <small>/ cols</small></span>
+                        </div>
+                        <div class="size-meta" id="sizeMeta">80 × 24 · 行数按素材比例自动 / rows auto-fit to source</div>
+                        <div class="size-warn" id="sizeWarn" hidden>⚡ 列数 &gt; 320：预览渲染变慢、导出文件增大 / Above 320 columns: slower preview rendering, larger export files</div>
                     </div>
 
                     <div class="output-card" id="musicCard" style="display:none;">
@@ -349,7 +382,7 @@
 
                     <button class="gallery-share-btn" id="shareToGalleryBtn" style="display:none;">分享到画廊 / Share to gallery</button>
 
-                    <div class="tweak-hint" style="margin-top:10px;">⚡ 上传后 7 种风格 × 5 档尺寸的切换全部在浏览器本地即时完成，无需等待服务器 / After upload, all 7 styles × 5 terminal sizes switch instantly in your browser — no server round-trip</div>
+                    <div class="tweak-hint" style="margin-top:10px;">⚡ 上传后 7 种风格 × 20–400 列任意尺寸的切换全部在浏览器本地即时完成，无需等待服务器 / After upload, all 7 styles × any size from 20–400 columns switch instantly in your browser — no server round-trip</div>
                 </div>
 
             </div>
@@ -458,49 +491,12 @@
             </div>
         </div>
         <div class="tweak-group">
-            <div class="tweak-label">主题色</div>
-            <div class="tweak-options">
-                <button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button>
-                <button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button>
-                <button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button>
-            </div>
-        </div>
-        <div class="tweak-group">
-            <div class="tweak-label">配色预设</div>
-            <div class="palette-grid">
-                <button class="palette-swatch" data-fg="#33ff66" data-bg="#0c1210" title="磷光绿" style="background:#0c1210;color:#33ff66">Aa</button>
-                <button class="palette-swatch" data-fg="#ffb000" data-bg="#1a120a" title="琥珀" style="background:#1a120a;color:#ffb000">Aa</button>
-                <button class="palette-swatch" data-fg="#00ff41" data-bg="#000000" title="Matrix" style="background:#000000;color:#00ff41">Aa</button>
-                <button class="palette-swatch" data-fg="#7869c4" data-bg="#40318d" title="C64" style="background:#40318d;color:#7869c4">Aa</button>
-                <button class="palette-swatch" data-fg="#ff71ce" data-bg="#190f2e" title="蒸汽波" style="background:#190f2e;color:#ff71ce">Aa</button>
-                <button class="palette-swatch" data-fg="#88c0d0" data-bg="#2e3440" title="Nord" style="background:#2e3440;color:#88c0d0">Aa</button>
-                <button class="palette-swatch" data-fg="#bd93f9" data-bg="#282a36" title="Dracula" style="background:#282a36;color:#bd93f9">Aa</button>
-                <button class="palette-swatch" data-fg="#00d1ff" data-bg="#04121f" title="深海" style="background:#04121f;color:#00d1ff">Aa</button>
-                <button class="palette-swatch" data-fg="#657b83" data-bg="#fdf6e3" title="Solarized 亮" style="background:#fdf6e3;color:#657b83">Aa</button>
-                <button class="palette-swatch" data-fg="#1a1a1a" data-bg="#f5f0e6" title="纸墨" style="background:#f5f0e6;color:#1a1a1a">Aa</button>
-            </div>
-            <div class="tweak-hint">点选后自动填入前景/背景色（对非 blocks 风格生效）</div>
-        </div>
-        <div class="tweak-group">
             <div class="tweak-label">自定义字符集（密 → 疏）</div>
             <div class="custom-ramp-row">
                 <input type="text" id="customRampInput" class="custom-ramp-input" maxlength="128" placeholder="如: @%#*+=-:.  或  █▓▒░ ">
                 <button class="tweak-opt" id="customRampApply">应用</button>
             </div>
-            <div class="tweak-hint">应用后点击左侧"自定义字符"风格卡片预览</div>
-        </div>
-        <div class="tweak-group">
-            <div class="tweak-label">前景色 / 背景色</div>
-            <div class="color-picker-row">
-                <label class="color-picker-label">前景
-                    <input type="color" id="fgColorPicker" value="#00ff41" title="字符颜色">
-                </label>
-                <label class="color-picker-label">背景
-                    <input type="color" id="bgColorPicker" value="#0a0e14" title="背景颜色">
-                </label>
-                <button class="color-reset-btn" id="colorResetBtn" title="恢复默认 (绿底黑字)">↺</button>
-            </div>
-            <div class="tweak-hint">提示: 仅对非 blocks 风格生效；默认 = 纯文本</div>
+            <div class="tweak-hint">应用后点击左侧"自定义字符"风格卡片预览；前景/背景色在右侧「配色」面板 / Custom ramp lives here; fg/bg colors moved to the Color scheme panel</div>
         </div>
     </div>
 
@@ -594,23 +590,7 @@
             });
         });
 
-        // Tweaks: theme color
-        document.querySelectorAll('[data-tweak^="theme-"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('[data-tweak^="theme-"]').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                const theme = btn.dataset.tweak.replace('theme-', '');
-                const colors = {
-                    green: { main: '#00ff41', dim: '#00cc33', glow: 'rgba(0,255,65,0.15)' },
-                    amber: { main: '#ffb000', dim: '#cc8d00', glow: 'rgba(255,176,0,0.12)' },
-                    cyan:  { main: '#00d4ff', dim: '#00a8cc', glow: 'rgba(0,212,255,0.12)' }
-                };
-                const c = colors[theme];
-                document.documentElement.style.setProperty('--green', c.main);
-                document.documentElement.style.setProperty('--green-dim', c.dim);
-                document.documentElement.style.setProperty('--green-glow', c.glow);
-            });
-        });
+        // 主题色选择已迁移至输出面板「配色 / Color scheme」（app.js applyPalette）
 
         // ═══════════ Progress bar animation（秒制匀速假演示） ═══════════
         const progressFill = document.querySelector('.progress-fill');
@@ -627,8 +607,8 @@
         }
         requestAnimationFrame(demoTick);
     </script>
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260902b"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260902b" defer></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260902c"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260902c" defer></script>
 
     <!-- Termify 自定义弹窗（替代浏览器原生 alert/confirm） -->
     <div class="termify-modal" id="termifyModal" hidden>

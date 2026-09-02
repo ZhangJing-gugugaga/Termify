@@ -113,8 +113,30 @@ def _apply_sgr(codes: str, fg, bg):
                 except ValueError:
                     pass
                 k += 4
+        elif t == "38" and k + 1 < len(toks) and toks[k + 1] == "5":
+            # xterm-256 前景（source256 导出）→ 查调色板转 RGB
+            if k + 2 < len(toks) and toks[k + 2].isdigit():
+                fg = _xterm256_rgb(int(toks[k + 2]))
+            k += 2
+        elif t == "48" and k + 1 < len(toks) and toks[k + 1] == "5":
+            if k + 2 < len(toks) and toks[k + 2].isdigit():
+                bg = _xterm256_rgb(int(toks[k + 2]))
+            k += 2
         k += 1
     return fg, bg
+
+
+# xterm-256 palette: 6×6×6 cube (16-231) + 24 gray levels (232-255).
+_Q256_LEVELS = (0, 95, 135, 175, 215, 255)
+
+
+def _xterm256_rgb(idx: int) -> tuple[int, int, int]:
+    idx = max(0, min(255, idx))
+    if idx >= 232:
+        g = 8 + (idx - 232) * 10
+        return (g, g, g)
+    n = idx - 16
+    return (_Q256_LEVELS[n // 36], _Q256_LEVELS[(n // 6) % 6], _Q256_LEVELS[n % 6])
 
 
 def _measure_cell(font) -> tuple[int, int]:

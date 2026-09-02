@@ -4,6 +4,9 @@
     taskId: null, frames: [], htmlFrames: [], interval: 0.1,
     charset: "ascii", totalFrames: 0, width: 80, height: 24,
     wasPlaying: false, fg: null, bg: null, ramp: "",
+    colorMode: "mono",  // mono | source（原色：逐字符取源像素真彩）
+    colorDepth: "truecolor",  // 原色导出深度：truecolor | 256（老终端兼容）
+    srcW: 0, srcH: 0,   // 素材原始宽高（分辨率滑杆行高自动推导用）
     canvasFrames: [], canvasEl: null, canvasCtx: null,
     fileList: [], selIdx: 0, sourceFile: null,
     musicFile: null, musicUploadedFor: null  // T25 背景音乐
@@ -25,6 +28,21 @@
   function byId(id) { return document.getElementById(id); }
   function qa(s) { return document.querySelectorAll(s); }
   var toastTimer = null;
+
+  /* ── xterm-256 调色板索引 → RGB（16-231 色立方 + 232-255 灰阶），
+        供预览解析服务端 source256 回退帧的 38;5/48;5 SGR ── */
+  var Q256_LEVELS = [0, 95, 135, 175, 215, 255];
+  function xterm256Rgb(idx) {
+    idx = Math.max(0, Math.min(255, idx | 0));
+    if (idx >= 232) {
+      var g = 8 + (idx - 232) * 10;
+      return [g, g, g];
+    }
+    var n = idx - 16;
+    return [Q256_LEVELS[Math.floor(n / 36)],
+            Q256_LEVELS[Math.floor(n / 6) % 6],
+            Q256_LEVELS[n % 6]];
+  }
 
   /* ── ANSI → HTML ── */
   function ansiToHtml(text) {
@@ -57,6 +75,12 @@
           var p = inner.split(";"); fg = "rgb(" + p[2] + "," + p[3] + "," + p[4] + ")";
         } else if (inner.indexOf("48;2;") === 0) {
           var p = inner.split(";"); bg = "rgb(" + p[2] + "," + p[3] + "," + p[4] + ")";
+        } else if (inner.indexOf("38;5;") === 0) {
+          var p = inner.split(";"); var cf = xterm256Rgb(parseInt(p[2], 10));
+          fg = "rgb(" + cf[0] + "," + cf[1] + "," + cf[2] + ")";
+        } else if (inner.indexOf("48;5;") === 0) {
+          var p = inner.split(";"); var cb = xterm256Rgb(parseInt(p[2], 10));
+          bg = "rgb(" + cb[0] + "," + cb[1] + "," + cb[2] + ")";
         }
         if (fg !== bufFg || bg !== bufBg) { flush(); bufFg = fg; bufBg = bg; }
         continue;
@@ -383,6 +407,7 @@
       if (animTerminal) animTerminal.classList.add("rendering");
       ensureTaskFrames(S.taskId).then(function (entry) {
         if (myId !== latestReq) return;
+        syncSourceAspect(entry);  // 真实素材比例到手 → 重推行高再渲染
         renderTaskFramesLocally(entry, charset, myId);
       }, function () {
         // 404 / 413 / 解码 / 网络失败 → 回退服务端 /api/preview（旧路径）
@@ -400,6 +425,7 @@
       + "?charset=" + charset
       + "&width=" + S.width + "&height=" + S.height
       + colorParams();
+    if (S.colorMode === "source") url += "&color=" + S.colorMode;
     if (charset === "custom") url += "&chars=" + encodeURIComponent(S.ramp);
     // 渲染中状态：大尺寸/长视频首切需要数秒，让等待可见
     if (animTerminal) animTerminal.classList.add("rendering");
@@ -446,6 +472,7 @@
     S.charset = f.charset || "ascii";
     S.width = f.width || 80;
     S.height = f.height || 24;
+    applyColumns(S.width, false);  // 同步滑杆/行数 UI（不重渲染）
     S.totalFrames = f.frames_count;
     S.wasPlaying = true;
     markSelected(".style-card", '[data-style="' + S.charset + '"]');
@@ -631,6 +658,9 @@
       bitmaps: bitmaps, interval: interval, filename: file.name,
       file: file, local: true, id: "local:" + localSeq
     };
+    if (bitmaps.length && bitmaps[0].width) {
+      S.srcW = bitmaps[0].width; S.srcH = bitmaps[0].height;
+    }
     var vf = {
       task_id: lv.id, filename: file.name,
       frames_count: bitmaps.length, charset: "ascii", width: 80, height: 24,
@@ -647,12 +677,19 @@
   }
 
   /* ── T23 JS 渲染已迁移至 static/js/termify-render.js（与画廊作品页共用） ── */
+  // 渲染入参：原色模式下 fg/bg 被忽略（与服务端 color=source 语义一致）
+  function renderOpts(width, height) {
+    var o = { ramp: S.ramp, fg: S.fg, bg: S.bg,
+              cache: lumCacheFor(S.taskId || "local", width, height) };
+    if (S.colorMode === "source") { o.colorMode = "source"; o.fg = null; o.bg = null; }
+    return o;
+  }
+
   function localRenderFrames(charset, width, height, myReq) {
     var lv = S.localVideo;
     if (!lv || !lv.bitmaps.length) return Promise.resolve(null);
     return TermifyRender.renderFrames(lv.bitmaps, charset, width, height,
-      { ramp: S.ramp, fg: S.fg, bg: S.bg,
-        cache: lumCacheFor(S.taskId || "local", width, height) },
+      renderOpts(width, height),
       function (done, total) {
         if (done % 60 === 0 && animTerminal) {
           animTerminal.dataset.renderPct = Math.round(done / total * 100) + "%";
@@ -722,6 +759,8 @@
           if (!usable.length) throw new Error("frame decode failed");
           entry.bitmaps = usable;
           entry.interval = d.interval || 0.1;
+          entry.srcW = d.w; entry.srcH = d.h;  // 消费方按此重推行高
+          S.srcW = d.w; S.srcH = d.h;  // 源帧原始尺寸 → 行高自动推导
           entry.state = "ok";
           // 估算常驻字节数并执行 FIFO 预算淘汰（绝不淘汰当前任务）
           entry.bytes = usable.length * d.w * d.h * 4;
@@ -772,11 +811,25 @@
     return c;
   }
 
+  /* selectFile 时 S.srcW/srcH 可能还是 0（首传）或上一个素材的旧值（多文件
+     切换），真实尺寸随 task-frames 异步到手——此处重推行高，保证首次渲染
+     与导出就用推导后的行数（宽度尊重用户已选列数，只重推行数）。 */
+  function syncSourceAspect(entry) {
+    if (!entry || !entry.srcW || !entry.srcH) return;
+    if (entry.srcW === S.srcW && entry.srcH === S.srcH) return;
+    S.srcW = entry.srcW;
+    S.srcH = entry.srcH;
+    S.height = rowsForCols(S.width);
+    var meta = byId("sizeMeta");
+    if (meta) {
+      meta.textContent = S.width + " × " + S.height + " · 行数按素材比例自动 / rows auto-fit to source";
+    }
+  }
+
   function renderTaskFramesLocally(entry, charset, myReq) {
     if (animTerminal) animTerminal.classList.add("rendering");
     TermifyRender.renderFrames(entry.bitmaps, charset, S.width, S.height,
-      { ramp: S.ramp, fg: S.fg, bg: S.bg,
-        cache: lumCacheFor(S.taskId, S.width, S.height) },
+      renderOpts(S.width, S.height),
       function (done, total) {
         if (done % 60 === 0 && animTerminal) {
           animTerminal.dataset.renderPct = Math.round(done / total * 100) + "%";
@@ -1091,8 +1144,12 @@
         width: S.width, height: S.height
       };
       if (S.charset === "custom") body.chars = S.ramp;
-      if (S.fg) body.fg = "rgb(" + S.fg[0] + "," + S.fg[1] + "," + S.fg[2] + ")";
-      if (S.bg) body.bg = "rgb(" + S.bg[0] + "," + S.bg[1] + "," + S.bg[2] + ")";
+      if (S.colorMode === "source") {
+        body.color = (S.colorDepth === "256") ? "source256" : "source";
+      } else {
+        if (S.fg) body.fg = "rgb(" + S.fg[0] + "," + S.fg[1] + "," + S.fg[2] + ")";
+        if (S.bg) body.bg = "rgb(" + S.bg[0] + "," + S.bg[1] + "," + S.bg[2] + ")";
+      }
       if (fmt === "mp4") {
         // 实测 ~100k 字符格/秒（字节合成 + x264），加 3s 编码固定开销
         var est = Math.max(5, Math.round((S.totalFrames || 1) * S.width * S.height / 100000) + 3);
@@ -1235,22 +1292,77 @@
     });
   });
 
-  // Terminal size buttons
+  /* ══════════ 分辨率：列数滑杆 + 行高按素材比例自动推导 ══════════
+     服务端宽高钳制 1-400；行数 = 列数 × 素材高宽比 ÷ 2（字符格 1:2），
+     钳到 8-240。无源尺寸信息时按 2:1 网格退化（rows ≈ cols/2）。 */
+  function rowsForCols(cols) {
+    var ar = (S.srcW && S.srcH) ? (S.srcH / S.srcW) : 0.5;
+    var rows = TermifyRender.pyRound(cols * ar / 2);
+    return Math.max(8, Math.min(240, rows));
+  }
+
+  function applyColumns(cols, rerender) {
+    cols = Math.max(20, Math.min(400, cols));
+    S.width = cols;
+    S.height = rowsForCols(cols);
+    if (animTerminal) animTerminal.dataset.size = String(cols);
+    var slider = byId("sizeSlider");
+    if (slider && parseInt(slider.value, 10) !== cols) slider.value = String(cols);
+    var colsVal = byId("sizeColsVal");
+    if (colsVal) colsVal.textContent = String(cols);
+    var meta = byId("sizeMeta");
+    if (meta) {
+      meta.textContent = cols + " × " + S.height + " · 行数按素材比例自动 / rows auto-fit to source";
+    }
+    var warn = byId("sizeWarn");
+    if (warn) warn.hidden = cols <= 320;
+    try { localStorage.setItem("termify_cols", String(cols)); } catch (e) {}
+    if (rerender && S.taskId) requestPreview(S.charset);
+  }
+
   qa(".size-btn").forEach(function (btn) {
     btn.addEventListener("click", function () {
       qa(".size-btn").forEach(function (b) { b.classList.remove("selected"); });
       btn.classList.add("selected");
-      var m = (btn.textContent || "").match(/(\d+)\s*[x×]\s*(\d+)/);
-      if (m) {
-        S.width = parseInt(m[1], 10);
-        S.height = parseInt(m[2], 10);
-        // Set data-size on terminal for CSS font-size scaling
-        if (animTerminal) animTerminal.dataset.size = m[1];
-      }
-      if (S.taskId) { requestPreview(S.charset); }
-      else { toast("切换尺寸将在上传后应用"); }
+      applyColumns(parseInt(btn.getAttribute("data-cols"), 10) || 80, true);
+      if (!S.taskId) { toast("切换尺寸将在上传后应用 / Size applies after upload"); }
     });
   });
+
+  (function initSizeSlider() {
+    var slider = byId("sizeSlider");
+    if (!slider) return;
+    var pendingCols = null;
+    // 拖动中只更新数字（避免高频重渲染），松手（change）才真正重渲染
+    slider.addEventListener("input", function () {
+      var cols = parseInt(slider.value, 10) || 80;
+      qa(".size-btn").forEach(function (b) {
+        b.classList.toggle("selected", parseInt(b.getAttribute("data-cols"), 10) === cols);
+      });
+      var colsVal = byId("sizeColsVal");
+      if (colsVal) colsVal.textContent = String(cols);
+      var warn = byId("sizeWarn");
+      if (warn) warn.hidden = cols <= 320;
+      S.width = cols;
+      S.height = rowsForCols(cols);
+      var meta = byId("sizeMeta");
+      if (meta) meta.textContent = cols + " × " + S.height + " · 行数按素材比例自动 / rows auto-fit to source";
+      pendingCols = cols;
+    });
+    slider.addEventListener("change", function () {
+      if (pendingCols === null) return;
+      applyColumns(pendingCols, true);
+      pendingCols = null;
+      if (!S.taskId) { toast("切换尺寸将在上传后应用 / Size applies after upload"); }
+    });
+    // 恢复上次会话的列数偏好
+    var saved = null;
+    try { saved = parseInt(localStorage.getItem("termify_cols"), 10); } catch (e) {}
+    if (saved && saved >= 20 && saved <= 400 && saved !== 80) {
+      qa(".size-btn").forEach(function (b) { b.classList.remove("selected"); });
+      applyColumns(saved, false);
+    }
+  })();
 
   // Play / Pause
   if (playBtn) playBtn.addEventListener("click", startPlayer);
@@ -1401,25 +1513,69 @@
   bindTweak('[data-tweak="grid-on"]', '[data-tweak="grid-off"]', "--grid-opacity", "0.3", "0");
   bindTweak('[data-tweak="scan-on"]', '[data-tweak="scan-off"]', "--scanline-opacity", "1", "0");
 
-  // Theme color toggles
-  qa('[data-tweak^="theme-"]').forEach(function (btn) {
+  /* ══════════ 配色面板：一次选择驱动预览 chrome + 字符色 + 导出 ══════════
+     fg/bg 进导出链路（S.fg/S.bg 或 colorMode=source）；--green 系 CSS 变量
+     同步预览窗口主题——根治"预览绿、导出黑白"的两套颜色系统。 */
+  var PALETTES = {
+    mono:   { fg: "#ffffff", bg: "#0a0e14", main: "#e6edf3", dim: "#b0b8c4", glow: "rgba(230,237,243,0.10)" },
+    green:  { fg: "#00ff41", bg: "#0a0e14", main: "#00ff41", dim: "#00cc33", glow: "rgba(0,255,65,0.15)" },
+    amber:  { fg: "#ffb000", bg: "#140d02", main: "#ffb000", dim: "#cc8d00", glow: "rgba(255,176,0,0.12)" },
+    ice:    { fg: "#00d4ff", bg: "#04121f", main: "#00d4ff", dim: "#00a8cc", glow: "rgba(0,212,255,0.12)" },
+    source: { fg: null, bg: null, main: "#c9d1d9", dim: "#8b949e", glow: "rgba(201,209,217,0.10)" }
+  };
+
+  function applyPaletteChrome(main, dim, glow) {
+    document.documentElement.style.setProperty("--green", main);
+    document.documentElement.style.setProperty("--green-dim", dim);
+    document.documentElement.style.setProperty("--green-glow", glow);
+  }
+
+  function markPalette(key) {
+    qa(".palette-btn").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-palette") === key);
+    });
+  }
+
+  function applyPalette(key, rerender) {
+    var customRow = byId("customColorRow");
+    var q256Row = byId("q256Row");
+    S.colorMode = "mono";
+    if (key === "source") {
+      S.colorMode = "source";  // 逐字符取源像素真彩（本地渲染 + 导出 color=source）
+      var p = PALETTES.source;
+      S.fg = null; S.bg = null;
+      applyPaletteChrome(p.main, p.dim, p.glow);
+      if (customRow) customRow.hidden = true;
+      if (q256Row) q256Row.hidden = false;
+    } else if (key === "custom") {
+      if (customRow) customRow.hidden = false;
+      if (q256Row) q256Row.hidden = true;
+      var fp = byId("fgColorPicker"), bp = byId("bgColorPicker");
+      var m = fp ? fp.value : "#ffffff";
+      S.fg = hexToRgb(m);
+      S.bg = hexToRgb(bp ? bp.value : "#0a0e14");
+      applyPaletteChrome(m, m, "rgba(255,255,255,0.10)");
+    } else {
+      var c = PALETTES[key] || PALETTES.mono;
+      S.fg = hexToRgb(c.fg);
+      S.bg = hexToRgb(c.bg);
+      applyPaletteChrome(c.main, c.dim, c.glow);
+      if (customRow) customRow.hidden = true;
+      if (q256Row) q256Row.hidden = true;
+    }
+    markPalette(key);
+    try { localStorage.setItem("termify_palette", key); } catch (e) {}
+    if (rerender && S.taskId) requestPreview(S.charset);
+    else if (rerender) toast("配色已应用，上传后生效 / Palette applies after upload");
+  }
+
+  qa(".palette-btn").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      qa('[data-tweak^="theme-"]').forEach(function (b) { b.classList.remove("active"); });
-      btn.classList.add("active");
-      var theme = btn.getAttribute("data-tweak").replace("theme-", "");
-      var colors = {
-        green:  { main: "#00ff41", dim: "#00cc33", glow: "rgba(0,255,65,0.15)" },
-        amber:  { main: "#ffb000", dim: "#cc8d00", glow: "rgba(255,176,0,0.12)" },
-        cyan:   { main: "#00d4ff", dim: "#00a8cc", glow: "rgba(0,212,255,0.12)" }
-      };
-      var c = colors[theme]; if (!c) return;
-      document.documentElement.style.setProperty("--green", c.main);
-      document.documentElement.style.setProperty("--green-dim", c.dim);
-      document.documentElement.style.setProperty("--green-glow", c.glow);
+      applyPalette(btn.getAttribute("data-palette") || "mono", true);
     });
   });
 
-  /* ── Phase 4: Color picker wiring ── */
+  /* ── 自定义前景/背景取色器（配色面板「自定义」展开区） ── */
   var fgPicker = byId("fgColorPicker"),
       bgPicker = byId("bgColorPicker"),
       colorResetBtn = byId("colorResetBtn");
@@ -1434,26 +1590,38 @@
   });
   if (colorResetBtn) colorResetBtn.addEventListener("click", function () {
     S.fg = null; S.bg = null;
-    if (fgPicker) fgPicker.value = "#00ff41";
+    if (fgPicker) fgPicker.value = "#ffffff";
     if (bgPicker) bgPicker.value = "#0a0e14";
     if (S.taskId) requestPreview(S.charset);
   });
 
-  /* ── T20: palette presets ── */
-  qa(".palette-swatch").forEach(function (sw) {
-    sw.addEventListener("click", function () {
-      qa(".palette-swatch").forEach(function (b) { b.classList.remove("active"); });
-      sw.classList.add("active");
-      var fg = sw.getAttribute("data-fg");
-      var bg = sw.getAttribute("data-bg");
-      if (fgPicker) fgPicker.value = fg;
-      if (bgPicker) bgPicker.value = bg;
-      S.fg = hexToRgb(fg);
-      S.bg = hexToRgb(bg);
-      if (S.taskId) requestPreview(S.charset);
-      else toast("配色已应用，上传后生效");
+  /* ── 原色模式的 py 256 色兼容选项 ── */
+  var q256Toggle = byId("q256Toggle");
+  if (q256Toggle) {
+    try {  // 色深偏好与配色一起持久化，刷新后导出色深不漂移
+      if (localStorage.getItem("termify_color_depth") === "256") {
+        q256Toggle.checked = true;
+        S.colorDepth = "256";
+      }
+    } catch (e) {}
+    q256Toggle.addEventListener("change", function () {
+      S.colorDepth = q256Toggle.checked ? "256" : "truecolor";
+      try { localStorage.setItem("termify_color_depth", S.colorDepth); } catch (e) {}
     });
-  });
+  }
+
+  // 恢复上次会话的配色偏好；默认「磷光绿」——预览与导出从第一帧起同色
+  // （历史 bug：预览 chrome 绿而导出无色，根因即默认不进导出链路）。
+  (function initPalette() {
+    var saved = null;
+    try { saved = localStorage.getItem("termify_palette"); } catch (e) {}
+    if (saved && (saved === "mono" || saved === "green" || saved === "amber" ||
+                  saved === "ice" || saved === "source" || saved === "custom")) {
+      applyPalette(saved, false);
+    } else {
+      applyPalette("green", false);
+    }
+  })();
 
   /* ── T20: custom charset ramp ── */
   var rampInput = byId("customRampInput");
@@ -1650,6 +1818,12 @@
     fd.append("tags", JSON.stringify(tags));
     fd.append("is_private", isPrivate);
     var params = { charset: S.charset, width: S.width, height: S.height };
+    if (S.colorMode === "source") {
+      params.color = (S.colorDepth === "256") ? "source256" : "source";
+    } else {
+      if (S.fg) params.fg = S.fg;
+      if (S.bg) params.bg = S.bg;
+    }
     if (cur.kind === "video") {
       params.kind = "video";
       params.interval = cur.interval || 0.1;

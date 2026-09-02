@@ -255,6 +255,42 @@ def _parse_rgb(value):
     return (r, g, b)
 
 
+_COLOR_MODES = ("mono", "source", "source256")
+
+
+def _rgb_or_none(value):
+    """Accept [r,g,b] list/tuple (gallery params_json) or 'rgb(R,G,B)' string
+    (query param); return a validated (R,G,B) tuple or None."""
+    if isinstance(value, (list, tuple)):
+        if len(value) != 3:
+            return None
+        try:
+            r, g, b = int(value[0]), int(value[1]), int(value[2])
+        except (TypeError, ValueError):
+            return None
+        if 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255:
+            return (r, g, b)
+        return None
+    if not isinstance(value, str):
+        return None
+    return _parse_rgb(value)
+
+
+def _parse_color_mode(value, default="mono"):
+    """Validate a color-mode request field.
+
+    Returns (mode, None) on success (absent value -> default), or
+    (None, bilingual error message) on a bad value.
+    """
+    if value is None:
+        return default, None
+    v = str(value).strip().lower()
+    if v in _COLOR_MODES:
+        return v, None
+    return None, ("color 仅支持 mono / source / source256 / "
+                  "color must be one of mono, source, source256")
+
+
 def _coerce_int_or_none(value):
     """Coerce a JSON-supplied numeric field to int, or None if not safely castable.
 
@@ -794,7 +830,7 @@ def fetch_url():
 
 
 def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=None,
-                  bg_color=None, charset_ramp=None):
+                  bg_color=None, charset_ramp=None, color_mode="mono"):
     """Return a converted FrameSequence, converting+caching on first miss.
 
     The metadata fetch is shared across workers (SQLite); the cache is
@@ -806,7 +842,7 @@ def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=
         return None
     filepath = task.get("filepath")
     key = _cache_key(task_id, charset, width, height, fg_color, bg_color,
-                     charset_ramp=charset_ramp)
+                     charset_ramp=charset_ramp, color_mode=color_mode)
 
     if not filepath:
         # No backing file (e.g. video task whose temp frames were cleaned
@@ -825,7 +861,8 @@ def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=
         seq = sequence_from_frames_dir(
             filepath, charset, width, height,
             interval=task.get("interval") or 0.1,
-            charset_ramp=charset_ramp,
+            charset_ramp=charset_ramp, color_mode=color_mode,
+            fg_color=fg_color, bg_color=bg_color,
         )
         _cache_put(task_id, key, seq)
         return seq
@@ -833,7 +870,8 @@ def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=
     from termify import convert
 
     seq = convert(filepath, charset, width, height, fg_color=fg_color,
-                  bg_color=bg_color, charset_ramp=charset_ramp)
+                  bg_color=bg_color, charset_ramp=charset_ramp,
+                  color_mode=color_mode)
     _cache_put(task_id, key, seq)
     return seq
 
@@ -857,17 +895,23 @@ def _request_charset_ramp() -> str | None:
 
 
 def _preview_payload_too_large(frame_count: int, width: int, height: int,
-                               charset: str) -> bool:
+                               charset: str, color_mode: str = "mono") -> bool:
     """Guard against multi-hundred-MB preview JSONs on legacy clients.
 
     Measured per-character ANSI cost: ~21B for blocks (fg+bg SGR per cell),
-    ~4B for ramp styles (color mostly per line). Threshold 30MB — the
+    ~4B for ramp styles (color mostly per line), ~8B for source-color ramp
+    styles (run-length merged per-cell SGR). Threshold 30MB — the
     client-side renderer is the intended path for heavy workloads.
     """
     if frame_count <= 0 or width <= 0 or height <= 0:
         return False
     rows = height * 2 if charset == "blocks" else height
-    per_char = 21 if charset == "blocks" else 4
+    if charset == "blocks":
+        per_char = 21
+    elif color_mode != "mono":
+        per_char = 8
+    else:
+        per_char = 4
     return frame_count * width * rows * per_char > 30 * 1024 * 1024
 
 
@@ -905,8 +949,12 @@ def preview(task_id):
 
     fg_color = _parse_rgb(request.args.get("fg"))
     bg_color = _parse_rgb(request.args.get("bg"))
+    color_mode, err = _parse_color_mode(request.args.get("color"))
+    if err:
+        return jsonify({"error": err}), 400
     seq = _get_sequence(task_id, charset, width, height, fg_color=fg_color,
-                        bg_color=bg_color, charset_ramp=charset_ramp)
+                        bg_color=bg_color, charset_ramp=charset_ramp,
+                        color_mode=color_mode)
     if seq is None:
         return jsonify({"error": "Task not found"}), 404
 
@@ -916,7 +964,8 @@ def preview(task_id):
 
     # No `frame` requested -> return ALL frames so the player can loop them.
     if frame is None:
-        if _preview_payload_too_large(frame_count, seq.width, seq.height, charset):
+        if _preview_payload_too_large(frame_count, seq.width, seq.height,
+                                      charset, color_mode):
             return jsonify({
                 "error": "预览数据过大，请刷新页面使用新版播放器（本地渲染）",
                 "too_large": True,
@@ -1113,6 +1162,9 @@ def generate():
 
     fg_color = _parse_rgb(data.get("fg"))
     bg_color = _parse_rgb(data.get("bg"))
+    color_mode, err = _parse_color_mode(data.get("color"))
+    if err:
+        return jsonify({"error": err}), 400
     charset_ramp = None
     if charset == "custom":
         raw_ramp = data.get("chars")
@@ -1122,10 +1174,11 @@ def generate():
 
     if fmt == "mp4":
         return _generate_video(task_id, charset, width, height,
-                               fg_color, bg_color, charset_ramp)
+                               fg_color, bg_color, charset_ramp, color_mode)
 
     seq = _get_sequence(task_id, charset, width, height, fg_color=fg_color,
-                        bg_color=bg_color, charset_ramp=charset_ramp)
+                        bg_color=bg_color, charset_ramp=charset_ramp,
+                        color_mode=color_mode)
 
     audio_b64 = audio_mime = None
     if fmt == "html":
@@ -1140,12 +1193,18 @@ def generate():
 
     content = render(seq, fmt, audio_b64=audio_b64, audio_mime=audio_mime)
 
+    # 产物名带配色模式段：不同 color_mode 的产物不互相覆盖（mono 缺省省略）
+    color_tag = ""
+    if color_mode == "source":
+        color_tag = "_src"
+    elif color_mode == "source256":
+        color_tag = "_src256"
     ext = "py" if fmt == "python" else "html"
-    filename = f"{task_id}_{charset}.{ext}"
+    filename = f"{task_id}_{charset}{color_tag}.{ext}"
     if charset == "custom":
         # Different ramps must not overwrite each other's artifacts.
         digest = hashlib.sha256((charset_ramp or "").encode("utf-8")).hexdigest()[:8]
-        filename = f"{task_id}_custom_{digest}.{ext}"
+        filename = f"{task_id}_custom_{digest}{color_tag}.{ext}"
     out_path = _tmp_out_path(filename)
     Path(out_path).write_text(content, encoding="utf-8")
 
@@ -1162,7 +1221,7 @@ def generate():
 
 
 def _generate_video(task_id, charset, width, height, fg_color, bg_color,
-                    charset_ramp):
+                    charset_ramp, color_mode="mono"):
     """Sync MP4 export: rasterize the FrameSequence and encode with ffmpeg."""
     from termify.output import video as video_mod
 
@@ -1174,18 +1233,24 @@ def _generate_video(task_id, charset, width, height, fg_color, bg_color,
         return jsonify({"error": "视频导出太频繁，请稍后再试 (限 6 次/分钟)"}), 429
 
     seq = _get_sequence(task_id, charset, width, height, fg_color=fg_color,
-                        bg_color=bg_color, charset_ramp=charset_ramp)
+                        bg_color=bg_color, charset_ramp=charset_ramp,
+                        color_mode=color_mode)
     if seq is None:
         return jsonify({"error": "Task not found"}), 404
     if len(seq.lines_per_frame) > video_mod.MAX_VIDEO_FRAMES:
         return jsonify({"error": f"帧数过多 ({len(seq.lines_per_frame)})，"
                                  f"视频导出上限 {video_mod.MAX_VIDEO_FRAMES} 帧"}), 400
 
+    color_tag = ""
+    if color_mode == "source":
+        color_tag = "_src"
+    elif color_mode == "source256":
+        color_tag = "_src256"
     ext = "mp4"
-    filename = f"{task_id}_{charset}.{ext}"
+    filename = f"{task_id}_{charset}{color_tag}.{ext}"
     if charset == "custom":
         digest = hashlib.sha256((charset_ramp or "").encode("utf-8")).hexdigest()[:8]
-        filename = f"{task_id}_custom_{digest}.{ext}"
+        filename = f"{task_id}_custom_{digest}{color_tag}.{ext}"
     out_path = _tmp_out_path(filename)
 
     if not _VIDEO_PROC_SLOTS.acquire(blocking=False):
@@ -1350,6 +1415,8 @@ def gallery_upload():
     except (TypeError, ValueError):
         params["width"] = _gallery_mod.DEFAULT_WIDTH
         params["height"] = _gallery_mod.DEFAULT_HEIGHT
+    if params.get("color") not in _COLOR_MODES:
+        params.pop("color", None)
 
     # Persist file
     work_id = _make_unique_id()
@@ -1744,6 +1811,13 @@ def gallery_preview(work_id):
     width = max(1, min(400, width))
     height = max(1, min(400, height))
 
+    color_mode, err = _parse_color_mode(
+        request.args.get("color", original.get("color")))
+    if err:
+        return jsonify({"error": err}), 400
+    fg_color = _rgb_or_none(request.args.get("fg", original.get("fg")))
+    bg_color = _rgb_or_none(request.args.get("bg", original.get("bg")))
+
     from termify import convert
     if original.get("kind") == "video":
         from termify.video import sequence_from_frames_dir
@@ -1752,19 +1826,23 @@ def gallery_preview(work_id):
             return jsonify({"error": "Video frames missing"}), 410
         try:
             seq = sequence_from_frames_dir(fd, charset, width, height,
-                                           interval=original.get("interval") or 0.1)
+                                           interval=original.get("interval") or 0.1,
+                                           color_mode=color_mode,
+                                           fg_color=fg_color, bg_color=bg_color)
         except Exception as exc:  # noqa: BLE001
             app.logger.warning("gallery conversion failed: %s", exc)
             return jsonify({"error": "转换失败 / Conversion failed"}), 400
     else:
         try:
-            seq = convert(work["source_path"], charset, width, height)
+            seq = convert(work["source_path"], charset, width, height,
+                          fg_color=fg_color, bg_color=bg_color,
+                          color_mode=color_mode)
         except Exception as exc:  # noqa: BLE001
             app.logger.warning("gallery conversion failed: %s", exc)
             return jsonify({"error": "转换失败 / Conversion failed"}), 400
 
     if _preview_payload_too_large(len(seq.lines_per_frame), seq.width,
-                                  seq.height, charset):
+                                  seq.height, charset, color_mode):
         return jsonify({
             "error": "预览数据过大，请刷新页面使用新版播放器（本地渲染）",
             "too_large": True,
@@ -1809,6 +1887,19 @@ def gallery_download(work_id):
     width = max(1, min(400, width))
     height = max(1, min(400, height))
 
+    color_mode, err = _parse_color_mode(
+        request.args.get("color", original.get("color")))
+    if err:
+        return jsonify({"error": err}), 400
+    fg_color = _rgb_or_none(request.args.get("fg", original.get("fg")))
+    bg_color = _rgb_or_none(request.args.get("bg", original.get("bg")))
+    # 与 /api/generate 一致：产物名带配色段，防并发互覆（mono 缺省省略）
+    color_tag = ""
+    if color_mode == "source":
+        color_tag = "_src"
+    elif color_mode == "source256":
+        color_tag = "_src256"
+
     from termify import convert
     from termify.output import render
     if original.get("kind") == "video":
@@ -1817,9 +1908,13 @@ def gallery_download(work_id):
         if not fd or not os.path.isdir(fd):
             return jsonify({"error": "Video frames missing"}), 410
         seq = sequence_from_frames_dir(fd, charset, width, height,
-                                       interval=original.get("interval") or 0.1)
+                                       interval=original.get("interval") or 0.1,
+                                       color_mode=color_mode,
+                                       fg_color=fg_color, bg_color=bg_color)
     else:
-        seq = convert(work["source_path"], charset, width, height)
+        seq = convert(work["source_path"], charset, width, height,
+                      fg_color=fg_color, bg_color=bg_color,
+                      color_mode=color_mode)
     tmp_dir = paths.tmp_dir()
     os.makedirs(tmp_dir, exist_ok=True)
 
@@ -1836,7 +1931,7 @@ def gallery_download(work_id):
         if len(seq.lines_per_frame) > video_mod.MAX_VIDEO_FRAMES:
             return jsonify({"error": f"帧数过多 ({len(seq.lines_per_frame)})，"
                                      f"视频导出上限 {video_mod.MAX_VIDEO_FRAMES} 帧"}), 400
-        filename = f"gallery_{work_id}_{charset}.mp4"
+        filename = f"gallery_{work_id}_{charset}{color_tag}.mp4"
         out_path = _tmp_out_path(filename, root=tmp_dir)
         work_audio = None
         if original.get("audio_file"):
@@ -1869,7 +1964,7 @@ def gallery_download(work_id):
         content = render(seq, fmt)
 
     ext = "py" if fmt == "python" else "html"
-    filename = f"gallery_{work_id}_{charset}.{ext}"
+    filename = f"gallery_{work_id}_{charset}{color_tag}.{ext}"
     out_path = _tmp_out_path(filename, root=tmp_dir)
     Path(out_path).write_text(content, encoding="utf-8")
 
