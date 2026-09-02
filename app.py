@@ -22,6 +22,7 @@ import uuid
 from pathlib import Path
 
 from termify.video import VALID_VIDEO_EXTS
+from termify import paths
 
 from flask import (Flask, abort, jsonify, make_response, redirect,
                    render_template, request, send_file, url_for)
@@ -66,21 +67,22 @@ def _sweep_stale_frame_dirs(max_age_hours: int = 24) -> None:
     Also removes stale per-task audio artifacts (audio_*.m4a / music_*.ext)
     — they share the uploads/ dir and the same lifetime as their task — and
     tmp/ 下的 gallery_* 下载产物（画廊生成、无 task 归属，同样 24h TTL）。
+    路径基准统一走 termify.paths（仓库根锚定），与写入侧完全一致。
     """
     import shutil as _shutil
 
     cutoff = time.time() - max_age_hours * 3600
+    uploads_base = paths.uploads_dir()
     try:
-        entries = os.listdir("uploads")
+        entries = os.listdir(uploads_base)
     except OSError:
         entries = []
-    uploads_base = os.path.abspath("uploads")
     for name in entries:
         is_stale_kind = name.startswith("frames_") \
             or name.startswith("audio_") or name.startswith("music_")
         if not is_stale_kind:
             continue
-        path = os.path.abspath(os.path.join("uploads", name))
+        path = os.path.abspath(os.path.join(uploads_base, name))
         if os.path.dirname(path) != uploads_base:
             continue
         try:
@@ -93,15 +95,15 @@ def _sweep_stale_frame_dirs(max_age_hours: int = 24) -> None:
 
     # tmp/ 下的画廊下载产物（gallery_<work>_<charset>.py/.html/.mp4）没有
     # task 归属，sweep_expired 清不到，这里按同一 24h TTL 兜底。
+    tmp_base = paths.tmp_dir()
     try:
-        tmp_entries = os.listdir("tmp")
+        tmp_entries = os.listdir(tmp_base)
     except OSError:
         return
-    tmp_base = os.path.abspath("tmp")
     for name in tmp_entries:
         if not name.startswith("gallery_"):
             continue
-        path = os.path.abspath(os.path.join("tmp", name))
+        path = os.path.abspath(os.path.join(tmp_base, name))
         if os.path.dirname(path) != tmp_base or not path.startswith(tmp_base + os.sep):
             continue
         try:
@@ -122,7 +124,7 @@ def _video_tmp_path(ext: str) -> str:
     if ".." in ext or "/" in ext or os.sep in ext:
         raise ValueError("video extension contains path separators")
     name = f"video_{uuid.uuid4().hex[:12]}{ext}"
-    base = os.path.abspath("uploads")
+    base = paths.uploads_dir()
     resolved = os.path.abspath(os.path.join(base, name))
     if os.path.dirname(resolved) != base or not resolved.startswith(base + os.sep):
         raise ValueError("generated video path escapes the uploads dir")
@@ -266,7 +268,7 @@ def _coerce_int_or_none(value):
 
 
 
-def _tmp_out_path(filename: str, root: str = "tmp") -> str:
+def _tmp_out_path(filename: str, root: str | None = None) -> str:
     """Resolve a generated-artifact path under ``root`` and refuse traversal.
 
     Generated filenames combine task/gallery IDs with charset names that are
@@ -275,15 +277,16 @@ def _tmp_out_path(filename: str, root: str = "tmp") -> str:
     ``..`` segments, and the resolved path must stay inside ``root``.
 
     返回绝对路径并在首次调用时确保 ``root`` 目录存在——所有产物写入与
-    /api/download 读取都必须经由本函数取得同一路径基准（见 download），
-    以保证 CWD 与 app.root_path 不一致时写入/读取仍然对齐。
+    /api/download 读取都必须经由本函数取得同一路径基准（见 download）。
+    ``root`` 缺省走 termify.paths.tmp_dir()（仓库根锚定，TERMIFY_BASE_DIR
+    可覆盖），不再依赖调用时 CWD。
     """
     if ".." in filename or os.sep in filename or (os.altsep or "/") in filename:
         raise ValueError(f"generated filename contains path separators: {filename!r}")
-    base = os.path.abspath(root)
+    base = os.path.abspath(root if root is not None else paths.tmp_dir())
     resolved = os.path.abspath(os.path.join(base, filename))
     if os.path.dirname(resolved) != base or not resolved.startswith(base + os.sep):
-        raise ValueError(f"generated filename escapes {root}: {filename!r}")
+        raise ValueError(f"generated filename escapes {base}: {filename!r}")
     os.makedirs(base, exist_ok=True)
     return resolved
 
@@ -472,7 +475,7 @@ def upload_video():
         # Persist frames under uploads/ so every charset/size can be
         # re-rendered on demand (fixes "Task not found" on style switch).
         _sweep_stale_frame_dirs()
-        frames_dir = f"uploads/frames_{task_id}"
+        frames_dir = os.path.join(paths.uploads_dir(), f"frames_{task_id}")
         try:
             seq = convert_video_file(video_tmp, charset=charset, width=width,
                                      height=height, delete_source=True,
@@ -508,7 +511,7 @@ def upload_video():
 
 def _safe_uploads_path(name: str) -> str:
     """Resolve a server-generated file name inside uploads/, refusing traversal."""
-    base = os.path.abspath("uploads")
+    base = paths.uploads_dir()
     resolved = os.path.abspath(os.path.join(base, name or ""))
     if os.path.dirname(resolved) != base or not resolved.startswith(base + os.sep):
         raise ValueError("path escapes the uploads dir")
@@ -530,7 +533,7 @@ def _safe_remove_upload(path: str | None) -> None:
     """Delete a file only when it provably lives inside uploads/."""
     if not path:
         return
-    uploads_base = os.path.abspath("uploads")
+    uploads_base = paths.uploads_dir()
     resolved = os.path.abspath(path)
     if os.path.dirname(resolved) != uploads_base:
         return
@@ -546,7 +549,7 @@ def _safe_remove_upload(path: str | None) -> None:
 
 def _find_uploaded_file(prefix: str, task_or_work: str) -> str | None:
     """Locate an existing uploads/<prefix>_<id>.<ext> artifact (any ext)."""
-    base = os.path.abspath("uploads")
+    base = paths.uploads_dir()
     if not os.path.isdir(base):
         return None
     marker = f"{prefix}_{task_or_work}."
@@ -670,7 +673,7 @@ def fetch_video_url():
         return jsonify({"error": "链接解析太频繁，请稍后再试 (限 2 次/分钟)"}), 429
 
     try:
-        downloaded_name = download_video(url, dest_dir="uploads")
+        downloaded_name = download_video(url, dest_dir=paths.uploads_dir())
     except VideoFetchError as exc:
         return jsonify({"error": str(exc)}), 400
     try:
@@ -689,7 +692,7 @@ def fetch_video_url():
             audio_file = extract_audio(video_tmp, _safe_uploads_path(f"audio_{task_id}.m4a"))
         except ValueError:
             audio_file = None
-        frames_dir = f"uploads/frames_{task_id}"
+        frames_dir = os.path.join(paths.uploads_dir(), f"frames_{task_id}")
         _sweep_stale_frame_dirs()
         try:
             seq = convert_video_file(video_tmp, charset="ascii", width=80,
@@ -1794,7 +1797,7 @@ def gallery_download(work_id):
                                        interval=original.get("interval") or 0.1)
     else:
         seq = convert(work["source_path"], charset, width, height)
-    tmp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tmp")
+    tmp_dir = paths.tmp_dir()
     os.makedirs(tmp_dir, exist_ok=True)
 
     if fmt == "mp4":
@@ -1941,8 +1944,8 @@ def gallery_admin_page():
 get_store().set_sweep_hook(_sweep_stale_frame_dirs)
 
 if __name__ == "__main__":
-    os.makedirs("uploads", exist_ok=True)
-    os.makedirs("tmp", exist_ok=True)
+    os.makedirs(paths.uploads_dir(), exist_ok=True)
+    os.makedirs(paths.tmp_dir(), exist_ok=True)
     os.makedirs(GALLERY_DATA_DIR, exist_ok=True)
     os.makedirs("data", exist_ok=True)
     # ponytail: reloader off — the task cache is process-local, so a watchdog

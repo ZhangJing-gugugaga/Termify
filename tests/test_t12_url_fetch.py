@@ -25,6 +25,8 @@ def client(tmp_path, monkeypatch):
     (tmp_path / "uploads").mkdir(exist_ok=True)
     (tmp_path / "tmp").mkdir(exist_ok=True)
     monkeypatch.chdir(tmp_path)
+    # 产物基准（uploads/tmp）已仓库根锚定，测试用 TERMIFY_BASE_DIR 指回 tmp_path 隔离。
+    monkeypatch.setenv("TERMIFY_BASE_DIR", str(tmp_path))
     from app import app, _RL_LOG
     _RL_LOG.clear()  # fetch-url 已加限流，清空计数避免同 IP 用例互相顶到 429
     app.config["TESTING"] = True

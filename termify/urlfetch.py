@@ -76,7 +76,8 @@ def validate_url(url: str) -> str:
     return url
 
 
-def fetch_url_to_temp(url: str, tmp_dir: str = "uploads", timeout: int = 15) -> Optional[str]:
+def fetch_url_to_temp(url: str, tmp_dir: str | None = None, timeout: int = 15) -> Optional[str]:
+    """``tmp_dir`` 缺省走 termify.paths.uploads_dir()（仓库根锚定）。"""
     """Download URL to temp file with full validation. Returns path or raises."""
     import os
     import urllib.request
@@ -84,6 +85,9 @@ def fetch_url_to_temp(url: str, tmp_dir: str = "uploads", timeout: int = 15) -> 
     from PIL import Image
 
     url = validate_url(url)
+    if tmp_dir is None:
+        from termify.paths import uploads_dir
+        tmp_dir = uploads_dir()
 
     req = urllib.request.Request(url, headers={"User-Agent": "Termify/1.0 (image fetch)"})
     try:

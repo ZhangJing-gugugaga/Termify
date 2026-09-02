@@ -59,7 +59,8 @@ def is_video_platform_url(url: str) -> bool:
     return any(host == h or host.endswith("." + h) for h in ALLOWED_HOSTS)
 
 
-def download_video(url: str, dest_dir: str = "uploads") -> str:
+def download_video(url: str, dest_dir: str | None = None) -> str:
+    """``dest_dir`` 缺省走 termify.paths.uploads_dir()（仓库根锚定）。"""
     """Download a video from an allowlisted platform URL via yt-dlp.
 
     Returns the server-generated bare file name (never derived from remote
@@ -72,6 +73,9 @@ def download_video(url: str, dest_dir: str = "uploads") -> str:
     except ImportError:
         raise VideoFetchError("服务器未安装 yt-dlp，无法解析视频链接")
 
+    if dest_dir is None:
+        from termify.paths import uploads_dir
+        dest_dir = uploads_dir()
     if ".." in dest_dir or os.sep in dest_dir:
         raise VideoFetchError("unsafe destination directory")
 

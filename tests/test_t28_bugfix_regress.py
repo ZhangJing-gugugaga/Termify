@@ -29,6 +29,8 @@ def _isolate_env(monkeypatch, tmp_path):
     (tmp_path / "uploads").mkdir(exist_ok=True)
     (tmp_path / "tmp").mkdir(exist_ok=True)
     monkeypatch.chdir(tmp_path)
+    # 产物基准（uploads/tmp）已仓库根锚定，测试用 TERMIFY_BASE_DIR 指回 tmp_path 隔离。
+    monkeypatch.setenv("TERMIFY_BASE_DIR", str(tmp_path))
     monkeypatch.setenv("TERMIFY_TASK_DB", str(tmp_path / "tasks_t28.db"))
 
     import app as app_mod

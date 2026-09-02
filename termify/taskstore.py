@@ -55,9 +55,12 @@ DEFAULT_TTL_SECONDS = 3600
 # How often the background sweeper runs.
 SWEEP_INTERVAL_SECONDS = 5 * 60
 
-# 产物根目录（与 app.py 的相对路径约定一致：仓库根的 uploads/ 与 tmp/）。
-UPLOADS_DIR = "uploads"
-TMP_DIR = "tmp"
+# 产物根目录统一走 termify.paths（仓库根锚定，TERMIFY_BASE_DIR 可覆盖）。
+# 此前这里的 UPLOADS_DIR="uploads" / TMP_DIR="tmp" CWD 相对常量已移除——
+# CWD 漂移（systemd / PyInstaller / 隔离部署）时写入与读取会断裂。
+from termify.paths import base_dir
+from termify.paths import tmp_dir as _artifact_tmp_dir
+from termify.paths import uploads_dir as _artifact_uploads_dir
 
 
 # Module-level cache. Each gunicorn worker has its own copy of this dict;
@@ -277,17 +280,18 @@ class TaskStore:
         绝不能影响 sweep 本身。
         """
         if filepath:
-            _remove_within_dir(UPLOADS_DIR, filepath)
+            _remove_within_dir(_artifact_uploads_dir(), filepath)
         if task_id:
+            tmp_root = _artifact_tmp_dir()
             try:
-                names = os.listdir(TMP_DIR)
+                names = os.listdir(tmp_root)
             except OSError:
                 names = []
             marker = f"{task_id}_"
             for name in names:
                 if not name.startswith(marker):
                     continue
-                _remove_within_dir(TMP_DIR, os.path.join(TMP_DIR, name))
+                _remove_within_dir(tmp_root, os.path.join(tmp_root, name))
 
     # --- background sweeper --------------------------------------------
 
@@ -355,11 +359,7 @@ def get_store() -> TaskStore:
             return _STORE
         db_path = os.environ.get(
             "TERMIFY_TASK_DB",
-            os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "data",
-                "tasks.db",
-            ),
+            os.path.join(base_dir(), "data", "tasks.db"),
         )
         store = TaskStore(db_path)
         store.init_db()
