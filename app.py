@@ -187,6 +187,7 @@ def _secret_equal(a, b) -> bool:
 # Rate limit: {ip: [(action_str, timestamp_s), ...]}
 _RL_LOCK = threading.Lock()
 _RL_LOG: dict[str, list[tuple[str, float]]] = {}
+_RL_MAX_IPS = 8192  # 全局 IP 键数软上限，超出触发全表过期清扫
 
 
 def _client_ip() -> str:
@@ -221,6 +222,12 @@ def _rate_check(ip: str, action: str, *, per_minute: int | None = None,
     """Return (allowed, reason). action like 'upload', 'like', 'report'."""
     now = time.time()
     with _RL_LOCK:
+        # 全局键数上限：超过 _RL_MAX_IPS 时做一次全表过期清扫并丢弃空键，
+        # 防止海量伪造 IP 把 _RL_LOG 的键数打爆（内存无界增长）。
+        if len(_RL_LOG) >= _RL_MAX_IPS:
+            for key in [k for k, v in _RL_LOG.items()
+                        if not v or now - v[-1][1] >= 86400]:
+                _RL_LOG.pop(key, None)
         entries = _RL_LOG.setdefault(ip, [])
         # Sweep old (> 24h)
         entries[:] = [(a, t) for a, t in entries if now - t < 86400]
@@ -334,9 +341,11 @@ def upload():
         from termify import convert
 
         seq = convert(save_path, "ascii", 80, 24)
-    except Exception as exc:  # noqa: BLE001 — surface any conversion failure
+    except Exception as exc:  # noqa: BLE001 — 不向客户端回显异常详情（含服务器路径）
         os.remove(save_path)
-        return jsonify({"error": f"Conversion failed: {exc}"}), 500
+        app.logger.warning("upload conversion failed: %s", exc)
+        return jsonify({"error": "转换失败，文件可能已损坏或格式不受支持 / "
+                                 "Conversion failed: the file may be corrupted or unsupported"}), 400
 
     original_size = _original_size(save_path)
     target_size = {"width": seq.width, "height": seq.height}
@@ -483,7 +492,8 @@ def upload_video():
         except VideoError as exc:
             return jsonify({"error": str(exc)}), 422
         except Exception as exc:  # noqa: BLE001
-            return jsonify({"error": f"Frame conversion failed: {exc}"}), 500
+            app.logger.warning("frame conversion failed: %s", exc)
+            return jsonify({"error": "帧转换失败 / Frame conversion failed"}), 500
     finally:
         _VIDEO_IMPORT_SLOTS.release()
 
@@ -702,7 +712,8 @@ def fetch_video_url():
         except VideoError as exc:
             return jsonify({"error": str(exc)}), 422
         except Exception as exc:  # noqa: BLE001
-            return jsonify({"error": f"Frame conversion failed: {exc}"}), 500
+            app.logger.warning("frame conversion failed: %s", exc)
+            return jsonify({"error": "帧转换失败 / Frame conversion failed"}), 500
     finally:
         _VIDEO_IMPORT_SLOTS.release()
 
@@ -758,7 +769,9 @@ def fetch_url():
         seq = convert(tmp_path, "ascii", 80, 24)
     except Exception as exc:  # noqa: BLE001
         os.remove(tmp_path)
-        return jsonify({"error": f"Conversion failed: {exc}"}), 500
+        app.logger.warning("url-fetch conversion failed: %s", exc)
+        return jsonify({"error": "转换失败，远端文件可能已损坏或格式不受支持 / "
+                                 "Conversion failed: the remote file may be corrupted or unsupported"}), 400
 
     target_size = {"width": seq.width, "height": seq.height}
     _task_put(
@@ -961,10 +974,16 @@ def task_frames(task_id):
     每帧保持纵横比缩放到 ≤400×240（不加黑边，前端自行 letterbox）。
     每帧 RGB → JPEG quality=80 → base64。轻量直读，不进转换缓存。
 
-    守卫：帧数 > 600 或 payload 超 40MB → 413。
+    守卫：限 30 次/分钟/IP（前端每任务只拉一次，30 次余量覆盖多文件与
+    手动重放）；帧数 > 600 或 payload 超 40MB → 413。
     """
     from PIL import Image
     import io as _io
+
+    allowed, _reason = _rate_check(_client_ip(), "task-frames", per_minute=30)
+    if not allowed:
+        return jsonify({"error": "请求太频繁，请稍后再试 (限 30 次/分钟) / "
+                                 "Too many requests, please try again later (30/min)"}), 429
 
     task = _task_get(task_id)
     if task is None:
@@ -1368,7 +1387,8 @@ def gallery_upload():
             except VideoError as exc:
                 return jsonify({"error": str(exc)}), 422
             except Exception as exc:  # noqa: BLE001
-                return jsonify({"error": f"Frame conversion failed: {exc}"}), 500
+                app.logger.warning("frame conversion failed: %s", exc)
+            return jsonify({"error": "帧转换失败 / Frame conversion failed"}), 500
         finally:
             _VIDEO_IMPORT_SLOTS.release()
         from termify.video import frames_dir_to_images
@@ -1387,7 +1407,8 @@ def gallery_upload():
                 im.load()
         except Exception as exc:  # noqa: BLE001
             os.remove(source_path)
-            return jsonify({"error": f"Invalid image: {exc}"}), 400
+            app.logger.warning("gallery invalid image: %s", exc)
+            return jsonify({"error": "图片无效或已损坏 / Invalid or corrupted image"}), 400
 
     # Generate thumbnails + OG (video works: from the first frame)
     thumb_path = os.path.join(base, f"{work_id}_thumb.gif")
@@ -1733,12 +1754,14 @@ def gallery_preview(work_id):
             seq = sequence_from_frames_dir(fd, charset, width, height,
                                            interval=original.get("interval") or 0.1)
         except Exception as exc:  # noqa: BLE001
-            return jsonify({"error": f"Conversion failed: {exc}"}), 500
+            app.logger.warning("gallery conversion failed: %s", exc)
+            return jsonify({"error": "转换失败 / Conversion failed"}), 400
     else:
         try:
             seq = convert(work["source_path"], charset, width, height)
         except Exception as exc:  # noqa: BLE001
-            return jsonify({"error": f"Conversion failed: {exc}"}), 500
+            app.logger.warning("gallery conversion failed: %s", exc)
+            return jsonify({"error": "转换失败 / Conversion failed"}), 400
 
     if _preview_payload_too_large(len(seq.lines_per_frame), seq.width,
                                   seq.height, charset):
