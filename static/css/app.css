@@ -665,6 +665,9 @@
             height: auto;
             min-height: 300px;
             display: flex;
+            flex-direction: column;   /* 彩色 ANSI 帧的逐行 span 必须纵向堆叠：
+                                         横排(默认row)会把每行当 flex item 水平拼接，
+                                         布局宽度按行数倍增直至撑爆页面 */
             align-items: center;
             justify-content: center;
             overflow: hidden;
