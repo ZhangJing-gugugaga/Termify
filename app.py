@@ -270,8 +270,10 @@ _COLOR_MODES = ("mono", "source", "source256")
 
 # /v/ 回放页 params 白名单：允许进入页面源码的渲染参数（frames_dir 等服务器
 # 内部字段绝不外发；audio_file 是构造音频直链所需的文件名，非路径）。
+# font/frames 仅文字作品（kind=text）携带：frames 是艺术字文本本身，
+# 经 tojson 转义进页面，与其他用户内容同责渲染端转义。
 _VIEW_PARAM_KEYS = ("charset", "width", "height", "color", "kind", "interval",
-                    "fg", "bg", "audio_file")
+                    "fg", "bg", "audio_file", "font", "frames")
 
 
 def _rgb_or_none(value):
@@ -843,6 +845,249 @@ def fetch_url():
         "original_size": target_size,
         "target_size": target_size,
     })
+
+
+# ═══════════════ T33 文字艺术字：FIGlet 直转 + LLM 双模式 ═══════════════
+# 静态文字艺术字作为第三种素材来源（与上传/链接抓取并列）：
+#   1) 直转    —— 对齐 lddgo：输入英数 → pyfiglet → ASCII 艺术字；
+#   2) AI 参数化 —— LLM 把意图解析成 {text, font}，本地 FIGlet 渲染（稳）；
+#   3) AI 直接创作 —— LLM 直接产出字符画（可表达中文/图形概念），服务端只归一化。
+# 文字作品入库 = art 渲染成终端风 PNG 作 source，复用缩略图/OG 管线；
+# 艺术字文本存 params_json.frames，/v/ 页零渲染改动直接回放。
+from termify import llm as _llm_mod
+from termify import textart as _textart_mod
+
+
+def _llm_cfg() -> dict:
+    return _llm_mod.load_config(GALLERY_DATA_DIR)
+
+
+def _llm_config_write_authorized(data: dict) -> bool:
+    """LLM 端点是全局共享配置：设置了 TERMIFY_ADMIN_PWD 时，写入需要管理员
+    （X-Termify-Admin 头或 body.admin_pwd）；未设口令（本地单机）则开放。"""
+    pwd = _admin_pwd()
+    if not pwd:
+        return True
+    supplied = request.headers.get("X-Termify-Admin", "")
+    if not _secret_equal(supplied, pwd):
+        body_pwd = data.get("admin_pwd") if isinstance(data, dict) else None
+        return _secret_equal(body_pwd if isinstance(body_pwd, str) else "", pwd)
+    return True
+
+
+@app.route("/api/text/fonts", methods=["GET"])
+def text_fonts():
+    return jsonify({"ok": True, "fonts": _textart_mod.curated_fonts()})
+
+
+@app.route("/api/text/convert", methods=["POST"])
+def text_convert():
+    """直转：{text, font?, width?} → FIGlet 艺术字。"""
+    data = request.get_json(silent=True) or {}
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "text-convert", per_minute=30)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    try:
+        art = _textart_mod.render_figlet(
+            data.get("text"), data.get("font"), data.get("width"))
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    cols, rows = _textart_mod.art_dims(art)
+    return jsonify({"ok": True, "art": art, "cols": cols, "rows": rows,
+                    "font": data.get("font") if _textart_mod.known_font(
+                        data.get("font")) else _textart_mod.DEFAULT_FONT})
+
+
+@app.route("/api/text/ai", methods=["POST"])
+def text_ai():
+    """AI 双模式：{prompt, mode: "params"|"direct"} → 艺术字。"""
+    data = request.get_json(silent=True) or {}
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "text-ai", per_minute=6)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    prompt = data.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        return jsonify({"error": "请输入描述 / Prompt required"}), 400
+    if len(prompt) > 500:
+        return jsonify({"error": "描述过长，最多 500 字 / Prompt too long "
+                                 "(max 500)"}), 400
+    mode = data.get("mode")
+    if mode not in ("params", "direct"):
+        return jsonify({"error": "mode 必须是 params 或 direct / mode must "
+                                 "be params or direct"}), 400
+
+    cfg = _llm_cfg()
+    if not _llm_mod.is_configured(cfg):
+        return jsonify({"error": "请先在「AI 设置」中配置 LLM 服务 / Configure "
+                                 "the LLM service in AI settings first",
+                        "need_config": True}), 400
+
+    if mode == "params":
+        messages = [{"role": "system", "content": _textart_mod.PARAM_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}]
+        try:
+            reply = _llm_mod.chat(messages, cfg)
+            obj = _llm_mod.parse_json_object(reply)
+            art = _textart_mod.render_figlet(obj.get("text"), obj.get("font"))
+        except _llm_mod.LLMError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except _textart_mod.TextArtError as exc:
+            app.logger.warning("text-ai params unrenderable: %s", exc)
+            return jsonify({"error": "AI 解析结果无法渲染，请换个说法重试"
+                                     " / AI produced an unrenderable result, "
+                                     "try rephrasing"}), 400
+        font = obj.get("font") if _textart_mod.known_font(obj.get("font")) \
+            else _textart_mod.DEFAULT_FONT
+        text = _textart_mod.filter_figlet_text(obj.get("text"))
+        cols, rows = _textart_mod.art_dims(art)
+        return jsonify({"ok": True, "mode": "params", "art": art,
+                        "cols": cols, "rows": rows, "font": font,
+                        "text": text[:80]})
+
+    cols_cap = _textart_mod.AI_DIRECT_MAX_COLS
+    rows_cap = _textart_mod.AI_DIRECT_MAX_ROWS
+    messages = [{"role": "system",
+                 "content": _textart_mod.DIRECT_SYSTEM_PROMPT_TEMPLATE.format(
+                     cols=cols_cap, rows=rows_cap)},
+                {"role": "user", "content": prompt}]
+    try:
+        reply = _llm_mod.chat(messages, cfg, temperature=0.8)
+        art = _textart_mod.normalize_direct_art(reply)
+    except _llm_mod.LLMError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    cols, rows = _textart_mod.art_dims(art)
+    return jsonify({"ok": True, "mode": "direct", "art": art,
+                    "cols": cols, "rows": rows})
+
+
+@app.route("/api/llm/config", methods=["GET", "POST"])
+def llm_config():
+    """LLM 服务配置。GET 永不返回 key；POST 在设置了管理口令时需管理员。"""
+    if request.method == "GET":
+        summary = _llm_mod.config_summary(_llm_cfg())
+        summary["ok"] = True
+        summary["requires_admin"] = bool(_admin_pwd())
+        return jsonify(summary)
+    data = request.get_json(silent=True) or {}
+    if not _llm_config_write_authorized(data):
+        return jsonify({"error": "需要管理员权限 / Admin authorization "
+                                 "required"}), 403
+    ok, reason = _rate_check(_client_ip(), "llm-config", per_minute=10)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    api_key = data["api_key"] if isinstance(data, dict) \
+        and "api_key" in data else None
+    if api_key is not None and not isinstance(api_key, str):
+        return jsonify({"error": "api_key 必须是字符串 / api_key must be a "
+                                 "string"}), 400
+    try:
+        stored = _llm_mod.save_config(
+            GALLERY_DATA_DIR,
+            base_url=data.get("base_url") if isinstance(data, dict) else "",
+            model=data.get("model") if isinstance(data, dict) else "",
+            api_key=api_key)
+    except _llm_mod.LLMError as exc:
+        return jsonify({"error": str(exc)}), 400
+    app.logger.info("LLM config updated (base_url=%s model=%s has_key=%s)",
+                    stored.get("base_url"), stored.get("model"),
+                    bool(stored.get("api_key")))
+    summary = _llm_mod.config_summary(stored)
+    summary["ok"] = True
+    return jsonify(summary)
+
+
+@app.route("/api/gallery/upload-text", methods=["POST"])
+def gallery_upload_text():
+    """文字艺术字作品入库：art → 终端风 PNG source → 缩略图/OG → DB。
+
+    艺术字文本存 params_json.frames（单帧），/v/ 页直接回放。
+    """
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "upload", per_minute=3, per_day=10)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    try:
+        art = _textart_mod.validate_stored_art(data.get("art"))
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    cols, rows = _textart_mod.art_dims(art)
+    font = data.get("font") if _textart_mod.known_font(data.get("font")) \
+        else ""
+    fg = _rgb_or_none(data.get("fg")) or _textart_mod.ART_FG_DEFAULT
+
+    title = _gallery_mod.sanitize(data.get("title"), _gallery_mod._TITLE_MAX) \
+        or "文字艺术字"
+    description = _gallery_mod.sanitize(data.get("description"),
+                                        _gallery_mod._DESC_MAX)
+    author = _gallery_mod.sanitize(data.get("author"),
+                                   _gallery_mod._AUTHOR_MAX) or "匿名创作者"
+    tags_raw = data.get("tags", [])
+    tags = [t for t in tags_raw if isinstance(t, str)
+            and t in _gallery_mod.VALID_TAGS][:3] if isinstance(tags_raw, list) \
+        else []
+    is_private = 1 if data.get("is_private") in (1, "1", True, "true", "on") \
+        else 0
+
+    work_id = _make_unique_id()
+    base = _gallery_mod.gallery_base(GALLERY_DATA_DIR)
+    source_path = os.path.join(base, f"{work_id}.png")
+    thumb_path = os.path.join(base, f"{work_id}_thumb.gif")
+    og_path = os.path.join(base, f"{work_id}_og.png")
+    try:
+        _textart_mod.render_art_png(art, source_path, fg=fg)
+        _gallery_mod.make_thumbnail(source_path, thumb_path)
+        _gallery_mod.make_og_image(source_path, og_path, title, author)
+    except Exception as exc:  # noqa: BLE001
+        for p in (source_path, thumb_path, og_path):
+            if os.path.isfile(p):
+                os.remove(p)
+        app.logger.warning("text-art thumbnail failed: %s", exc)
+        return jsonify({"error": "缩略图生成失败 / Thumbnail generation "
+                                 "failed"}), 500
+
+    params = {"kind": "text", "charset": "text", "font": font,
+              "color": "mono", "fg": list(fg),
+              "width": cols, "height": rows, "frames": [art]}
+    admin_token = _gallery_mod.make_admin_token()
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    GALLERY_DB.insert_work({
+        "id": work_id,
+        "title": title,
+        "description": description,
+        "tags": json.dumps(tags, ensure_ascii=False),
+        "author": author,
+        "source_path": source_path,
+        "thumbnail_path": thumb_path,
+        "og_path": og_path,
+        "params_json": json.dumps(params, ensure_ascii=False),
+        "is_private": is_private,
+        "admin_token": admin_token,
+        "created_at": now_iso,
+        "ip": ip,
+    })
+    work = GALLERY_DB.get_work(work_id)
+    resp = make_response(jsonify({
+        "ok": True,
+        "id": work_id,
+        "admin_token": admin_token,
+        "url": url_for("gallery_view", work_id=work_id, _external=False),
+        "work": _gallery_public_dict(work),
+    }))
+    resp.set_cookie(
+        f"termify_admin_{work_id}",
+        admin_token,
+        max_age=60 * 60 * 24 * 30,
+        httponly=True,
+        samesite="Lax",
+    )
+    return resp
 
 
 def _get_sequence(task_id: str, charset: str, width: int, height: int, fg_color=None,

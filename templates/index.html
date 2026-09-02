@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Termify · 万物皆可终端</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260903d">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903d">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260903e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903e">
 </head>
 <body>
 <div id="toast"></div>
@@ -101,6 +101,64 @@
                 <input type="text" class="url-fetch-input" id="urlInput"
                        placeholder="https://example.com/image.gif" />
                 <button class="url-fetch-btn" id="urlFetchBtn" title="抓取 / Fetch">抓取 / Fetch</button>
+            </div>
+            <!-- Text art (T33)：FIGlet 直转 + AI 双模式 -->
+            <div class="text-art" id="textArt">
+                <div class="text-art-head">
+                    <span class="text-art-label">或输入文字生成 ASCII 艺术字 / Or type text for ASCII art</span>
+                    <button type="button" class="text-art-gear" id="aiSettingsBtn">⚙ AI 设置 / AI settings</button>
+                </div>
+                <textarea class="text-art-input" id="textArtInput" rows="2" maxlength="500"
+                          placeholder="直接生成：输入英文/数字，如 hello（中文会被忽略）&#10;AI 生成：用一句中文描述，如「火焰感的 HELLO」或「画一只猫」"></textarea>
+                <div class="text-art-controls">
+                    <label class="text-art-field">字体 / Font
+                        <select class="text-art-select" id="textArtFont"></select>
+                    </label>
+                    <span class="text-art-ai-modes" id="textAiModes">
+                        <label class="text-art-radio"><input type="radio" name="textAiMode" value="params" checked> AI 解析参数</label>
+                        <label class="text-art-radio"><input type="radio" name="textAiMode" value="direct"> AI 直接创作</label>
+                    </span>
+                    <span class="text-art-actions">
+                        <button type="button" class="text-art-btn" id="textArtConvertBtn">生成 / Convert</button>
+                        <button type="button" class="text-art-btn text-art-btn-ai" id="textArtAiBtn">AI 生成 / AI</button>
+                    </span>
+                </div>
+                <div class="ai-settings" id="aiSettings" hidden>
+                    <div class="ai-settings-grid">
+                        <label class="ai-settings-field">Base URL
+                            <input type="text" id="aiBaseUrl" autocomplete="off" spellcheck="false"
+                                   placeholder="https://open.bigmodel.cn/api/paas/v4（智谱）· http://localhost:11434/v1（Ollama）">
+                        </label>
+                        <label class="ai-settings-field">Model
+                            <input type="text" id="aiModel" autocomplete="off" spellcheck="false"
+                                   placeholder="glm-4-flash · deepseek-chat · qwen2.5:7b">
+                        </label>
+                        <label class="ai-settings-field">API Key
+                            <input type="password" id="aiApiKey" autocomplete="new-password"
+                                   placeholder="已保存则留空保持不变 / leave empty to keep">
+                        </label>
+                        <label class="ai-settings-field" id="aiAdminField" hidden>管理口令
+                            <input type="password" id="aiAdminPwd" autocomplete="new-password"
+                                   placeholder="TERMIFY_ADMIN_PWD">
+                        </label>
+                    </div>
+                    <div class="ai-settings-actions">
+                        <button type="button" class="text-art-btn" id="aiSaveBtn">保存 AI 配置 / Save</button>
+                        <span class="ai-settings-status" id="aiStatus"></span>
+                    </div>
+                    <p class="ai-settings-note">API Key 只保存在服务端（data/llm_config.json），不会下发到浏览器，也不进日志。</p>
+                </div>
+                <div class="text-result" id="textResult" hidden>
+                    <div class="text-result-head">
+                        <span class="text-result-meta" id="textResultMeta"></span>
+                        <span class="text-result-actions">
+                            <button type="button" class="text-art-btn text-art-btn-sm" id="textCopyBtn">复制 / Copy</button>
+                            <button type="button" class="text-art-btn text-art-btn-sm" id="textDownloadBtn">下载 .txt</button>
+                            <button type="button" class="text-art-btn text-art-btn-sm text-art-btn-ai" id="textShareBtn">分享到画廊 / Share</button>
+                        </span>
+                    </div>
+                    <pre class="text-result-art" id="textResultArt"></pre>
+                </div>
             </div>
         </div>
     </section>
@@ -573,8 +631,8 @@
         }
         requestAnimationFrame(demoTick);
     </script>
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903d"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260903d" defer></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903e"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260903e" defer></script>
 
     <!-- Termify 自定义弹窗（替代浏览器原生 alert/confirm） -->
     <div class="termify-modal" id="termifyModal" hidden>

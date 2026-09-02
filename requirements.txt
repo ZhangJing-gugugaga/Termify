@@ -1,5 +1,6 @@
 flask>=3.0
 pillow>=10.0
+pyfiglet>=1.0
 pytest>=8.0
 beautifulsoup4>=4.12
 yt-dlp>=2024.8.30

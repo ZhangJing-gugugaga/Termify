@@ -6,7 +6,7 @@
     <title>{{ work.title }} · Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903d">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903e">
 </head>
 <body>
 <div id="toast"></div>
@@ -138,7 +138,7 @@
         <div class="container">
             <div class="section-label">预览 & 下载</div>
             <!-- Size selector: 列数滑杆 + 行高按素材比例自动（与主页一致） -->
-            <div class="view-size-row">
+            <div class="view-size-row" id="viewSizeControls">
                 <span class="view-size-label">尺寸:</span>
                 <input type="range" id="viewSizeSlider" min="20" max="400" step="2"
                        aria-label="列数 / columns" title="拖动选择列数 / Drag to choose columns">
@@ -167,26 +167,42 @@
                         </div>
                     </div>
                 </div>
-                <div class="output-panel">
-                    <div class="output-card">
+                <div class="output-panel" id="outputPanel">
+                    <div class="output-card" id="animExports">
                         <div class="output-card-title">输出格式</div>
                         <div class="format-options view-format-options">
                             <div class="format-option selected" data-format="python"><div class="format-radio"></div><div class="format-label"><div class="format-label-name">Python 脚本</div><div class="format-label-desc">python play.py 直接运行</div></div><div class="format-icon">.py</div></div>
                             <div class="format-option" data-format="html"><div class="format-radio"></div><div class="format-label"><div class="format-label-name">HTML 页面</div><div class="format-label-desc">浏览器打开即播放</div></div><div class="format-icon">.html</div></div>
                         </div>
                     </div>
-                    <button class="download-btn" id="downloadPyBtn">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        ⬇ 下载 .py
-                    </button>
-                    <button class="download-btn" id="downloadHtmlBtn" style="margin-top:8px;">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        ⬇ 下载 .html
-                    </button>
-                    <button class="download-btn" id="downloadMp4Btn" style="margin-top:8px;">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        ⬇ 下载 .mp4 视频
-                    </button>
+                    <div id="textTools" hidden>
+                        <div class="output-card">
+                            <div class="output-card-title">文字艺术字 / Text art</div>
+                            <div class="text-work-meta" id="textWorkMeta"></div>
+                        </div>
+                        <button class="download-btn" id="textCopyBtnV">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            复制文本 / Copy text
+                        </button>
+                        <button class="download-btn" id="textDownloadBtnV" style="margin-top:8px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            ⬇ 下载 .txt
+                        </button>
+                    </div>
+                    <div id="animDownloads">
+                        <button class="download-btn" id="downloadPyBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            ⬇ 下载 .py
+                        </button>
+                        <button class="download-btn" id="downloadHtmlBtn" style="margin-top:8px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            ⬇ 下载 .html
+                        </button>
+                        <button class="download-btn" id="downloadMp4Btn" style="margin-top:8px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            ⬇ 下载 .mp4 视频
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -229,7 +245,7 @@
         <div class="tweak-group"><div class="tweak-label">主题色</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button><button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button><button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button></div></div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903d"></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903e"></script>
     <script>
         // ═══════════ Embedded work data ═══════════
         // tojson：JS 字符串上下文的安全转义（反斜杠/引号/HTML 结束标签全覆盖）。
@@ -249,10 +265,41 @@
             var work = window.TERMIFY_GALLERY_WORK;
             var WORK_ID = work.id;
             var params = work.params || {};
+            // 文字作品（kind=text）：艺术字存 params.frames（单帧），无动画/
+            // 风格/尺寸切换，预览直接回放 + 单色配色（params.fg）。
+            var IS_TEXT = params.kind === "text";
             var curCharset = params.charset || "blocks";
             var curWidth = params.width || 80;
             var curHeight = params.height || 24;
             var curFormat = "python";
+
+            if (IS_TEXT) {
+                var _stylesSection = document.getElementById("styles");
+                if (_stylesSection) _stylesSection.style.display = "none";
+                ["viewSizeControls", "viewSizeMeta", "viewSizeWarn"].forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el) el.style.display = "none";
+                });
+                var _exports = document.getElementById("animExports");
+                if (_exports) _exports.style.display = "none";
+                var _downloads = document.getElementById("animDownloads");
+                if (_downloads) _downloads.style.display = "none";
+                var _tools = document.getElementById("textTools");
+                if (_tools) _tools.hidden = false;
+                var _meta = document.getElementById("textWorkMeta");
+                if (_meta) {
+                    _meta.textContent = (params.font ? params.font + " · " : "") +
+                        curWidth + "×" + curHeight + " · 静态文字作品";
+                }
+            }
+            function textArtString() {
+                return (params.frames && params.frames[0]) ? String(params.frames[0]) : "";
+            }
+            function textFgColor() {
+                return Array.isArray(params.fg) && params.fg.length === 3
+                    ? "rgb(" + (params.fg[0] | 0) + "," + (params.fg[1] | 0) + "," + (params.fg[2] | 0) + ")"
+                    : null;
+            }
 
             // ── 配色回放：作品保存的配色在预览与导出中原样重现 ──
             // color=source/source256 → 本地渲染逐字符原色（256 仅影响 py 导出，
@@ -469,7 +516,22 @@
                                   availH / (curHeight * 1.3));
                 tb.style.fontSize = Math.max(2, Math.min(fs, 30)) + "px";
             }
+            function loadTextPreview() {
+                var art = textArtString();
+                preview.style.opacity = "1";
+                if (!art) { preview.textContent = "作品内容缺失 / Missing art content"; return; }
+                frames = [art.split("\n")];
+                interval = 0;
+                htmlFrames = [];
+                totalFrames = 1;
+                preview.style.color = textFgColor() || "";
+                if (previewTitle) previewTitle.textContent = "text art · " +
+                    (params.font || "custom") + " " + curWidth + "×" + curHeight;
+                fitViewFontSize();
+                renderFrame(0);
+            }
             function loadPreview() {
+                if (IS_TEXT) { loadTextPreview(); return; }
                 var myId = ++latestReq;
                 preview.style.transition = "opacity 0.15s ease";
                 preview.style.opacity = "0.5";
@@ -519,7 +581,7 @@
             }
 
             // ── style cards ──
-            document.querySelectorAll("#styles .style-card").forEach(function (card) {
+            if (!IS_TEXT) document.querySelectorAll("#styles .style-card").forEach(function (card) {
                 card.addEventListener("click", function () {
                     document.querySelectorAll("#styles .style-card").forEach(function (c) { c.classList.remove("selected"); });
                     card.classList.add("selected");
@@ -532,7 +594,7 @@
             // rows = cols × (2 × savedH / savedW) / 2 = cols × savedH / savedW。
             (function initSizeSlider() {
                 var slider = document.getElementById("viewSizeSlider");
-                if (!slider) return;
+                if (!slider || IS_TEXT) return;
                 var savedAr = (params.width && params.height)
                     ? (params.height / params.width) : 0.5;
                 function rowsForCols(cols) {
@@ -666,31 +728,50 @@
             bindTweak('[data-tweak="grid-on"]', '[data-tweak="grid-off"]', "--grid-opacity", "0.3", "0");
             bindTweak('[data-tweak="scan-on"]', '[data-tweak="scan-off"]', "--scanline-opacity", "1", "0");
 
+            // ── text works: copy / download .txt ──
+            var _copyV = document.getElementById("textCopyBtnV");
+            if (_copyV) _copyV.addEventListener("click", function () {
+                var art = textArtString();
+                if (!art) return;
+                navigator.clipboard.writeText(art).then(function () { toast("已复制 / Copied"); })
+                    .catch(function () { toast("复制失败 / Copy failed"); });
+            });
+            var _dlV = document.getElementById("textDownloadBtnV");
+            if (_dlV) _dlV.addEventListener("click", function () {
+                var art = textArtString();
+                if (!art) return;
+                var blob = new Blob([art], { type: "text/plain;charset=utf-8" });
+                var a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = "termify_" + WORK_ID + "_text_art.txt";
+                document.body.appendChild(a); a.click(); a.remove();
+                URL.revokeObjectURL(a.href);
+            });
+
             // ── initial selection highlight ──
             document.querySelectorAll("#styles .style-card").forEach(function (c) {
                 if (c.getAttribute("data-style") === curCharset) { c.classList.add("selected"); }
             });
-            // Default: match exact size, otherwise find closest by area
-            var sizePresets = ["40x20", "80x24", "120x36", "160x48", "200x60"];
-            var exactMatch = curWidth + "x" + curHeight;
-            var matchedSize = sizePresets.indexOf(exactMatch) >= 0 ? exactMatch : null;
-            if (!matchedSize) {
-                var targetArea = curWidth * curHeight;
-                var bestDiff = Infinity;
-                for (var si = 0; si < sizePresets.length; si++) {
-                    var parts = sizePresets[si].split("x");
-                    var area = parseInt(parts[0]) * parseInt(parts[1]);
-                    var diff = Math.abs(area - targetArea);
-                    if (diff < bestDiff) { bestDiff = diff; matchedSize = sizePresets[si]; }
+            if (!IS_TEXT) {
+                // Default: match exact size, otherwise find closest by area
+                var sizePresets = ["40x20", "80x24", "120x36", "160x48", "200x60"];
+                var exactMatch = curWidth + "x" + curHeight;
+                var matchedSize = sizePresets.indexOf(exactMatch) >= 0 ? exactMatch : null;
+                if (!matchedSize) {
+                    var targetArea = curWidth * curHeight;
+                    var bestDiff = Infinity;
+                    for (var si = 0; si < sizePresets.length; si++) {
+                        var parts = sizePresets[si].split("x");
+                        var area = parseInt(parts[0]) * parseInt(parts[1]);
+                        var diff = Math.abs(area - targetArea);
+                        if (diff < bestDiff) { bestDiff = diff; matchedSize = sizePresets[si]; }
+                    }
                 }
+                // Snap curWidth/curHeight to the matched preset so initial preview matches the highlighted button
+                var matchedParts = matchedSize.split("x");
+                curWidth = parseInt(matchedParts[0]);
+                curHeight = parseInt(matchedParts[1]);
             }
-            document.querySelectorAll(".view-size-btn").forEach(function (b) {
-                if (b.getAttribute("data-size") === matchedSize) { b.classList.add("active"); }
-            });
-            // Snap curWidth/curHeight to the matched preset so initial preview matches the highlighted button
-            var matchedParts = matchedSize.split("x");
-            curWidth = parseInt(matchedParts[0]);
-            curHeight = parseInt(matchedParts[1]);
 
             // ── kick off first preview ──
             loadPreview();
