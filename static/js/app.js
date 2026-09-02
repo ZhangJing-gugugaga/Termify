@@ -666,9 +666,14 @@
      之后 7 风格 × 5 尺寸的切换全部在浏览器本地完成（零网络请求）。
      404 / 413 / 解码失败 / 网络失败 → 记忆失败状态（本会话不再重试），
      回退既有服务端 /api/preview 流程（serverPreview，完整保留可用）。 */
-  var taskFrameCache = {};   // task_id -> { state: loading|ok|failed, promise, bitmaps, interval }
+  var taskFrameCache = {};   // task_id -> { state: loading|ok|failed|evicted, promise, bitmaps, interval, bytes }
   var lumCaches = {};        // task_id|WxH -> { map, used, budget } 跨风格切换的亮度/RGBA 缓存
   var LUM_CACHE_BUDGET = 48 * 1024 * 1024;
+  // 位图常驻内存的字节预算（FIFO 淘汰非当前任务；600 帧 400×240 ≈ 218MB，
+  // 不设上限时多任务累积可拖垮低端机）。
+  var FRAME_BUDGET_BYTES = 160 * 1024 * 1024;
+  var frameBudgetUsed = 0;
+  var frameFifo = [];        // 按 task_id 缓存顺序，最旧在前
 
   function b64ToBitmap(b64) {
     var url = "data:image/jpeg;base64," + b64;
@@ -690,8 +695,13 @@
 
   function ensureTaskFrames(taskId) {
     var entry = taskFrameCache[taskId];
+    // evicted：位图被预算淘汰（非失败）——重置后重新拉取
+    if (entry && entry.state === "evicted") {
+      delete taskFrameCache[taskId];
+      entry = null;
+    }
     if (entry) return entry.promise;
-    entry = { state: "loading", bitmaps: [], interval: 0.1 };
+    entry = { state: "loading", bitmaps: [], interval: 0.1, bytes: 0 };
     entry.promise = new Promise(function (resolve, reject) {
       entry.resolve = resolve;
       entry.reject = reject;
@@ -713,6 +723,11 @@
           entry.bitmaps = usable;
           entry.interval = d.interval || 0.1;
           entry.state = "ok";
+          // 估算常驻字节数并执行 FIFO 预算淘汰（绝不淘汰当前任务）
+          entry.bytes = usable.length * d.w * d.h * 4;
+          frameBudgetUsed += entry.bytes;
+          frameFifo.push(taskId);
+          evictFrameCacheOverBudget(taskId);
           entry.resolve(entry);
         });
       })
@@ -722,6 +737,24 @@
         entry.reject(err);
       });
     return entry.promise;
+  }
+
+  function evictFrameCacheOverBudget(activeTaskId) {
+    var guard = frameFifo.length;  // 防御：只剩当前任务且仍超预算时不死循环
+    while (frameBudgetUsed > FRAME_BUDGET_BYTES && frameFifo.length > 1 && guard-- > 0) {
+      var oldest = frameFifo.shift();
+      if (oldest === activeTaskId) {
+        frameFifo.push(oldest);  // 当前任务不淘汰，轮到下一个
+        continue;
+      }
+      var e = taskFrameCache[oldest];
+      if (e && e.state === "ok") {
+        frameBudgetUsed -= e.bytes || 0;
+        e.bitmaps = [];
+        e.bytes = 0;
+        e.state = "evicted";  // 之后切换回该任务时自动重新拉取
+      }
+    }
   }
 
   function taskFramesFailed(taskId) {
