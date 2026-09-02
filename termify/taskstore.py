@@ -72,6 +72,30 @@ CACHE_MAX_ENTRIES = 128
 _CACHE_LOCK = threading.Lock()
 
 
+def _execute_with_busy_retry(fn, *, attempts: int = 6, base_delay: float = 0.1):
+    """Run ``fn()`` retrying transient SQLite busy/lock errors.
+
+    gunicorn 多 worker 冷启动时会并发地对同一个新 tasks.db 首次建库
+    （WAL 切换 / DDL），跨进程偶发 SQLITE_BUSY / "database is locked"；
+    worker 启动路径上任何一次未捕获异常都会让整批 worker 启动失败
+    （systemd 只能整组重来）。因此启动期 DDL 与首次 sweep 统一走这里：
+    有界指数退避重试，非锁类错误立即原样抛出。
+    """
+    last_error: sqlite3.OperationalError | None = None
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except sqlite3.OperationalError as exc:
+            message = str(exc).lower()
+            if "locked" not in message and "busy" not in message:
+                raise
+            last_error = exc
+            time.sleep(base_delay * (2 ** attempt))
+    assert last_error is not None
+    raise last_error
+
+
+
 class TaskStore:
     """SQLite-backed task metadata store with TTL and process-local cache.
 
@@ -115,22 +139,58 @@ class TaskStore:
     def init_db(self) -> None:
         """Create the ``tasks`` table + TTL index if absent. Idempotent.
 
-        Uses ``DROP TABLE IF EXISTS`` + ``CREATE TABLE`` (not
-        ``CREATE TABLE IF NOT EXISTS``) so that schema corrections
-        (e.g. making ``filepath`` nullable) are applied even when the
-        DB file already contains an older version of the table.  The
-        ``_initialised`` flag ensures this runs at most once per process,
-        so data loss between gunicorn workers on start-up is not a
-        practical concern (no requests are served until *all* workers
-        are ready).  Once deployed, ``_initialised`` prevents future
-        startup scans from touching the table.
+        v1 每次启动都 ``DROP TABLE IF EXISTS`` + ``CREATE TABLE`` 以便
+        schema 修正总能被应用，但 gunicorn 下每个 worker 是独立进程：
+        4 个 worker 冷启动并发跑到这里时，兄弟进程的 ``DROP`` 可能落进
+        本进程 ``init_db`` 与紧随其后的 ``sweep_expired()`` SELECT
+        之间——SELECT 报 ``no such table: tasks``，整批 worker 启动失败
+        （首次部署重启已在线上实锤：Worker failed to boot）。
+
+        因此平时只 ``CREATE TABLE IF NOT EXISTS`` + 索引 IF NOT EXISTS，
+        绝不 DROP，正常启动不再存在跨进程竞态窗口；仅当既有表缺少当前
+        schema 所需列（真正的旧结构兼容场景）时才一次性 DROP 重建。
+        DDL 整体包在 busy 重试里（:func:`_execute_with_busy_retry`）：
+        除上述竞态外，多 worker 首次并发建库时 SQLite 偶发的锁冲突
+        （database is locked）同样会在启动路径上被兜住。
         """
         with self._lock:
             if self._initialised:
                 return
-            with self._connect() as conn:
+            _execute_with_busy_retry(self._init_db_once)
+            self._initialised = True
+
+    def _init_db_once(self) -> None:
+        """One-shot schema ensure; retried by :meth:`init_db` on busy."""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tasks (
+                    task_id TEXT PRIMARY KEY,
+                    filepath TEXT,
+                    original_size_w INTEGER,
+                    original_size_h INTEGER,
+                    target_size_w INTEGER,
+                    target_size_h INTEGER,
+                    frames_count INTEGER,
+                    interval REAL,
+                    created_at REAL,
+                    ttl_until REAL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tasks_ttl ON tasks(ttl_until)"
+            )
+            # 旧结构兼容：缺列才 DROP 重建（一次性迁移路径，正常启动不走）
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(tasks)")}
+            required = {
+                "task_id", "filepath", "original_size_w", "original_size_h",
+                "target_size_w", "target_size_h", "frames_count",
+                "interval", "created_at", "ttl_until",
+            }
+            if not required <= cols:
                 conn.execute("DROP TABLE IF EXISTS tasks")
-                conn.executescript(
+                conn.execute(
                     """
                     CREATE TABLE tasks (
                         task_id TEXT PRIMARY KEY,
@@ -143,12 +203,12 @@ class TaskStore:
                         interval REAL,
                         created_at REAL,
                         ttl_until REAL
-                    );
-                    CREATE INDEX IF NOT EXISTS idx_tasks_ttl
-                        ON tasks(ttl_until);
+                    )
                     """
                 )
-            self._initialised = True
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_tasks_ttl ON tasks(ttl_until)"
+                )
 
     # --- write ----------------------------------------------------------
 
@@ -364,7 +424,9 @@ def get_store() -> TaskStore:
         store = TaskStore(db_path)
         store.init_db()
         # Pre-clean any rows that expired while the service was down.
-        store.sweep_expired()
+        # 启动路径同样走 busy 重试：多 worker 并发首启时，本进程的首次
+        # sweep SELECT 可能撞上兄弟进程的建库/迁移 DDL 锁。
+        _execute_with_busy_retry(store.sweep_expired)
         store.start_sweeper()
         _STORE = store
         return _STORE
