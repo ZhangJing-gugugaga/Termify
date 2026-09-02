@@ -6,7 +6,7 @@
     <title>{{ work.title }} · Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903c">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903d">
 </head>
 <body>
 <div id="toast"></div>
@@ -137,15 +137,15 @@
     <section class="animation-section" id="preview">
         <div class="container">
             <div class="section-label">预览 & 下载</div>
-            <!-- Size selector -->
+            <!-- Size selector: 列数滑杆 + 行高按素材比例自动（与主页一致） -->
             <div class="view-size-row">
                 <span class="view-size-label">尺寸:</span>
-                <button class="view-size-btn" data-size="40x20">40×20</button>
-                <button class="view-size-btn" data-size="80x24">80×24</button>
-                <button class="view-size-btn" data-size="120x36">120×36</button>
-                <button class="view-size-btn" data-size="160x48">160×48 <small>高清</small></button>
-                <button class="view-size-btn" data-size="200x60">200×60 <small>超清</small></button>
+                <input type="range" id="viewSizeSlider" min="20" max="400" step="2"
+                       aria-label="列数 / columns" title="拖动选择列数 / Drag to choose columns">
+                <span class="size-slider-val"><span id="viewColsVal">80</span> 列 <small>/ cols</small></span>
             </div>
+            <div class="size-meta" id="viewSizeMeta"></div>
+            <div class="size-warn" id="viewSizeWarn" hidden>&gt; 列数 &gt; 320：渲染变慢、导出文件增大 / Above 320 columns: slower rendering, larger export files</div>
             <div class="animation-layout">
                 <div class="animation-terminal">
                     <div class="terminal">
@@ -229,7 +229,7 @@
         <div class="tweak-group"><div class="tweak-label">主题色</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button><button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button><button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button></div></div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903c"></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903d"></script>
     <script>
         // ═══════════ Embedded work data ═══════════
         // tojson：JS 字符串上下文的安全转义（反斜杠/引号/HTML 结束标签全覆盖）。
@@ -527,16 +527,42 @@
                     loadPreview();
                 });
             });
-            // ── size buttons ──
-            document.querySelectorAll(".view-size-btn").forEach(function (btn) {
-                btn.addEventListener("click", function () {
-                    document.querySelectorAll(".view-size-btn").forEach(function (b) { b.classList.remove("active"); });
-                    btn.classList.add("active");
-                    var sz = btn.getAttribute("data-size").split("x");
-                    curWidth = parseInt(sz[0]); curHeight = parseInt(sz[1]);
-                    loadPreview();
+            // ── size slider：列数 20-400，行高按素材比例自动（与主页一致）──
+            // 比例来源：作品保存的 width/height 网格（上传时已按源比例生成）。
+            // rows = cols × (2 × savedH / savedW) / 2 = cols × savedH / savedW。
+            (function initSizeSlider() {
+                var slider = document.getElementById("viewSizeSlider");
+                if (!slider) return;
+                var savedAr = (params.width && params.height)
+                    ? (params.height / params.width) : 0.5;
+                function rowsForCols(cols) {
+                    var rows = TermifyRender.pyRound(cols * savedAr);
+                    return Math.max(8, Math.min(240, rows));
+                }
+                function syncMeta(cols) {
+                    var colsVal = document.getElementById("viewColsVal");
+                    if (colsVal) colsVal.textContent = String(cols);
+                    var meta = document.getElementById("viewSizeMeta");
+                    if (meta) meta.textContent = cols + " × " + curHeight +
+                        " · 行数按素材比例自动 / rows auto-fit to source";
+                    var warn = document.getElementById("viewSizeWarn");
+                    if (warn) warn.hidden = cols <= 320;
+                }
+                var pending = null;
+                slider.addEventListener("input", function () {
+                    var cols = parseInt(slider.value, 10) || 80;
+                    curWidth = cols;
+                    curHeight = rowsForCols(cols);
+                    syncMeta(cols);
+                    pending = cols;
                 });
-            });
+                slider.addEventListener("change", function () {
+                    if (pending !== null) { loadPreview(); pending = null; }
+                });
+                // 初始值 = 作品保存的列数
+                slider.value = String(curWidth);
+                syncMeta(curWidth);
+            })();
             // ── format options ──
             document.querySelectorAll(".view-format-options .format-option").forEach(function (opt) {
                 opt.addEventListener("click", function () {
