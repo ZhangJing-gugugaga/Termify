@@ -289,7 +289,8 @@ def _scale_dims(charset: str, width: int, height: int) -> tuple[int, int]:
 
 
 def sequence_from_frames_dir(frames_dir: str, charset: str, width: int, height: int,
-                             interval: float, charset_ramp=None):
+                             interval: float, charset_ramp=None,
+                             color_mode="mono"):
     """Rebuild a FrameSequence from a persisted per-task frames directory.
 
     Used for video tasks: no ffmpeg re-extraction, just PIL re-rendering, so
@@ -304,7 +305,8 @@ def sequence_from_frames_dir(frames_dir: str, charset: str, width: int, height: 
         img = Image.open(fpath).convert("RGB")
         scaled = scale_frame(img, sw, sh)
         lines_per_frame.append(render_frame(scaled, charset, sw, sh,
-                                            charset_ramp=charset_ramp))
+                                            charset_ramp=charset_ramp,
+                                            color_mode=color_mode))
     return FrameSequence(
         lines_per_frame=lines_per_frame,
         interval=interval if interval and interval > 0 else 0.1,

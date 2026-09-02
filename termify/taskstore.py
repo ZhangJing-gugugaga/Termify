@@ -384,19 +384,22 @@ def reset_store_for_tests() -> None:
 # --- per-task helpers -------------------------------------------------------
 
 def cache_key(task_id: str, charset: str, width: int, height: int,
-              fg: Any = None, bg: Any = None, charset_ramp: Any = None) -> str:
+              fg: Any = None, bg: Any = None, charset_ramp: Any = None,
+              color_mode: str = "mono") -> str:
     """Build the cache key for a converted sequence.
 
     ``fg`` / ``bg`` are either an ``(r, g, b)`` 3-tuple or ``None``.
     ``charset_ramp`` (custom charset) is hashed so different ramps of the
-    same task never collide.
+    same task never collide. ``color_mode`` separates mono / source /
+    source256 renders of the same charset+size.
     """
     fg_part = _color_part(fg)
     bg_part = _color_part(bg)
     ramp_part = "none"
     if charset_ramp:
         ramp_part = hashlib.sha256(str(charset_ramp).encode("utf-8")).hexdigest()[:12]
-    return f"{task_id}:{charset}:{width}x{height}:{fg_part}:{bg_part}:{ramp_part}"
+    cm = color_mode if color_mode in ("mono", "source", "source256") else "mono"
+    return f"{task_id}:{charset}:{width}x{height}:{fg_part}:{bg_part}:{ramp_part}:{cm}"
 
 
 def _color_part(color: Any) -> str:
