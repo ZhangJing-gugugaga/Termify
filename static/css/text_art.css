@@ -508,3 +508,41 @@
     border-color: var(--text-primary);
     box-shadow: 0 0 10px var(--c);
 }
+
+/* AI 多候选条 + 迭代输入条（P2 创作伙伴化） */
+.ta-variant-bar {
+    display: flex; gap: var(--space-2); margin-top: var(--space-3);
+}
+.ta-variant-card {
+    background: var(--bg-surface); border: 1px solid var(--border-dim);
+    border-radius: var(--radius-md); cursor: pointer; flex: 1;
+    max-width: 260px; overflow: hidden; padding: var(--space-2);
+    text-align: center; transition: all var(--transition-fast);
+}
+.ta-variant-card:hover { border-color: var(--green); }
+.ta-variant-card.active {
+    background: var(--green-glow); border-color: var(--green);
+}
+.ta-variant-mini {
+    color: var(--green); display: block; font-family: var(--font-mono);
+    font-size: 0.42rem; line-height: 1.1; margin: 0 auto;
+    max-height: 60px; overflow: hidden; white-space: pre;
+}
+.ta-variant-label {
+    color: var(--text-dim); display: block; font-size: 0.7rem;
+    margin-top: 4px;
+}
+.ta-variant-card.active .ta-variant-label { color: var(--green); }
+.ta-iterate-bar {
+    display: flex; gap: var(--space-2); margin-top: var(--space-2);
+}
+.ta-iterate-input {
+    background: var(--bg-base); border: 1px solid var(--border-dim);
+    border-radius: var(--radius-sm); color: var(--text-primary);
+    flex: 1; font-family: var(--font-mono); font-size: 0.82rem;
+    padding: 8px 12px;
+}
+.ta-iterate-input:focus {
+    border-color: var(--green); outline: none;
+    box-shadow: 0 0 8px var(--green-glow);
+}

@@ -192,6 +192,124 @@
     });
   });
 
+  /* ── AI 候选区 + 迭代输入条（P2 创作伙伴化） ── */
+  var taIterateBar = null;
+
+  /* 候选条/迭代条插入锚点：terminal 窗口之后（不在窗口内部） */
+  function stageAnchor() {
+    if (!taOutput) return null;
+    return taOutput.closest(".terminal") || taOutput.parentNode;
+  }
+
+  function insertAfterTerminal(el) {
+    var anchor = stageAnchor();
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(el, anchor.nextSibling);
+    }
+  }
+
+  function showVariants(d) {
+    // direct 多候选：首版进主舞台，其余进候选条
+    showArt(d);
+    if (d.variants && d.variants.length > 1) {
+      removeIterateBar();
+      removeVariantBar();
+      var bar = document.createElement("div");
+      bar.className = "ta-variant-bar";
+      bar.id = "taVariantBar";
+      d.variants.forEach(function (v, i) {
+        var card = document.createElement("button");
+        card.type = "button";
+        card.className = "ta-variant-card" + (i === 0 ? " active" : "");
+        card.setAttribute("data-idx", i);
+        card.title = v.cols + " x " + v.rows;
+        var mini = document.createElement("span");
+        mini.className = "ta-variant-mini";
+        mini.textContent = v.art.split("\n").slice(0, 6).join("\n");
+        card.appendChild(mini);
+        var label = document.createElement("span");
+        label.className = "ta-variant-label";
+        label.textContent = "候选 " + (i + 1) + " · " + v.cols + "x" + v.rows;
+        card.appendChild(label);
+        bar.appendChild(card);
+      });
+      if (taOutput && taOutput.parentNode) {
+        insertAfterTerminal(bar);
+      }
+      bar.addEventListener("click", function (e) {
+        var card2 = e.target.closest(".ta-variant-card");
+        if (!card2) return;
+        var idx = parseInt(card2.getAttribute("data-idx"), 10) || 0;
+        var v = d.variants[idx];
+        if (v) {
+          showArt({ art: v.art, cols: v.cols, rows: v.rows,
+                    mode: "direct", font: "" });
+          bar.querySelectorAll(".ta-variant-card").forEach(function (c) {
+            c.classList.remove("active");
+          });
+          card2.classList.add("active");
+          showIterateBar(v.art);  // 迭代对象跟随选中的候选
+        }
+      });
+      showIterateBar(d.variants[0].art);
+    } else {
+      showIterateBar(d.art);
+    }
+  }
+
+  function removeVariantBar() {
+    var old = byId("taVariantBar");
+    if (old) old.remove();
+  }
+
+  function removeIterateBar() {
+    var oldBar = byId("taIterateBar");
+    if (oldBar) oldBar.remove();
+    taIterateBar = null;
+  }
+
+  function showIterateBar(art) {
+    removeIterateBar();  // 只清迭代条，保留候选条
+    var wrap = document.createElement("div");
+    wrap.className = "ta-iterate-bar";
+    wrap.id = "taIterateBar";
+    wrap.innerHTML =
+      '<input type="text" class="ta-iterate-input" id="taIterateInput" ' +
+      'maxlength="500" placeholder="继续修改：更大一点 / 加个边框 / 换成侧面…">' +
+      '<button type="button" class="ta-btn ta-btn-sm ta-btn-primary" ' +
+      'id="taIterateBtn">迭代</button>';
+    if (taOutput && taOutput.parentNode) {
+      insertAfterTerminal(wrap);
+    }
+    var input = byId("taIterateInput");
+    var btn = byId("taIterateBtn");
+    if (input && btn) {
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && !busy) btn.click();
+      });
+      btn.addEventListener("click", function () {
+        var ins = (input.value || "").trim();
+        if (!ins) { toast("说说要改哪里 / Describe the change"); return; }
+        btn.disabled = true; btn.textContent = "修改中…";
+        fetch("/api/text/iterate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ current_art: art, instruction: ins })
+        }).then(function (r) { return r.json(); }).then(function (d2) {
+          btn.disabled = false; btn.textContent = "迭代";
+          if (d2.error) { toast(d2.error); return; }
+          showArt({ art: d2.art, cols: d2.cols, rows: d2.rows,
+                    mode: "iterate", font: "" });
+          showIterateBar(d2.art);  // 迭代结果可继续迭代
+          if (d2.auto_fitted) toast("已自动适配尺寸");
+        }).catch(function () {
+          btn.disabled = false; btn.textContent = "迭代";
+          toast("网络异常，请重试");
+        });
+      });
+    }
+  }
+
   /* ── AI 生成（双模式） ── */
   var aiBtn = byId("taAiBtn");
   if (aiBtn) aiBtn.addEventListener("click", function () {
@@ -221,7 +339,14 @@
         hideFontWall();  // AI 路径与字体墙互斥
         return;
       }
-      showArt(d);
+      if (d.mode === "direct" && d.variants) {
+        showVariants(d);  // 多候选 + 迭代条
+      } else if (d.mode === "direct") {
+        showVariants(d);  // 单版也带迭代条
+      } else {
+        showArt(d);
+        showIterateBar(d.art);  // params 结果同样可迭代
+      }
       hideFontWall();
     }).catch(function () {
       busy = false; waitbarStop();

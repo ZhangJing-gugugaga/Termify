@@ -977,20 +977,89 @@ def text_ai():
 
     cols_cap = _textart_mod.AI_DIRECT_MAX_COLS
     rows_cap = _textart_mod.AI_DIRECT_MAX_ROWS
+    # 多候选（ascii-skills variants 模式）：一次产 2 版供挑选
     messages = [{"role": "system",
-                 "content": _textart_mod.DIRECT_SYSTEM_PROMPT_TEMPLATE.format(
+                 "content": _textart_mod.DIRECT_MULTI_SYSTEM_PROMPT_TEMPLATE.format(
                      cols=cols_cap, rows=rows_cap)},
                 {"role": "user", "content": prompt}]
     try:
         reply = _llm_mod.chat(messages, cfg, temperature=0.8)
+        variants = _textart_mod.split_variants(reply)
+        if not variants:
+            raise _textart_mod.TextArtError(
+                "AI 没有返回有效内容，请重试 / AI returned nothing useful")
+        # compact fallback：超尺寸自动降级而非拒绝（ascii-skills）
+        fitted_any = False
+        out_variants = []
+        for v in variants:
+            v2, fitted = _textart_mod.auto_fit_art(v)
+            fitted_any = fitted_any or fitted
+            cols, rows = _textart_mod.art_dims(v2)
+            out_variants.append({"art": v2, "cols": cols, "rows": rows})
+    except _llm_mod.LLMError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True, "mode": "direct", "variants": out_variants,
+                    "auto_fitted": fitted_any,
+                    "art": out_variants[0]["art"],
+                    "cols": out_variants[0]["cols"],
+                    "rows": out_variants[0]["rows"]})
+
+
+@app.route("/api/text/iterate", methods=["POST"])
+def text_iterate():
+    """AI 迭代回路：{current_art, instruction} → 修改后的作品。
+
+    结构化输入（ascii-skills）：当前作品 + 明确修改意见，而非重新盲盒。
+    """
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "text-ai", per_minute=6)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    current = data.get("current_art")
+    instruction = data.get("instruction")
+    if not isinstance(current, str) or not current.strip():
+        return jsonify({"error": "缺少当前作品 / Missing current artwork"}), 400
+    if not isinstance(instruction, str) or not instruction.strip():
+        return jsonify({"error": "缺少修改意见 / Missing instruction"}), 400
+    if len(instruction) > 500:
+        return jsonify({"error": "修改意见过长（最多 500 字）/ Instruction "
+                                 "too long (max 500)"}), 400
+    try:
+        current = _textart_mod.validate_stored_art(current)
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    cfg = _llm_cfg()
+    if not _llm_mod.is_configured(cfg):
+        return jsonify({"error": "请先配置 LLM / Configure the LLM first",
+                        "need_config": True}), 400
+
+    cols_cap = _textart_mod.AI_DIRECT_MAX_COLS
+    rows_cap = _textart_mod.AI_DIRECT_MAX_ROWS
+    messages = [
+        {"role": "system",
+         "content": _textart_mod.ITERATE_SYSTEM_PROMPT_TEMPLATE.format(
+             cols=cols_cap, rows=rows_cap)},
+        {"role": "user",
+         "content": f"CURRENT ARTWORK:\n{current}\n\nMODIFICATION: "
+                    f"{instruction}"},
+    ]
+    try:
+        reply = _llm_mod.chat(messages, cfg, temperature=0.6)
         art = _textart_mod.normalize_direct_art(reply)
+        art, fitted = _textart_mod.auto_fit_art(art)
     except _llm_mod.LLMError as exc:
         return jsonify({"error": str(exc)}), 400
     except _textart_mod.TextArtError as exc:
         return jsonify({"error": str(exc)}), 400
     cols, rows = _textart_mod.art_dims(art)
-    return jsonify({"ok": True, "mode": "direct", "art": art,
-                    "cols": cols, "rows": rows})
+    return jsonify({"ok": True, "mode": "iterate", "art": art,
+                    "cols": cols, "rows": rows, "auto_fitted": fitted})
 
 
 @app.route("/api/llm/config", methods=["GET", "POST"])

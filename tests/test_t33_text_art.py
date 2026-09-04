@@ -128,8 +128,9 @@ def test_normalize_direct_art_strips_control_and_caps():
 
     art = textart.normalize_direct_art("ab\x07cd\tef")
     assert art == "abcd    ef"
-    with pytest.raises(textart.TextArtError):
-        textart.normalize_direct_art("x" * 250)
+    # P2 起 direct 归一化不再因超尺寸拒绝 —— auto_fit_art 负责降级
+    wide = textart.normalize_direct_art("x" * 250)
+    assert len(wide) == 250
 
 
 def test_validate_stored_art():

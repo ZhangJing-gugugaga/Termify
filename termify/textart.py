@@ -212,9 +212,17 @@ _FENCE_BLOCK_RE = re.compile(
 def normalize_direct_art(raw: object) -> str:
     """Normalise LLM-produced ASCII art: strip code fences / markdown
     indentation, expand tabs, drop control characters, enforce caps."""
-    if not isinstance(raw, str) or not raw.strip():
+    art = _normalize_direct_art_strict(raw)
+    if art is None:
         raise TextArtError(
             "AI 没有返回有效内容，请重试 / AI returned nothing useful, retry")
+    return art
+
+
+def _normalize_direct_art_strict(raw: object) -> str | None:
+    """Normalize without size enforcement; None when nothing valid."""
+    if not isinstance(raw, str) or not raw.strip():
+        return None
     text = raw.replace("\r\n", "\n").replace("\r", "\n").strip()
     m = _FENCE_BLOCK_RE.search(text)
     if m and m.group(1).strip():
@@ -224,8 +232,7 @@ def normalize_direct_art(raw: object) -> str:
         lines = [ln for ln in text.split("\n") if not _FENCE_RE.match(ln)]
         text = "\n".join(lines).strip()
     if not text:
-        raise TextArtError(
-            "AI 没有返回有效内容，请重试 / AI returned nothing useful, retry")
+        return None
     text = "".join(ch for ch in text if ch in "\n\t" or ord(ch) >= 0x20)
     text = text.expandtabs(4)
     # 统一去掉非空行共有的前导缩进（LLM 常把作品整体缩进 4 空格），
@@ -243,14 +250,54 @@ def normalize_direct_art(raw: object) -> str:
         lines.pop()
     art = "\n".join(lines)
     if not art.strip():
-        raise TextArtError(
-            "AI 没有返回有效内容，请重试 / AI returned nothing useful, retry")
-    cols, rows = art_dims(art)
-    if cols > MAX_ART_COLS or rows > MAX_ART_ROWS:
-        raise TextArtError(
-            f"AI 结果超出尺寸上限（{cols}x{rows}）"
-            f" / AI result exceeds size limits ({cols}x{rows})")
+        return None
     return art
+
+
+def auto_fit_art(art: str, *, max_cols: int = MAX_ART_COLS,
+                 max_rows: int = MAX_ART_ROWS) -> tuple[str, bool]:
+    """Compact fallback（ascii-skills）：超尺寸自动等比缩小，永不拒绝。
+
+    返回 (art, fitted)。缩行方式：行数超限→隔行抽稀；列数超限→
+    无法安全缩列（等宽字符画删列会破坏字形），列超限时整体缩行数
+    按比例匹配，最后仍超则截断到上限并标注。
+    """
+    cols, rows = art_dims(art)
+    if cols <= max_cols and rows <= max_rows:
+        return art, False
+    # 行数超限 → 隔行抽稀（保留轮廓）
+    if rows > max_rows:
+        lines = art.split("\n")
+        step = rows / max_rows
+        picked = [lines[int(i * step)] for i in range(max_rows)]
+        art = "\n".join(picked)
+    cols, rows = art_dims(art)
+    # 列数仍超限 → 按比例再抽稀行数（视觉宽度近似匹配），最终截断
+    if cols > max_cols:
+        target_rows = max(4, int(rows * max_cols / cols))
+        lines = art.split("\n")
+        step = rows / target_rows if target_rows < rows else 0
+        if step > 0:
+            picked = [lines[min(len(lines) - 1, int(i * step))]
+                      for i in range(target_rows)]
+            art = "\n".join(picked)
+        # 单行仍超宽 → 截断（极限场景，标注 fitted）
+        lines = [ln[:max_cols] for ln in art.split("\n")]
+        art = "\n".join(lines)
+    return art, True
+
+
+def split_variants(raw: object) -> list[str]:
+    """Split multi-variant LLM output into normalised artworks (1..2)."""
+    if not isinstance(raw, str) or not raw.strip():
+        return []
+    parts = raw.split(VARIANT_SEPARATOR)
+    out = []
+    for part in parts[:2]:
+        art = _normalize_direct_art_strict(part)
+        if art:
+            out.append(art)
+    return out
 
 
 # ── LLM prompts ──────────────────────────────────────────────────────────────
@@ -277,6 +324,40 @@ DIRECT_SYSTEM_PROMPT_TEMPLATE = (
     "explanations, no line numbers. Use printable ASCII characters (letters, "
     "# @ % * + = - : . ^ ~ etc). Keep it under {cols} columns and {rows} "
     "lines. Make the subject instantly recognisable."
+)
+
+# ── AI 迭代回路（ascii-skills 方法论：结构化输入 + 变体输出 + 无条件降级）──
+#
+# 方法论来源 full-stack-skills/ascii-skills：
+#   1. 结构化输入：把用户意图翻译为明确参数（尺寸/风格/主体），
+#      而非裸描述 —— 对应 ITERATE 的「当前作品 + 修改意见」结构。
+#   2. 变体输出：banner 技能的 short/long variants 模式 —— DIRECT
+#      多候选一次产出 2 版，用户挑选而非盲盒。
+#   3. 紧凑降级：宽度不足时的 compact fallback —— 超尺寸不再报错，
+#      服务端自动缩行，永不拒绝用户。
+#   4. 对齐安全：颜色不破坏布局（空格不着色）—— ANSI 导出同规则。
+
+ITERATE_SYSTEM_PROMPT_TEMPLATE = (
+    "You are a world-class ASCII artist refining an existing artwork. "
+    "The user will give you the CURRENT artwork and a MODIFICATION "
+    "request. Apply the modification while keeping everything else "
+    "recognisably the same. Rules: reply with ONLY the modified artwork "
+    "— no code fences, no explanations. Monospaced, printable ASCII "
+    "only. Keep it under {cols} columns and {rows} lines."
+)
+
+# 多候选分隔标记（banner 技能的 variants 模式）：一次生成两版供挑选。
+VARIANT_SEPARATOR = "===VARIANT==="
+
+
+DIRECT_MULTI_SYSTEM_PROMPT_TEMPLATE = (
+    "You are a world-class ASCII artist. Draw the user's idea as "
+    "monospaced ASCII art in TWO distinct variants (different style or "
+    "composition — not pixel-identical twins). Rules: output exactly two "
+    "artworks separated by a line containing only: ===VARIANT=== "
+    "No code fences, no explanations, no line numbers. Printable ASCII "
+    "characters only. Each artwork under {cols} columns and {rows} lines. "
+    "Make the subject instantly recognisable."
 )
 
 
