@@ -210,8 +210,11 @@
       busy = false; waitbarStop();
       aiBtn.disabled = false; aiBtn.textContent = "AI 生成";
       if (d.error) {
-        showOutputError(d.error);
-        if (d.need_config) openSettings();
+        if (d.need_config) {
+          showNeedConfig(d);  // 示例墙替代裸报错
+        } else {
+          showOutputError(d.error);
+        }
         return;
       }
       showArt(d);
@@ -386,7 +389,31 @@
     });
   });
 
-  /* ── 输入实时提示（字符计数 / 中文检测引导）+ 快捷键 ── */
+  /* ── 未配置 LLM 时的示例墙：先看 AI 能画什么，再引导配置 ── */
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function showNeedConfig(d) {
+    if (!taOutput) return;
+    taOutput.classList.remove("has-art");
+    var cards = (d.showcase || []).map(function (ex, i) {
+      return '<button type="button" class="ta-demo-card" data-prompt="' +
+        esc(ex.prompt) + '" data-idx="' + i + '">' +
+        '<span class="ta-demo-art">' + esc(ex.art) + "</span>" +
+        '<span class="ta-demo-label">' + esc(ex.title) + " · " +
+        esc(ex.prompt) + "</span></button>";
+    }).join("");
+    taOutput.innerHTML =
+      '<div class="ta-needconfig">' +
+      '<p class="ta-nc-title">还没有接入 LLM —— 先看看 AI 能画什么：</p>' +
+      '<div class="ta-demo-grid">' + cards + "</div>" +
+      '<p class="ta-nc-guide">点卡片取走提示词，配置后即可生成同款 ' +
+      '<button type="button" class="ta-nc-btn" id="taNcConfigBtn">⚙ 三步开通</button></p>' +
+      "</div>";
+    if (taPreviewTitle) taPreviewTitle.textContent = "ai preview";
+    if (taResultMeta) taResultMeta.hidden = true;
+  }
   var taInputHint = byId("taInputHint");
   var FIGLET_MAX_CHARS = 64;  // 与服务端 textart.TEXT_MAX_CHARS 一致
   function syncInputHint() {
@@ -428,8 +455,19 @@
     });
   }
 
-  /* ── 示例 chip 点击：填入并触发生成 ── */
+  /* ── 示例墙交互：点卡片→提示词填入输入框；点「三步开通」→展开部署引导 ── */
   if (taOutput) taOutput.addEventListener("click", function (e) {
+    var ncBtn = e.target.closest(".ta-nc-btn");
+    if (ncBtn) { openSettings(); return; }
+    var card = e.target.closest(".ta-demo-card");
+    if (card) {
+      if (taInput) {
+        taInput.value = card.getAttribute("data-prompt") || "";
+        syncInputHint();
+        toast("提示词已填入，配置后点「AI 生成」");
+      }
+      return;
+    }
     var chip = e.target.closest(".ta-chip");
     if (!chip) return;
     if (taInput) taInput.value = chip.getAttribute("data-value") || "";

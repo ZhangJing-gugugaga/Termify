@@ -928,11 +928,14 @@ def text_ai():
 
     cfg = _llm_cfg()
     if not _llm_mod.is_configured(cfg):
+        # 未配置：不挡路——先让用户看到 AI 能画什么（示例墙），
+        # 配置入口在示例墙下方。
         return jsonify({"error": "AI 生成由你自部署的 LLM 驱动，点左下"
                                  "「自部署 AI」查看三步指引 / AI runs on "
                                  "your self-hosted LLM — open the "
                                  "self-host AI guide at bottom-left",
-                        "need_config": True}), 400
+                        "need_config": True,
+                        "showcase": _textart_mod.AI_SHOWCASE}), 400
 
     if mode == "params":
         messages = [{"role": "system", "content": _textart_mod.PARAM_SYSTEM_PROMPT},

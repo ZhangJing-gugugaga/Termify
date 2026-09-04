@@ -399,3 +399,48 @@
     display: flex; flex-wrap: wrap; gap: var(--space-2);
     margin-bottom: var(--space-3);
 }
+
+/* 未配置 LLM 时的示例墙（AI 价值预览） */
+.ta-needconfig {
+    display: flex; flex-direction: column;
+    height: 100%; justify-content: center;
+    min-height: 280px; padding: var(--space-3); white-space: normal;
+}
+.ta-nc-title {
+    color: var(--text-secondary); font-size: 0.88rem;
+    margin: 0 0 var(--space-3); text-align: center;
+}
+.ta-demo-grid {
+    display: grid; gap: var(--space-3);
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.ta-demo-card {
+    background: var(--bg-surface); border: 1px solid var(--border-dim);
+    border-radius: var(--radius-md); cursor: pointer;
+    display: flex; flex-direction: column; gap: var(--space-2);
+    padding: var(--space-3); text-align: center;
+    transition: all var(--transition-fast);
+}
+.ta-demo-card:hover {
+    border-color: var(--green); background: var(--bg-elevated);
+    box-shadow: 0 0 12px var(--green-glow);
+}
+.ta-demo-art {
+    color: var(--green); font-family: var(--font-mono); font-size: 0.6rem;
+    line-height: 1.15; white-space: pre; display: block;
+}
+.ta-demo-label {
+    color: var(--text-dim); font-size: 0.75rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ta-nc-guide {
+    color: var(--text-dim); font-size: 0.8rem;
+    margin: var(--space-4) 0 0; text-align: center;
+}
+.ta-nc-btn {
+    background: var(--green-glow); border: 1px solid var(--green);
+    border-radius: var(--radius-sm); color: var(--green);
+    cursor: pointer; font-family: var(--font-mono); font-size: 0.78rem;
+    margin-left: 6px; padding: 3px 10px;
+}
+.ta-nc-btn:hover { box-shadow: 0 0 10px var(--green-glow); }
