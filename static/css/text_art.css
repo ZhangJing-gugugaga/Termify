@@ -426,8 +426,9 @@
     box-shadow: 0 0 12px var(--green-glow);
 }
 .ta-demo-art {
-    color: var(--green); font-family: var(--font-mono); font-size: 0.6rem;
-    line-height: 1.15; white-space: pre; display: block;
+    color: var(--green); display: block;
+    font-family: var(--font-mono); font-size: 0.6rem; line-height: 1.15;
+    overflow: hidden; white-space: pre;
 }
 .ta-demo-label {
     color: var(--text-dim); font-size: 0.75rem;
@@ -444,6 +445,10 @@
     margin-left: 6px; padding: 3px 10px;
 }
 .ta-nc-btn:hover { box-shadow: 0 0 10px var(--green-glow); }
+.ta-nc-btn:disabled {
+    border-color: var(--border-dim); box-shadow: none; color: var(--text-dim);
+    cursor: default; opacity: 0.75;
+}
 
 /* 字体墙：全部精选字体预览卡，点击即换 */
 .ta-fontwall { margin-top: var(--space-4); }

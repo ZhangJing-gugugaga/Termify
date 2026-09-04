@@ -624,20 +624,60 @@
   function showNeedConfig(d) {
     if (!taOutput) return;
     taOutput.classList.remove("has-art");
-    var cards = (d.showcase || []).map(function (ex, i) {
-      return '<button type="button" class="ta-demo-card" data-prompt="' +
-        esc(ex.prompt) + '" data-idx="' + i + '">' +
-        '<span class="ta-demo-art">' + esc(ex.art) + "</span>" +
-        '<span class="ta-demo-label">' + esc(ex.title) + " · " +
-        esc(ex.prompt) + "</span></button>";
-    }).join("");
+    // 示例池按 6 主题批次排列（每批 4 幅）：初始 + 5 次刷新 = 全量 24 幅零重复
+    var pool = d.showcase || [];
+    var BATCH = 4, MAX_REFRESH = 5;
+    var batchIdx = 0;
+    function fitDemoArt() {
+      taOutput.querySelectorAll(".ta-demo-art").forEach(function (el) {
+        el.style.fontSize = "";
+        var sw = el.scrollWidth, cw = el.clientWidth;
+        if (sw > cw && sw > 0) {
+          var base = parseFloat(getComputedStyle(el).fontSize) || 9;
+          var fit = Math.max(4, Math.floor(base * cw / sw * 10) / 10);
+          el.style.fontSize = fit + "px";
+        }
+      });
+    }
+    function renderBatch() {
+      var grid = byId("taDemoGrid");
+      if (!grid) return;
+      var items = pool.slice(batchIdx * BATCH, batchIdx * BATCH + BATCH);
+      grid.innerHTML = items.map(function (ex) {
+        return '<button type="button" class="ta-demo-card" data-prompt="' +
+          esc(ex.prompt) + '">' +
+          '<span class="ta-demo-art">' + esc(ex.art) + "</span>" +
+          '<span class="ta-demo-label">' + esc(ex.title) + " · " +
+          esc(ex.prompt) + "</span></button>";
+      }).join("");
+      fitDemoArt();
+      requestAnimationFrame(fitDemoArt);
+      var btn = byId("taNcRefreshBtn");
+      if (btn) {
+        var left = MAX_REFRESH - batchIdx;
+        if (left > 0) {
+          btn.textContent = "换一批（剩 " + left + " 次）";
+        } else {
+          btn.textContent = "已展示全部 " + pool.length + " 幅";
+          btn.disabled = true;
+        }
+      }
+    }
     taOutput.innerHTML =
       '<div class="ta-needconfig">' +
       '<p class="ta-nc-title">还没有接入 LLM —— 先看看 AI 能画什么：</p>' +
-      '<div class="ta-demo-grid">' + cards + "</div>" +
+      '<div class="ta-demo-grid" id="taDemoGrid"></div>' +
       '<p class="ta-nc-guide">点卡片取走提示词，配置后即可生成同款 ' +
+      '<button type="button" class="ta-nc-btn" id="taNcRefreshBtn">换一批</button>' +
       '<button type="button" class="ta-nc-btn" id="taNcConfigBtn">⚙ 三步开通</button></p>' +
       "</div>";
+    var refreshBtn = byId("taNcRefreshBtn");
+    if (refreshBtn) refreshBtn.addEventListener("click", function () {
+      if (batchIdx >= MAX_REFRESH) return;
+      batchIdx += 1;
+      renderBatch();
+    });
+    renderBatch();
     if (taPreviewTitle) taPreviewTitle.textContent = "ai preview";
     if (taResultMeta) taResultMeta.hidden = true;
   }
@@ -784,7 +824,8 @@
   /* ── 示例墙交互：点卡片→提示词填入输入框；点「三步开通」→展开部署引导 ── */
   if (taOutput) taOutput.addEventListener("click", function (e) {
     var ncBtn = e.target.closest(".ta-nc-btn");
-    if (ncBtn) { openSettings(); return; }
+    // 「换一批」有自己的直达监听，不走设置面板
+    if (ncBtn && ncBtn.id !== "taNcRefreshBtn") { openSettings(); return; }
     var card = e.target.closest(".ta-demo-card");
     if (card) {
       if (taInput) {

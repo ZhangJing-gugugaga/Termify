@@ -287,6 +287,17 @@ def test_text_ai_need_config(client):
     assert resp.status_code == 400
     data = json.loads(resp.data)
     assert data.get("need_config") is True
+    # 示例墙：至少 15 幅、字段齐全、宽度克制（卡片缩放后可完整展示）
+    showcase = data.get("showcase") or []
+    assert len(showcase) >= 15
+    for piece in showcase:
+        assert {"title", "prompt", "art"} <= set(piece.keys())
+        lines = piece["art"].split("\n")
+        assert max(len(ln) for ln in lines) <= 44
+        assert len(lines) <= 12
+    # 批次零重复：标题唯一（初始 + 5 次刷新恰好展示全部）
+    titles = [p["title"] for p in showcase]
+    assert len(titles) == len(set(titles))
 
 
 def test_text_ai_params_mode(client, mock_llm):
