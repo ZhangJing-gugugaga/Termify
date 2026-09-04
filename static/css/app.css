@@ -1905,6 +1905,11 @@
             background: var(--green-glow);
         }
         .gallery-tag-checkbox input { accent-color: var(--green); }
+        /* 预设标签按页面互斥显隐（_gallery_modal 共享 include）：
+           文字艺术页显示 data-scope="text"，动画工坊显示 data-scope="anim"，
+           无 data-scope（ASCII art）两页共用 */
+        body.page-text-art .gallery-tag-checkbox[data-scope="anim"] { display: none; }
+        body:not(.page-text-art) .gallery-tag-checkbox[data-scope="text"] { display: none; }
         .gallery-vis-radios {
             display: flex; gap: var(--space-4);
         }

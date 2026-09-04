@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>文字艺术 · Termify</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903f">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260903f">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260904a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260904a">
 </head>
-<body>
+<body class="page-text-art">
     <!-- ═══════════ NAVIGATION ═══════════ -->
     <nav>
         <div class="container">
@@ -43,6 +43,7 @@
                         <label class="ta-label" for="taInput">文本或描述</label>
                         <textarea class="ta-input" id="taInput" rows="4" maxlength="500"
                                   placeholder="直接生成：输入英文/数字，如 hello（中文会被忽略）&#10;AI 生成：用一句中文描述，如「火焰感的 HELLO」或「画一只猫」"></textarea>
+                        <p class="ta-hint ta-input-hint" id="taInputHint" hidden></p>
                     </div>
 
                     <div class="ta-group">
@@ -68,29 +69,40 @@
                     </div>
 
                     <div class="ta-group ta-settings-group">
-                        <button type="button" class="ta-settings-toggle" id="taSettingsBtn" aria-expanded="false">AI 设置</button>
+                        <button type="button" class="ta-settings-toggle" id="taSettingsBtn" aria-expanded="false">⚙ 自部署 AI</button>
                         <div class="ta-settings" id="taSettings" hidden>
+                            <p class="ta-deploy-intro">「AI 生成」由<b>你自部署的 LLM</b> 驱动——Key 与内容不经过任何第三方页面。三步开通：</p>
+                            <ol class="ta-deploy-steps">
+                                <li>跑一个 OpenAI 兼容服务：<code>ollama serve</code>（本地）或注册智谱 / DeepSeek 拿 API</li>
+                                <li>点下方预设自动填入，再补上 API Key（Ollama 无需 Key）</li>
+                                <li>保存，回来点「AI 生成」</li>
+                            </ol>
+                            <div class="ta-deploy-presets">
+                                <button type="button" class="ta-btn ta-btn-sm" data-preset="ollama">Ollama 本地</button>
+                                <button type="button" class="ta-btn ta-btn-sm" data-preset="zhipu">智谱</button>
+                                <button type="button" class="ta-btn ta-btn-sm" data-preset="deepseek">DeepSeek</button>
+                            </div>
                             <label class="ta-field">Base URL
                                 <input type="text" id="taBaseUrl" autocomplete="off" spellcheck="false"
-                                       placeholder="https://open.bigmodel.cn/api/paas/v4（智谱）">
+                                       placeholder="http://localhost:11434/v1">
                             </label>
                             <label class="ta-field">Model
                                 <input type="text" id="taModel" autocomplete="off" spellcheck="false"
-                                       placeholder="glm-4-flash · deepseek-chat · qwen2.5:7b">
+                                       placeholder="qwen2.5:7b · glm-4-flash · deepseek-chat">
                             </label>
                             <label class="ta-field">API Key
                                 <input type="password" id="taApiKey" autocomplete="new-password"
-                                       placeholder="已保存则留空保持不变">
+                                       placeholder="已保存则留空保持不变（Ollama 无需填写）">
                             </label>
                             <label class="ta-field" id="taAdminField" hidden>管理口令
                                 <input type="password" id="taAdminPwd" autocomplete="new-password"
                                        placeholder="TERMIFY_ADMIN_PWD">
                             </label>
                             <div class="ta-settings-actions">
-                                <button type="button" class="ta-btn" id="taSaveBtn">保存 AI 配置</button>
+                                <button type="button" class="ta-btn" id="taSaveBtn">保存配置</button>
                                 <span class="ta-status" id="taStatus"></span>
                             </div>
-                            <p class="ta-hint">API Key 只保存在服务端（data/llm_config.json），不会下发到浏览器，也不进日志。</p>
+                            <p class="ta-hint">详细部署文档见 <a href="https://github.com/ZhangJing-gugugaga/Termify#readme" target="_blank" rel="noopener">GitHub README</a>；API Key 只保存在服务端（data/llm_config.json），不会下发到浏览器，也不进日志。</p>
                         </div>
                     </div>
                 </div>
@@ -157,6 +169,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260903f" defer></script>
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260904a" defer></script>
 </body>
 </html>

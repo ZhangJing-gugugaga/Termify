@@ -32,6 +32,9 @@ _AUTHOR_MAX = 20
 _NICK_MAX = 20
 
 VALID_TAGS = ["动画", "几何", "人像", "场景", "抽象", "像素艺术", "ASCII art"]
+# 文字艺术作品专属预设标签（/text-art 分享弹窗）；动画作品仍沿用 VALID_TAGS。
+# 不在 VALID_TAGS 内的标签会进入画廊「自定义标签」统计，天然可被筛选。
+TEXT_VALID_TAGS = ["字体艺术", "横幅", "LOGO", "贺卡", "梗图"]
 VALID_REPORT_REASONS = ["nsfw", "copyright", "spam", "other"]
 
 THUMB_W, THUMB_H = 200, 150

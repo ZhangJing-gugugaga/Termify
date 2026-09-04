@@ -902,7 +902,9 @@ def text_convert():
     cols, rows = _textart_mod.art_dims(art)
     return jsonify({"ok": True, "art": art, "cols": cols, "rows": rows,
                     "font": data.get("font") if _textart_mod.known_font(
-                        data.get("font")) else _textart_mod.DEFAULT_FONT})
+                        data.get("font")) else _textart_mod.DEFAULT_FONT,
+                    "text": _textart_mod.filter_figlet_text(
+                        data.get("text"))[:80]})
 
 
 @app.route("/api/text/ai", methods=["POST"])
@@ -926,8 +928,10 @@ def text_ai():
 
     cfg = _llm_cfg()
     if not _llm_mod.is_configured(cfg):
-        return jsonify({"error": "请先在「AI 设置」中配置 LLM 服务 / Configure "
-                                 "the LLM service in AI settings first",
+        return jsonify({"error": "AI 生成由你自部署的 LLM 驱动，点左下"
+                                 "「自部署 AI」查看三步指引 / AI runs on "
+                                 "your self-hosted LLM — open the "
+                                 "self-host AI guide at bottom-left",
                         "need_config": True}), 400
 
     if mode == "params":
@@ -1035,8 +1039,10 @@ def gallery_upload_text():
     author = _gallery_mod.sanitize(data.get("author"),
                                    _gallery_mod._AUTHOR_MAX) or "匿名创作者"
     tags_raw = data.get("tags", [])
+    _allowed_tags = set(_gallery_mod.VALID_TAGS) | set(
+        _gallery_mod.TEXT_VALID_TAGS)
     tags = [t for t in tags_raw if isinstance(t, str)
-            and t in _gallery_mod.VALID_TAGS][:3] if isinstance(tags_raw, list) \
+            and t in _allowed_tags][:3] if isinstance(tags_raw, list) \
         else []
     tags = tags + _gallery_mod.sanitize_custom_tags(data.get("custom_tags"))
     is_private = 1 if data.get("is_private") in (1, "1", True, "true", "on") \

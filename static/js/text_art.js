@@ -90,12 +90,27 @@
     el.textContent = msg;
     taOutput.appendChild(el);
     if (taPreviewTitle) taPreviewTitle.textContent = "text art";
+    if (taResultMeta) taResultMeta.hidden = true;  // 错误态不残留旧作品 meta
   }
+  var EXAMPLES = [
+    { kind: "figlet", label: "hello", value: "hello" },
+    { kind: "ai", label: "火焰感的 HELLO", value: "火焰感的 HELLO" },
+    { kind: "ai-direct", label: "画一只猫", value: "画一只猫" },
+    { kind: "ai-direct", label: "戴墨镜的狗", value: "一只戴墨镜的狗" }
+  ];
+
   function showEmpty() {
     if (!taOutput) return;
     taOutput.classList.remove("has-art");
-    taOutput.innerHTML = '<div class="ta-empty"><span class="ta-empty-prompt">等待生成</span>' +
-      '<span class="ta-empty-caret" aria-hidden="true"></span></div>';
+    var chips = EXAMPLES.map(function (ex) {
+      return '<button type="button" class="ta-chip" data-kind="' + ex.kind +
+        '" data-value="' + ex.value.replace(/"/g, "&quot;") + '">' +
+        ex.label + "</button>";
+    }).join("");
+    taOutput.innerHTML = '<div class="ta-empty-wrap">' +
+      '<div class="ta-empty"><span class="ta-empty-prompt">等待生成</span>' +
+      '<span class="ta-empty-caret" aria-hidden="true"></span></div>' +
+      '<div class="ta-chips">' + chips + "</div></div>";
     if (taResultMeta) taResultMeta.hidden = true;
   }
   function showArt(d) {
@@ -127,6 +142,9 @@
         taFont.appendChild(o);
       });
       taFont.disabled = false;
+      if (taFont.querySelector('option[value="standard"]')) {
+        taFont.value = "standard";  // 与服务端 DEFAULT_FONT 对齐
+      }
       if (taFontHint) taFontHint.textContent = "FIGlet 精选 " + d.fonts.length + " 款字体，选择作品的整体字形。";
     }).catch(function () {
       if (taFontHint) taFontHint.textContent = "字体加载失败，请刷新页面重试。";
@@ -162,7 +180,7 @@
     }).then(function (r) { return r.json(); }).then(function (d) {
       busy = false;
       convertBtn.disabled = false; convertBtn.textContent = "生成";
-      if (d.error) { showOutputError(d.error); toast(d.error); return; }
+      if (d.error) { showOutputError(d.error); return; }
       showArt(d);
     }).catch(function () {
       busy = false;
@@ -368,7 +386,86 @@
     });
   });
 
+  /* ── 输入实时提示（字符计数 / 中文检测引导）+ 快捷键 ── */
+  var taInputHint = byId("taInputHint");
+  var FIGLET_MAX_CHARS = 64;  // 与服务端 textart.TEXT_MAX_CHARS 一致
+  function syncInputHint() {
+    if (!taInput || !taInputHint) return;
+    var v = taInput.value;
+    if (!v.trim()) {
+      taInputHint.hidden = true;
+      taInputHint.classList.remove("ta-hint-ai", "ta-hint-warn");
+      if (aiBtn) aiBtn.classList.remove("ta-ai-suggest");
+      return;
+    }
+    var ascii = (v.match(/[\x20-\x7E]/g) || []).length;
+    var nonAscii = /[^\x00-\x7F\s]/.test(v);
+    if (nonAscii) {
+      taInputHint.hidden = false;
+      taInputHint.className = "ta-hint ta-input-hint ta-hint-ai";
+      taInputHint.textContent =
+        "检测到中文/全角字符——直转仅支持英文与数字，试试「AI 生成」（Ctrl+Enter）";
+      if (aiBtn) aiBtn.classList.add("ta-ai-suggest");
+      return;
+    }
+    if (aiBtn) aiBtn.classList.remove("ta-ai-suggest");
+    taInputHint.hidden = false;
+    taInputHint.className = "ta-hint ta-input-hint" +
+      (ascii > FIGLET_MAX_CHARS ? " ta-hint-warn" : "");
+    taInputHint.textContent = ascii + "/" + FIGLET_MAX_CHARS +
+      " 字符 · Enter 直转 / Ctrl+Enter AI";
+  }
+  if (taInput) {
+    taInput.addEventListener("input", syncInputHint);
+    taInput.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" || e.shiftKey || busy) return;
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        if (aiBtn) aiBtn.click();
+      } else if (convertBtn) {
+        convertBtn.click();
+      }
+    });
+  }
+
+  /* ── 示例 chip 点击：填入并触发生成 ── */
+  if (taOutput) taOutput.addEventListener("click", function (e) {
+    var chip = e.target.closest(".ta-chip");
+    if (!chip) return;
+    if (taInput) taInput.value = chip.getAttribute("data-value") || "";
+    syncInputHint();
+    var kind = chip.getAttribute("data-kind");
+    if (kind === "ai" || kind === "ai-direct") {
+      var want = kind === "ai-direct" ? "direct" : "params";
+      var radio = document.querySelector(
+        'input[name="taAiMode"][value="' + want + '"]');
+      if (radio && !radio.checked) { radio.checked = true; syncModeHint(); }
+      if (aiBtn) aiBtn.click();
+    } else if (convertBtn) {
+      convertBtn.click();
+    }
+  });
+
+  /* ── 自部署预设一键填充 ── */
+  var LLM_PRESETS = {
+    ollama: { base_url: "http://localhost:11434/v1", model: "qwen2.5:7b" },
+    zhipu: { base_url: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-flash" },
+    deepseek: { base_url: "https://api.deepseek.com/v1", model: "deepseek-chat" }
+  };
+  Array.prototype.forEach.call(
+    document.querySelectorAll(".ta-deploy-presets [data-preset]"),
+    function (b) {
+      b.addEventListener("click", function () {
+        var p = LLM_PRESETS[b.getAttribute("data-preset")];
+        if (!p) return;
+        var bu = byId("taBaseUrl"), mo = byId("taModel");
+        if (bu) bu.value = p.base_url;
+        if (mo) mo.value = p.model;
+      });
+    });
+
   /* ── init ── */
   loadFonts();
   syncModeHint();
+  showEmpty();  // 增强空态：含示例 chips（替换 HTML 硬编码版本）
 })();
