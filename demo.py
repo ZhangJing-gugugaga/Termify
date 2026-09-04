@@ -18,6 +18,15 @@ import sys
 import time
 from pathlib import Path
 
+# Windows 控制台默认 GBK，打印 ✓/═/█ 等字符会 UnicodeEncodeError ——
+# 统一切 UTF-8（Python 3.7+；不可编码时降级替换而非崩溃）。
+for _stream in (sys.stdout, sys.stderr):
+    if _stream and hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass  # 非常规流（重定向/捕获）时保持原状
+
 DEFAULT_SAMPLE = Path("sample.gif")
 
 VIDEO_EXTS = {".mp4", ".webm", ".mov", ".avi", ".mkv"}
