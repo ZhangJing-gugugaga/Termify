@@ -338,7 +338,84 @@ AI_SHOWCASE: list[dict] = [
 ]
 
 
-# ── art → PNG（画廊 source / 缩略图 / OG 底图）───────────────────────────────
+# ── 导出矩阵：ANSI 彩色 / HTML 单文件 / 终端命令 ─────────────────────────────
+
+# 配色主题（预览 + ANSI/HTML/PNG 导出共用）
+ART_THEMES: dict[str, tuple[str, tuple[int, int, int]]] = {
+    #        (主题色css, (fg r,g,b))      背景统一终端深色
+    "green":  ("#00ff41", (51, 255, 51)),
+    "cyan":   ("#00d4ff", (0, 212, 255)),
+    "amber":  ("#ffb000", (255, 176, 0)),
+    "magenta": ("#ff4fd8", (255, 79, 216)),
+    "red":    ("#ff3b30", (255, 59, 48)),
+    "white":  ("#e0e6ed", (224, 230, 237)),
+}
+DEFAULT_THEME = "green"
+
+
+def _theme_fg(theme: object) -> tuple[int, int, int]:
+    """Theme key → (r,g,b)；未知主题回落默认绿。"""
+    t = ART_THEMES.get(theme) if isinstance(theme, str) else None
+    return t[1] if t else ART_THEMES[DEFAULT_THEME][1]
+
+
+def _theme_css(theme: object) -> str:
+    t = ART_THEMES.get(theme) if isinstance(theme, str) else None
+    return t[0] if t else ART_THEMES[DEFAULT_THEME][0]
+
+
+def render_ansi_art(art: str, theme: object = DEFAULT_THEME) -> str:
+    """Art → ANSI truecolor 文本（对齐安全：逐行整段着色，一次 reset）。"""
+    r, g, b = _theme_fg(theme)
+    on = f"\x1b[38;2;{r};{g};{b}m"
+    off = "\x1b[0m"
+    return "\n".join(on + ln + off for ln in art.split("\n"))
+
+
+def render_terminal_command(art: str) -> str:
+    """Art → python -c 单行命令：粘贴到任意终端（含 Windows cmd）即显示。
+
+    base64 编码完全免疫引号/换行/反斜杠/控制字符的 shell 转义差异，
+    任意平台（cmd / PowerShell / POSIX sh）行为一致。
+    """
+    import base64 as _b64
+    b64 = _b64.b64encode(art.encode("utf-8")).decode("ascii")
+    return ('python -c "import sys,base64;'
+            f'sys.stdout.write(base64.b64decode(\'{b64}\').decode(\'utf-8\'))"')
+
+
+_STANDALONE_HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASCII Art · Termify</title>
+<style>
+  body {{
+    background: #0a0e14; margin: 0; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+  }}
+  pre {{
+    color: {css_color};
+    font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+    font-size: 12px; line-height: 1.2; white-space: pre;
+    text-shadow: 0 0 8px {css_color}33;
+  }}
+</style>
+</head>
+<body><pre>{art_html}</pre></body>
+</html>
+"""
+
+
+def render_standalone_html(art: str, theme: object = DEFAULT_THEME) -> str:
+    """Art → 自包含 HTML 单文件（内联样式，可直接发送）。"""
+    import html as _html
+    return _STANDALONE_HTML_TEMPLATE.format(
+        css_color=_theme_css(theme), art_html=_html.escape(art))
+
+
+
 
 _MONO_FONT_CANDIDATES = (
     "consola.ttf", "cour.ttf", "DejaVuSansMono.ttf",

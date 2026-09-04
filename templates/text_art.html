@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>文字艺术 · Termify</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260904b">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260904b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260904c">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260904c">
 </head>
 <body class="page-text-art">
     <!-- ═══════════ NAVIGATION ═══════════ -->
@@ -132,8 +132,21 @@
                         <span class="ta-meta-text" id="taMetaText"></span>
                         <span class="ta-result-actions">
                             <button type="button" class="ta-btn ta-btn-sm" id="taCopyBtn">复制文本</button>
-                            <button type="button" class="ta-btn ta-btn-sm" id="taDownloadBtn">下载 .txt</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taAnsiBtn" title="带 ANSI 颜色，粘贴到终端即显色">复制 ANSI</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taTermBtn" title="python -c 命令，粘贴到任何终端运行即显示">终端命令</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taPngBtn">下载 PNG</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taHtmlBtn">下载 HTML</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taDownloadBtn">.txt</button>
                             <button type="button" class="ta-btn ta-btn-sm ta-btn-primary" id="taShareBtn">分享到画廊</button>
+                        </span>
+                        <span class="ta-theme-row" id="taThemeRow" hidden>
+                            <span class="ta-theme-label">配色</span>
+                            <button type="button" class="ta-theme-dot active" data-theme="green"  style="--c:#00ff41" title="终端绿"></button>
+                            <button type="button" class="ta-theme-dot" data-theme="cyan"   style="--c:#00d4ff" title="青"></button>
+                            <button type="button" class="ta-theme-dot" data-theme="amber"  style="--c:#ffb000" title="琥珀"></button>
+                            <button type="button" class="ta-theme-dot" data-theme="magenta" style="--c:#ff4fd8" title="品红"></button>
+                            <button type="button" class="ta-theme-dot" data-theme="red"    style="--c:#ff3b30" title="红"></button>
+                            <button type="button" class="ta-theme-dot" data-theme="white"  style="--c:#e0e6ed" title="白"></button>
                         </span>
                     </div>
 
@@ -175,6 +188,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260904b" defer></script>
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260904c" defer></script>
 </body>
 </html>

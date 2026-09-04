@@ -128,6 +128,7 @@
       : (d.mode === "params" ? "AI · " + (d.font || "") : (d.font || ""));
     if (taMetaText) taMetaText.textContent = label + " · " + d.cols + " x " + d.rows;
     if (taResultMeta) taResultMeta.hidden = false;
+    if (taThemeRow) taThemeRow.hidden = false;  // 有作品 → 配色行可见
   }
 
   /* ── 字体列表 ── */
@@ -229,7 +230,37 @@
     });
   });
 
-  /* ── 复制 / 下载 / 分享 ── */
+  /* ── 复制 / 下载 / 分享 + 导出矩阵（ANSI / 终端命令 / PNG / HTML）+ 配色 ── */
+  var currentTheme = "green";
+  var taThemeRow = byId("taThemeRow");
+  var THEME_COLORS = {
+    green: "rgb(51, 255, 51)", cyan: "rgb(0, 212, 255)",
+    amber: "rgb(255, 176, 0)", magenta: "rgb(255, 79, 216)",
+    red: "rgb(255, 59, 48)", white: "rgb(224, 230, 237)"
+  };
+
+  function applyTheme(theme) {
+    currentTheme = theme;
+    var c = THEME_COLORS[theme] || THEME_COLORS.green;
+    if (taOutput) taOutput.style.color = c;  // 预览同步
+    TA.fg = theme === "green" ? [51, 255, 51] : null;  // PNG 入库用，由后端主题映射
+    TA.theme = theme;
+    if (taThemeRow) {
+      taThemeRow.querySelectorAll(".ta-theme-dot").forEach(function (d) {
+        d.classList.toggle("active", d.getAttribute("data-theme") === theme);
+      });
+    }
+  }
+  if (taThemeRow) taThemeRow.addEventListener("click", function (e) {
+    var dot = e.target.closest(".ta-theme-dot");
+    if (dot) applyTheme(dot.getAttribute("data-theme"));
+  });
+
+  function exportName() {
+    return (TA.text || "textart").slice(0, 40) +
+      (TA.font ? "_" + TA.font : "");
+  }
+
   var copyBtn = byId("taCopyBtn");
   if (copyBtn) copyBtn.addEventListener("click", function () {
     if (!TA.art) return;
@@ -244,9 +275,70 @@
     var blob = new Blob([TA.art], { type: "text/plain;charset=utf-8" });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "termify_ascii_art.txt";
+    a.download = exportName() + ".txt";
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(a.href);
+  });
+
+  /* ANSI 彩色复制（对齐安全：整行着色一次 reset） */
+  var ansiBtn = byId("taAnsiBtn");
+  if (ansiBtn) ansiBtn.addEventListener("click", function () {
+    if (!TA.art) { toast("请先生成 / Generate first"); return; }
+    fetch("/api/text/export-ansi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ art: TA.art, theme: TA.theme || currentTheme })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.error) { toast(d.error); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(d.ansi).then(
+          function () { toast("已复制 ANSI（粘贴到终端即显色）"); },
+          function () { toast("复制失败 / Copy failed"); });
+      }
+    }).catch(function () { toast("网络异常，请重试"); });
+  });
+
+  /* 终端命令复制（python -c，base64 免疫引号/换行，跨平台一致） */
+  var termBtn = byId("taTermBtn");
+  if (termBtn) termBtn.addEventListener("click", function () {
+    if (!TA.art) { toast("请先生成 / Generate first"); return; }
+    var b64 = btoa(unescape(encodeURIComponent(TA.art)));
+    var cmd = 'python -c "import sys,base64;sys.stdout.write(' +
+      "base64.b64decode('" + b64 + "').decode('utf-8'))\"";
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cmd).then(
+        function () { toast("命令已复制，粘贴到任何终端运行"); },
+        function () { toast("复制失败 / Copy failed"); });
+    }
+  });
+
+  /* PNG 下载（走后端渲染，配色随主题） */
+  function downloadBlob(url, filename) {
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ art: TA.art, theme: TA.theme || currentTheme,
+                             name: exportName() })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (d) { throw d.error || "export failed"; });
+      return r.blob();
+    }).then(function (blob) {
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(a.href);
+    }).catch(function (msg) { toast(String(msg || "导出失败")); });
+  }
+  var pngBtn = byId("taPngBtn");
+  if (pngBtn) pngBtn.addEventListener("click", function () {
+    if (!TA.art) { toast("请先生成 / Generate first"); return; }
+    downloadBlob("/api/text/export-png", exportName() + ".png");
+  });
+  var htmlBtn = byId("taHtmlBtn");
+  if (htmlBtn) htmlBtn.addEventListener("click", function () {
+    if (!TA.art) { toast("请先生成 / Generate first"); return; }
+    downloadBlob("/api/text/export-html", exportName() + ".html");
   });
   var shareBtn = byId("taShareBtn");
   if (shareBtn) shareBtn.addEventListener("click", function () {

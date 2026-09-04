@@ -487,3 +487,24 @@
     color: var(--text-dim); font-size: 0.8rem;
     grid-column: 1 / -1; text-align: center;
 }
+
+/* 导出矩阵 + 配色行 */
+.ta-result-actions { flex-wrap: wrap; gap: 6px; }
+.ta-theme-row {
+    align-items: center; display: flex; gap: 8px;
+    margin-top: var(--space-2);
+}
+.ta-theme-label {
+    color: var(--text-dim); font-family: var(--font-mono);
+    font-size: 0.72rem;
+}
+.ta-theme-dot {
+    background: var(--c); border: 2px solid transparent;
+    border-radius: 50%; cursor: pointer; height: 14px;
+    padding: 0; transition: all var(--transition-fast); width: 14px;
+}
+.ta-theme-dot:hover { box-shadow: 0 0 8px var(--c); }
+.ta-theme-dot.active {
+    border-color: var(--text-primary);
+    box-shadow: 0 0 10px var(--c);
+}

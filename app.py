@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import secrets
+import tempfile
 import threading
 import time
 import uuid
@@ -1026,6 +1027,84 @@ def llm_config():
     summary = _llm_mod.config_summary(stored)
     summary["ok"] = True
     return jsonify(summary)
+
+
+@app.route("/api/text/export-png", methods=["POST"])
+def text_export_png():
+    """工作台直下 PNG（免发布）：art → 终端风图片，文件名含内容。"""
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "text-convert", per_minute=30)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    try:
+        art = _textart_mod.validate_stored_art(data.get("art"))
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    # 优先 theme 映射；兼容直接传 fg 数组（画廊入库路径）
+    fg = _rgb_or_none(data.get("fg")) or _textart_mod._theme_fg(
+        data.get("theme", _textart_mod.DEFAULT_THEME))
+    name = _gallery_mod.sanitize(data.get("name"),
+                                 40).replace(" ", "_") or "textart"
+    with tempfile.TemporaryDirectory() as td:
+        png_path = os.path.join(td, "art.png")
+        try:
+            _textart_mod.render_art_png(art, png_path, fg=fg)
+            with open(png_path, "rb") as fh:
+                png_bytes = fh.read()
+        except Exception as exc:  # noqa: BLE001
+            app.logger.warning("export-png failed: %s", exc)
+            return jsonify({"error": "PNG 生成失败 / PNG generation "
+                                     "failed"}), 500
+    resp = make_response(png_bytes)
+    resp.headers.set("Content-Type", "image/png")
+    resp.headers.set("Content-Disposition",
+                     "attachment", filename=f"{name}.png")
+    return resp
+
+
+@app.route("/api/text/export-ansi", methods=["POST"])
+def text_export_ansi():
+    """ANSI 彩色文本：art 套 truecolor 转义序列，粘贴到终端即显色。"""
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "text-convert", per_minute=30)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    try:
+        art = _textart_mod.validate_stored_art(data.get("art"))
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    ansi = _textart_mod.render_ansi_art(art, data.get("theme", "green"))
+    return jsonify({"ok": True, "ansi": ansi})
+
+
+@app.route("/api/text/export-html", methods=["POST"])
+def text_export_html():
+    """HTML 单文件：自包含 <pre> + 内联样式，可直接发给任何人。"""
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "text-convert", per_minute=30)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    try:
+        art = _textart_mod.validate_stored_art(data.get("art"))
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    html = _textart_mod.render_standalone_html(art, data.get("theme", "green"))
+    name = _gallery_mod.sanitize(data.get("name"),
+                                 40).replace(" ", "_") or "textart"
+    resp = make_response(html)
+    resp.headers.set("Content-Type", "text/html; charset=utf-8")
+    resp.headers.set("Content-Disposition",
+                     "attachment", filename=f"{name}.html")
+    return resp
 
 
 @app.route("/api/gallery/upload-text", methods=["POST"])
