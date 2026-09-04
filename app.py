@@ -907,6 +907,21 @@ def text_convert():
                         data.get("text"))[:80]})
 
 
+@app.route("/api/text/fontwall", methods=["POST"])
+def text_fontwall():
+    """字体墙：{text} → 全部精选字体的预览渲染（点击即换即看的数据源）。"""
+    data = request.get_json(silent=True) or {}
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "text-convert", per_minute=30)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    try:
+        previews = _textart_mod.render_font_previews(data.get("text"))
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True, "fonts": previews})
+
+
 @app.route("/api/text/ai", methods=["POST"])
 def text_ai():
     """AI 双模式：{prompt, mode: "params"|"direct"} → 艺术字。"""

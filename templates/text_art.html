@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>文字艺术 · Termify</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260904a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260904a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260904b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260904b">
 </head>
 <body class="page-text-art">
     <!-- ═══════════ NAVIGATION ═══════════ -->
@@ -136,6 +136,12 @@
                             <button type="button" class="ta-btn ta-btn-sm ta-btn-primary" id="taShareBtn">分享到画廊</button>
                         </span>
                     </div>
+
+                    <!-- 字体墙：全部精选字体预览，点击即换 -->
+                    <div class="ta-fontwall" id="taFontwall" hidden>
+                        <p class="ta-fw-title">字体墙 · 点击切换</p>
+                        <div class="ta-fw-grid" id="taFontwallGrid"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -169,6 +175,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260904a" defer></script>
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260904b" defer></script>
 </body>
 </html>

@@ -444,3 +444,46 @@
     margin-left: 6px; padding: 3px 10px;
 }
 .ta-nc-btn:hover { box-shadow: 0 0 10px var(--green-glow); }
+
+/* 字体墙：全部精选字体预览卡，点击即换 */
+.ta-fontwall { margin-top: var(--space-4); }
+.ta-fw-title {
+    color: var(--text-dim); font-family: var(--font-mono);
+    font-size: 0.75rem; margin: 0 0 var(--space-2);
+    text-transform: uppercase; letter-spacing: 1px;
+}
+.ta-fw-grid {
+    display: grid; gap: var(--space-2);
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    max-height: 340px; overflow-y: auto; padding: 2px;
+}
+.ta-fw-card {
+    background: var(--bg-surface); border: 1px solid var(--border-dim);
+    border-radius: var(--radius-md); cursor: pointer;
+    display: flex; flex-direction: column; gap: 4px;
+    overflow: hidden; padding: var(--space-2) var(--space-3);
+    text-align: center; transition: all var(--transition-fast);
+}
+.ta-fw-card:hover {
+    border-color: var(--green);
+    box-shadow: 0 0 10px var(--green-glow);
+}
+.ta-fw-card.active {
+    background: var(--green-glow);
+    border-color: var(--green);
+}
+.ta-fw-art {
+    color: var(--green); display: block;
+    font-family: var(--font-mono); font-size: 0.5rem; line-height: 1.1;
+    overflow-x: auto; white-space: pre;
+}
+.ta-fw-card.active .ta-fw-art { color: var(--green-text); }
+.ta-fw-name {
+    color: var(--text-dim); font-size: 0.7rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ta-fw-card.active .ta-fw-name { color: var(--green); }
+.ta-fw-loading {
+    color: var(--text-dim); font-size: 0.8rem;
+    grid-column: 1 / -1; text-align: center;
+}

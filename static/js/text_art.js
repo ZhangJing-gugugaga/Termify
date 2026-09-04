@@ -180,12 +180,14 @@
     }).then(function (r) { return r.json(); }).then(function (d) {
       busy = false;
       convertBtn.disabled = false; convertBtn.textContent = "生成";
-      if (d.error) { showOutputError(d.error); return; }
+      if (d.error) { showOutputError(d.error); hideFontWall(); return; }
       showArt(d);
+      loadFontWall(text);  // 直转成功 → 字体墙点亮，点卡片即换
     }).catch(function () {
       busy = false;
       convertBtn.disabled = false; convertBtn.textContent = "生成";
       showOutputError("网络异常，请重试 / Network error, retry");
+      hideFontWall();
     });
   });
 
@@ -215,9 +217,11 @@
         } else {
           showOutputError(d.error);
         }
+        hideFontWall();  // AI 路径与字体墙互斥
         return;
       }
       showArt(d);
+      hideFontWall();
     }).catch(function () {
       busy = false; waitbarStop();
       aiBtn.disabled = false; aiBtn.textContent = "AI 生成";
@@ -414,6 +418,65 @@
     if (taPreviewTitle) taPreviewTitle.textContent = "ai preview";
     if (taResultMeta) taResultMeta.hidden = true;
   }
+  /* ── 字体墙：直转文本在全部字体下的预览，点击即换 ── */
+  var taFontwall = byId("taFontwall");
+  var taFontwallGrid = byId("taFontwallGrid");
+  var fwAbort = null;
+
+  function hideFontWall() {
+    if (taFontwall) taFontwall.hidden = true;
+    if (fwAbort) { fwAbort.abort(); fwAbort = null; }
+  }
+
+  function markActiveFontCard() {
+    if (!taFontwallGrid || !taFont) return;
+    var cards = taFontwallGrid.querySelectorAll(".ta-fw-card");
+    for (var i = 0; i < cards.length; i++) {
+      cards[i].classList.toggle("active",
+        cards[i].getAttribute("data-slug") === taFont.value);
+    }
+  }
+
+  function loadFontWall(text) {
+    if (!taFontwall || !taFontwallGrid || !text || !text.trim()) return;
+    taFontwall.hidden = false;
+    taFontwallGrid.innerHTML =
+      '<p class="ta-fw-loading">字体墙渲染中…</p>';
+    if (fwAbort) fwAbort.abort();
+    fwAbort = (typeof AbortController !== "undefined")
+      ? new AbortController() : null;
+    fetch("/api/text/fontwall", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: text }),
+      signal: fwAbort ? fwAbort.signal : undefined
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok || !taFontwallGrid) return;
+      taFontwallGrid.innerHTML = d.fonts.map(function (f) {
+        return '<button type="button" class="ta-fw-card" data-slug="' +
+          esc(f.slug) + '" title="' + esc(f.name) + '">' +
+          '<span class="ta-fw-art">' + esc(f.art) + "</span>" +
+          '<span class="ta-fw-name">' + esc(f.name) + "</span></button>";
+      }).join("");
+      markActiveFontCard();
+    }).catch(function () {
+      if (taFontwallGrid && taFontwallGrid.querySelector(".ta-fw-loading")) {
+        taFontwallGrid.innerHTML =
+          '<p class="ta-fw-loading">字体墙加载失败，可重试生成</p>';
+      }
+    });
+  }
+
+  if (taFontwallGrid) taFontwallGrid.addEventListener("click", function (e) {
+    var card = e.target.closest(".ta-fw-card");
+    if (!card || busy) return;
+    var slug = card.getAttribute("data-slug");
+    if (!slug || (taFont && taFont.value === slug)) return;
+    if (taFont) taFont.value = slug;  // 与左栏下拉保持同步
+    if (convertBtn) convertBtn.click();
+  });
+  if (taFont) taFont.addEventListener("change", markActiveFontCard);
+
   var taInputHint = byId("taInputHint");
   var FIGLET_MAX_CHARS = 64;  // 与服务端 textart.TEXT_MAX_CHARS 一致
   function syncInputHint() {

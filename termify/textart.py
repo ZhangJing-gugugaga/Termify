@@ -157,6 +157,39 @@ def art_dims(art: str) -> tuple[int, int]:
     return (max((len(ln) for ln in lines), default=0), len(lines))
 
 
+# ── 字体墙预览（一次请求渲染全部精选字体）───────────────────────────────────
+
+PREVIEW_TEXT_MAX = 10   # 预览用文本截断（长文本只取前 10 个字符渲染）
+PREVIEW_MAX_ROWS = 8    # 预览卡片最大行数（超高字体截断，保持卡片整齐）
+
+
+def render_font_previews(text: object) -> list[dict]:
+    """Render ``text`` in every curated font (small, for the font wall).
+
+    Raises TextArtError when nothing renderable (same semantics as
+    render_figlet). Individual font failures are skipped, not fatal.
+    """
+    clean = filter_figlet_text(text)
+    if not clean:
+        raise TextArtError(
+            "请输入英文/数字内容 / Enter English letters or digits")
+    clean = clean[:PREVIEW_TEXT_MAX]
+    out: list[dict] = []
+    for f in curated_fonts():
+        try:
+            art = render_figlet(clean, f["slug"], 100)
+        except TextArtError:
+            continue  # 个别字体对截断文本渲染失败 → 跳过不致命
+        lines = art.split("\n")
+        if len(lines) > PREVIEW_MAX_ROWS:
+            lines = lines[:PREVIEW_MAX_ROWS]
+        out.append({"slug": f["slug"], "name": f["name"],
+                    "art": "\n".join(lines)})
+    if not out:
+        raise TextArtError("没有可用字体 / No font available")
+    return out
+
+
 def validate_stored_art(art: object) -> str:
     """Validate an art string coming from the client before storing it as a
     gallery work (publish path). Dimension-capped, control chars stripped."""
