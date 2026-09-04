@@ -660,6 +660,30 @@
     }
   }
 
+  /* 宽字形预览缩放：按卡片可用宽度等比缩小字号，完整露出作品
+     （等宽字体下 scrollWidth 与字号线性相关，一次测量即可换算）。 */
+  function fitFontwallArt() {
+    if (!taFontwallGrid) return;
+    var cards = taFontwallGrid.querySelectorAll(".ta-fw-card");
+    for (var i = 0; i < cards.length; i++) {
+      var art = cards[i].querySelector(".ta-fw-art");
+      if (!art) continue;
+      art.style.fontSize = "";  // 先回到 CSS 基准字号再测量
+      var sw = art.scrollWidth, cw = art.clientWidth;
+      if (sw > cw && sw > 0) {
+        var base = parseFloat(getComputedStyle(art).fontSize) || 8;
+        var fit = Math.max(4, Math.floor(base * cw / sw * 10) / 10);
+        art.style.fontSize = fit + "px";
+      }
+    }
+  }
+  var fwFitTimer = null;
+  window.addEventListener("resize", function () {
+    if (!taFontwall || taFontwall.hidden) return;
+    if (fwFitTimer !== null) clearTimeout(fwFitTimer);
+    fwFitTimer = setTimeout(fitFontwallArt, 120);
+  });
+
   function loadFontWall(text) {
     if (!taFontwall || !taFontwallGrid || !text || !text.trim()) return;
     taFontwall.hidden = false;
@@ -685,6 +709,8 @@
           '<span class="ta-fw-name">' + esc(f.name) + "</span></button>";
       }).join("");
       markActiveFontCard();
+      fitFontwallArt();
+      requestAnimationFrame(fitFontwallArt);  // 首帧字体回退/滚动条稳定后再校正一次
     }).catch(function () {
       if (taFontwallGrid && taFontwallGrid.querySelector(".ta-fw-loading")) {
         taFontwallGrid.innerHTML =

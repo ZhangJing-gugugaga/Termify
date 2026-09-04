@@ -29,7 +29,9 @@
               --text-dim: #556677;
               --text-inverse: #0a0e14;
   
-              --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+              --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code',
+                           Consolas, 'DejaVu Sans Mono', Menlo, 'Courier New',
+                           monospace;
               --font-sans: 'Space Grotesk', system-ui, sans-serif;
   
               --radius-sm: 2px;
