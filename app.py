@@ -892,7 +892,7 @@ def text_convert():
     """直转：{text, font?, width?} → FIGlet 艺术字。"""
     data = request.get_json(silent=True) or {}
     ip = _client_ip()
-    ok, reason = _rate_check(ip, "text-convert", per_minute=30)
+    ok, reason = _rate_check(ip, "text-convert", per_minute=120)
     if not ok:
         return jsonify({"error": reason}), 429
     try:
@@ -913,7 +913,7 @@ def text_fontwall():
     """字体墙：{text} → 全部精选字体的预览渲染（点击即换即看的数据源）。"""
     data = request.get_json(silent=True) or {}
     ip = _client_ip()
-    ok, reason = _rate_check(ip, "text-convert", per_minute=30)
+    ok, reason = _rate_check(ip, "text-fontwall", per_minute=60)
     if not ok:
         return jsonify({"error": reason}), 429
     try:
@@ -1105,7 +1105,7 @@ def text_export_png():
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON body"}), 400
     ip = _client_ip()
-    ok, reason = _rate_check(ip, "text-convert", per_minute=30)
+    ok, reason = _rate_check(ip, "text-convert", per_minute=120)
     if not ok:
         return jsonify({"error": reason}), 429
     try:
@@ -1141,7 +1141,7 @@ def text_export_ansi():
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON body"}), 400
     ip = _client_ip()
-    ok, reason = _rate_check(ip, "text-convert", per_minute=30)
+    ok, reason = _rate_check(ip, "text-convert", per_minute=120)
     if not ok:
         return jsonify({"error": reason}), 429
     try:
@@ -1159,7 +1159,7 @@ def text_export_html():
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON body"}), 400
     ip = _client_ip()
-    ok, reason = _rate_check(ip, "text-convert", per_minute=30)
+    ok, reason = _rate_check(ip, "text-convert", per_minute=120)
     if not ok:
         return jsonify({"error": reason}), 429
     try:

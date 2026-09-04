@@ -90,7 +90,13 @@
     el.textContent = msg;
     taOutput.appendChild(el);
     if (taPreviewTitle) taPreviewTitle.textContent = "text art";
-    if (taResultMeta) taResultMeta.hidden = true;  // 错误态不残留旧作品 meta
+    // 错误时保留上一作品的导出操作（复制 ANSI / 下载等不因一次报错消失），
+    // 仅在从未生成过作品时才整体隐藏。
+    if (taResultMeta) taResultMeta.hidden = !TA.art;
+    if (taResultMeta && TA.art && taMetaText) {
+      taMetaText.textContent = "上一作品仍可导出 · " + TA.cols + " x " +
+        TA.rows + "（本次生成失败：" + msg.split(" / ")[0] + "）";
+    }
   }
   var EXAMPLES = [
     { kind: "figlet", label: "hello", value: "hello" },
@@ -670,8 +676,11 @@
     }).then(function (r) { return r.json(); }).then(function (d) {
       if (!d.ok || !taFontwallGrid) return;
       taFontwallGrid.innerHTML = d.fonts.map(function (f) {
+        // data-full 携带完整作品 → 点卡片本地切换，零请求（不触发限流）
         return '<button type="button" class="ta-fw-card" data-slug="' +
-          esc(f.slug) + '" title="' + esc(f.name) + '">' +
+          esc(f.slug) + '" data-full="' + esc(f.full || "") +
+          '" data-cols="' + (f.cols || 0) + '" data-rows="' + (f.rows || 0) +
+          '" title="' + esc(f.name) + '">' +
           '<span class="ta-fw-art">' + esc(f.art) + "</span>" +
           '<span class="ta-fw-name">' + esc(f.name) + "</span></button>";
       }).join("");
@@ -690,7 +699,18 @@
     var slug = card.getAttribute("data-slug");
     if (!slug || (taFont && taFont.value === slug)) return;
     if (taFont) taFont.value = slug;  // 与左栏下拉保持同步
-    if (convertBtn) convertBtn.click();
+    var full = card.getAttribute("data-full");
+    if (full) {
+      // 本地切换：fontwall 响应已含完整作品，不再请求 convert
+      showArt({ art: full,
+                cols: parseInt(card.getAttribute("data-cols"), 10) || 0,
+                rows: parseInt(card.getAttribute("data-rows"), 10) || 0,
+                font: slug,
+                text: (taInput ? taInput.value : "").slice(0, 80) });
+      markActiveFontCard();
+    } else if (convertBtn) {
+      convertBtn.click();  // 兜底（无 data-full 时回落请求）
+    }
   });
   if (taFont) taFont.addEventListener("change", markActiveFontCard);
 

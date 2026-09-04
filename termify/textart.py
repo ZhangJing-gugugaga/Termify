@@ -181,10 +181,12 @@ def render_font_previews(text: object) -> list[dict]:
         except TextArtError:
             continue  # 个别字体对截断文本渲染失败 → 跳过不致命
         lines = art.split("\n")
-        if len(lines) > PREVIEW_MAX_ROWS:
-            lines = lines[:PREVIEW_MAX_ROWS]
+        # 卡片缩略图截断；full 字段带完整作品——点击卡片前端本地切换，零请求
+        preview = lines[:PREVIEW_MAX_ROWS]
+        cols, rows = art_dims(art)
         out.append({"slug": f["slug"], "name": f["name"],
-                    "art": "\n".join(lines)})
+                    "art": "\n".join(preview),
+                    "full": art, "cols": cols, "rows": rows})
     if not out:
         raise TextArtError("没有可用字体 / No font available")
     return out
