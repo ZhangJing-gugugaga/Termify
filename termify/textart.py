@@ -303,20 +303,25 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
     except (OSError, IOError):
         raise TextArtError(
             "中文字体加载失败 / Failed to load Chinese font")
-    y_off = (h * scale - cell_px) // 2  # 方形字形在 h*scale 高画布内居中
+    # 画布必须等于字号（cell_px 见方），否则字形上下各被裁 1/4——
+    # "上下截断、只有中间一部分"的真因：旧画布高 h*scale 仅为字形一半，
+    # y_off 恒为负，"你好世界"等居中结构看不出，"夏/张/曼"等上中下
+    # 结构的字赤裸裸缺头缺尾。
+    # min-pool：方形 em box 压到 1:2 终端格 → 纵向步进 2*scale、窗口
+    # 2*scale 高 × scale 宽取最暗（保笔画），横向步进 scale。
+    y_step = 2 * scale
     for ci, ch in enumerate(clean):
         if not (0x4E00 <= ord(ch) <= 0x9FFF or 0x3400 <= ord(ch) <= 0x4DBF):
             continue  # 半角/空格：格子留白（列对齐由全角格保证）
-        img = Image.new("L", (cell_px, h * scale), 255)
-        ImageDraw.Draw(img).text((0, y_off), ch, font=f, fill=0)
+        img = Image.new("L", (cell_px, cell_px), 255)
+        ImageDraw.Draw(img).text((0, 0), ch, font=f, fill=0)
         sp = img.load()
-        # min-pool：每个目标格取 scale×scale 窗口的最暗值（保笔画）
         for ty in range(h):
-            y0 = ty * scale
+            y0 = ty * y_step
             for tx in range(cell_w):
                 x0 = tx * scale
                 darkest = 255
-                for sy in range(scale):
+                for sy in range(y_step):
                     for sx in range(scale):
                         v = sp[x0 + sx, y0 + sy]
                         if v < darkest:
