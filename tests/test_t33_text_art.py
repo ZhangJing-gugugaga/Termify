@@ -176,8 +176,12 @@ def test_convert_endpoint(client):
 
 
 def test_convert_endpoint_errors(client):
+    # T37 起中文输入不再报错——自动分流到 TTF 点阵路径（无 LLM 依赖）
     resp = client.post("/api/text/convert", json={"text": "你好世界"})
-    assert resp.status_code == 400
+    assert resp.status_code == 200
+    data = json.loads(resp.data)
+    assert data["ok"] and data["mode"] == "cjk" and data["font"] in (
+        "songti", "heiti", "kaiti")
     resp = client.post("/api/text/convert", json={"text": "a" * 100})
     assert resp.status_code == 400
     resp = client.post("/api/text/convert", json={"text": "hi", "font": "ghost"})

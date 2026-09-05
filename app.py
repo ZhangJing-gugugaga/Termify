@@ -891,19 +891,39 @@ def text_fonts():
 
 @app.route("/api/text/convert", methods=["POST"])
 def text_convert():
-    """直转：{text, font?, width?} → FIGlet 艺术字。"""
+    """统一生成入口：{text, font?, width?} → 艺术字。
+
+    服务端自动分流：含 CJK 字符走 TTF 点阵路径（font 解释为中文字体
+    slug），纯 ASCII 走 FIGlet（font 为 FIGlet slug）。
+    """
     data = request.get_json(silent=True) or {}
     ip = _client_ip()
     ok, reason = _rate_check(ip, "text-convert", per_minute=120)
     if not ok:
         return jsonify({"error": reason}), 429
+    if _textart_mod.cjk_has_glyph(data.get("text")):
+        try:
+            art = _textart_mod.render_cjk_ttf(
+                data.get("text"), data.get("font"))
+        except _textart_mod.TextArtError as exc:
+            return jsonify({"error": str(exc)}), 400
+        cols, rows = _textart_mod.art_dims(art)
+        avail = {f["slug"] for f in _textart_mod.cjk_available_fonts()
+                 if f["available"]}
+        font = data.get("font") if data.get("font") in avail \
+            else _textart_mod.CJK_DEFAULT_FONT
+        return jsonify({"ok": True, "mode": "cjk", "art": art,
+                        "cols": cols, "rows": rows, "font": font,
+                        "text": _textart_mod.filter_cjk_text(
+                            data.get("text"))})
     try:
         art = _textart_mod.render_figlet(
             data.get("text"), data.get("font"), data.get("width"))
     except _textart_mod.TextArtError as exc:
         return jsonify({"error": str(exc)}), 400
     cols, rows = _textart_mod.art_dims(art)
-    return jsonify({"ok": True, "art": art, "cols": cols, "rows": rows,
+    return jsonify({"ok": True, "mode": "figlet", "art": art, "cols": cols,
+                    "rows": rows,
                     "font": data.get("font") if _textart_mod.known_font(
                         data.get("font")) else _textart_mod.DEFAULT_FONT,
                     "text": _textart_mod.filter_figlet_text(
@@ -1222,6 +1242,43 @@ def cjk_render():
     return jsonify({"ok": True, "art": result["art"],
                     "missing": result["missing"], "style": result["style"],
                     "cols": result["cols"], "rows": result["rows"]})
+
+
+# --- T37 中文 TTF 点阵（无 LLM）----------------------------------------------
+# 中文输入走系统 TTF 光栅化（PIL），零外部依赖、零 token 成本。
+# /api/text/convert 服务端自动分流：含 CJK → TTF 路径，否则 FIGlet。
+
+@app.route("/api/cjk/ttf/fonts", methods=["GET"])
+def cjk_ttf_fonts():
+    """中文字体下拉数据源（含 available 标记，前端置灰不可用项）。"""
+    return jsonify({"ok": True, "fonts": _textart_mod.cjk_available_fonts()})
+
+
+@app.route("/api/cjk/ttf/render", methods=["POST"])
+def cjk_ttf_render():
+    """中文点阵：{text, font?, height?} → 字符画。无 LLM。"""
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "cjk-ttf-render", per_minute=60)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    try:
+        art = _textart_mod.render_cjk_ttf(
+            data.get("text"), data.get("font"), data.get("height"))
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    cols, rows = _textart_mod.art_dims(art)
+    font_slug = data.get("font")
+    if not isinstance(font_slug, str) or not any(
+            f["slug"] == font_slug and f["available"]
+            for f in _textart_mod.cjk_available_fonts()):
+        font_slug = _textart_mod.CJK_DEFAULT_FONT
+    return jsonify({"ok": True, "art": art, "cols": cols, "rows": rows,
+                    "font": font_slug,
+                    "text": _textart_mod.filter_cjk_text(
+                        data.get("text"))})
 
 
 @app.route("/api/gallery/upload-text", methods=["POST"])

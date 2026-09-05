@@ -109,8 +109,13 @@ def test_text_art_page_renders(client):
     assert 'href="/"' in body and 'href="/gallery"' in body
     # 工作台骨架
     assert 'id="taInput"' in body and 'id="taOutput"' in body
-    assert 'id="taConvertBtn"' in body and 'id="taAiBtn"' in body
-    assert 'id="taWaitbar"' in body  # UX 等待条
+    # T37 单 Tab 无 LLM：只有「生成」按钮，AI 按钮/设置面板全部移除
+    assert 'id="taConvertBtn"' in body
+    assert 'id="taAiBtn"' not in body
+    assert 'id="taSettingsBtn"' not in body
+    assert 'id="taSettings"' not in body
+    assert 'id="taCjkBtn"' not in body
+    assert 'taSettingsBtn' not in body  # HTML 内任何形式都不留
     # 共享发布弹窗（含自定义标签输入）
     assert 'id="galleryCustomTags"' in body and 'id="customTagsCount"' in body
 

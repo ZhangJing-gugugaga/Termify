@@ -7,6 +7,7 @@ FIGlet 负责字形与 smushing；LLM 直接创作路径只做安全归一化（
 
 from __future__ import annotations
 
+import os as _os
 import re
 
 import pyfiglet
@@ -157,7 +158,156 @@ def art_dims(art: str) -> tuple[int, int]:
     return (max((len(ln) for ln in lines), default=0), len(lines))
 
 
-# ── 字体墙预览（一次请求渲染全部精选字体）───────────────────────────────────
+# ── 中文 TTF 点阵路径（无 LLM，纯 PIL 光栅化）────────────────────────────────
+# 根因结论（2026-09-05 实测）：8×8/10×10 网格装不下复杂汉字笔画，LLM 生成
+# 字形不可读；TTF 系统字体 16×16 光栅化 100% 可读（含繁体）。中文路径不走
+# FIGlet（非 ASCII 会被 filter_figlet_text 忽略），改为像素阈值 → 字符画。
+
+CJK_MAX_CHARS = 12          # 单次渲染汉字上限（与旧 cjk 路径一致）
+CJK_DEFAULT_HEIGHT = 20     # 单字光栅高度（px），决定字符画每字行数
+# (key, 展示名, 字体候选)。候选按序探测，首个存在者生效（Win/Linux/macOS）。
+CJK_FONTS: list[tuple[str, str, tuple[str, ...]]] = [
+    ("songti", "宋体", (
+        "simsun.ttc", "SimSun.ttf",
+        "/usr/share/fonts/truetype/arphic/uming.ttc",
+        "NotoSerifCJK-Regular.ttc",
+    )),
+    ("heiti", "黑体", (
+        "simhei.ttf", "SimHei.ttf",
+        "NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    )),
+    ("kaiti", "楷体", (
+        "simkai.ttf", "KaiTi.ttf",
+        "/usr/share/fonts/truetype/arphic/ukai.ttc",
+    )),
+]
+CJK_DEFAULT_FONT = "heiti"
+
+_CJK_FONT_DIRS = (
+    "",  # 裸名：交给 PIL 的默认搜索路径（Windows 会扫 Fonts 目录）
+    "C:/Windows/Fonts/",
+    "/usr/share/fonts/truetype/dejavu/",  # 占位无害；主要覆盖常见目录
+    "/usr/share/fonts/",
+    "/System/Library/Fonts/",
+    "/Library/Fonts/",
+)
+
+
+def cjk_has_glyph(text: object) -> bool:
+    """输入里是否含 CJK 字符（决定 /api/text/convert 走哪条路）。"""
+    if not isinstance(text, str):
+        return False
+    return any(
+        0x4E00 <= ord(ch) <= 0x9FFF or 0x3400 <= ord(ch) <= 0x4DBF
+        for ch in text
+    )
+
+
+def _resolve_cjk_font(slug: object) -> str | None:
+    """CJK 字体 slug → 绝对字体路径；未知/无效 slug 回落默认字体。
+
+    仅当默认字体也找不到文件时返回 None（调用方报「缺字体」）。
+    """
+    if not isinstance(slug, str) or slug == "auto":
+        slug = CJK_DEFAULT_FONT
+    entry = next((e for e in CJK_FONTS if e[0] == slug), None)
+    if entry is None:
+        entry = next(e for e in CJK_FONTS if e[0] == CJK_DEFAULT_FONT)
+    for name in entry[2]:
+        for d in _CJK_FONT_DIRS:
+            path = d + name
+            if _os.path.isfile(path):
+                return path
+    # 请求的字体没有 → 尝试其余字体兜底（任一可用即渲染）
+    for entry2 in CJK_FONTS:
+        if entry2[0] == entry[0]:
+            continue
+        for name in entry2[2]:
+            for d in _CJK_FONT_DIRS:
+                path = d + name
+                if _os.path.isfile(path):
+                    return path
+    return None
+
+
+def cjk_available_fonts() -> list[dict]:
+    """前端中文字体下拉的数据源：slug + name + 是否可用。"""
+    out = []
+    for slug, name, candidates in CJK_FONTS:
+        found = _resolve_cjk_font(slug)
+        out.append({"slug": slug, "name": name, "available": found is not None})
+    return out
+
+
+def filter_cjk_text(text: object) -> str:
+    """中文路径输入清洗：保留 CJK/ASCII 可打印，去换行，限长。"""
+    if not isinstance(text, str):
+        return ""
+    kept = []
+    for ch in text:
+        code = ord(ch)
+        if (0x4E00 <= code <= 0x9FFF or 0x3400 <= code <= 0x4DBF
+                or 0x20 <= code <= 0x7E):
+            kept.append(ch)
+    return "".join(kept).strip()[:CJK_MAX_CHARS]
+
+
+def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
+                   height: object = CJK_DEFAULT_HEIGHT) -> str:
+    """中文 → TTF 光栅化点阵字符画（无 LLM）。
+
+    PIL 渲染到灰度小图，按亮度阈值映射为「实/空」两态字符。
+    每个汉字纵向占 ``height`` 行、横向约 height/2 列（等宽前提）。
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    clean = filter_cjk_text(text)
+    if not clean:
+        raise TextArtError(
+            "请输入汉字（1-12 个）/ Please enter 1-12 Chinese characters")
+    font_path = _resolve_cjk_font(font)
+    if font_path is None:
+        raise TextArtError(
+            "服务器缺少中文字体 / Server has no Chinese font installed")
+    try:
+        h = int(height)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        h = CJK_DEFAULT_HEIGHT
+    h = max(8, min(48, h))
+    # 像素画布：字符画列宽约为行高的 1/2（等宽字符宽高比 ~1:2），
+    # 每个汉字先按 2 倍画布光栅化，避免低分辨率下笔画断裂。
+    cell_w = h // 2
+    canvas_w = cell_w
+    canvas_h = h
+    scale = 2
+    img = Image.new("L", (canvas_w * scale * len(clean),
+                          canvas_h * scale), 255)
+    draw = ImageDraw.Draw(img)
+    try:
+        f = ImageFont.truetype(font_path, canvas_h * scale)
+    except (OSError, IOError):
+        raise TextArtError(
+            "中文字体加载失败 / Failed to load Chinese font")
+    x = 0
+    for ch in clean:
+        # 逐字光栅：CJK 全角方块字，固定 advance = 字高（避免半角混排错位）
+        draw.text((x, 0), ch, font=f, fill=0)
+        x += canvas_w * scale
+    # 降采样 + 阈值二值化 → 字符画
+    small = img.resize((canvas_w * len(clean), canvas_h), Image.BOX)
+    px = small.load()
+    thresh = 128
+    rows = []
+    for yy in range(canvas_h):
+        line = "".join("#" if px[xx, yy] < thresh else " "
+                       for xx in range(canvas_w * len(clean)))
+        rows.append(line)
+    # 空白行填充会破坏逐字对齐 — 保留所有行，只去掉末尾全空白行
+    while rows and not rows[-1].strip():
+        rows.pop()
+    return "\n".join(rows)
+
 
 PREVIEW_TEXT_MAX = 10   # 预览用文本截断（长文本只取前 10 个字符渲染）
 PREVIEW_MAX_ROWS = 8    # 预览卡片最大行数（超高字体截断，保持卡片整齐）
