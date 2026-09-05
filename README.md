@@ -113,7 +113,9 @@ python app.py
 
 ### Step 05 · 选择终端尺寸
 
-右下角"终端尺寸"区域：**5 个快捷档（40 / 80 / 120 / 160 / 200 列）+ 连续滑杆（20–400 列）**。拖动滑杆时行数按素材宽高比**自动推导**（列数 × 素材高宽比 ÷ 2，字符格 1:2），任何比例的素材都不会留黑边或变形。切换分辨率**只改变渲染精度**，预览窗口的位置和大小保持不变，如同视频播放器切画质。
+右下角"终端尺寸"区域：**连续滑杆（20–400 列，默认 80 列）**。拖动滑杆时行数按素材宽高比**自动推导**（列数 × 素材高宽比 ÷ 2，字符格 1:2），任何比例的素材都不会留黑边或变形。切换分辨率**只改变渲染精度**，预览窗口的位置和大小保持不变，如同视频播放器切画质。
+
+下面这张图是**滑杆位置对应的画质参考**（不是按钮，档位仅供估算）：
 
 ```
    画质 ←→ 文件大小
@@ -134,6 +136,46 @@ python app.py
 
 > 📦 `.py` 产物的帧数据以 zlib+Base85 压缩内嵌，同等内容体积比早期版本小约 70%（视频动画从 11MB 级降到 1-3MB 级）。运行时自动解压，仍只需 Python 3.6+、零第三方依赖。
 
+## 文字艺术（Text Art）
+
+独立页面 `/text-art`：把**文字**本身变成 ASCII 艺术字，和「图片 → 字符动画」并列。
+
+### 三种创作方式
+
+1. **直转（FIGlet）** —— 输入文字、选字体，即时渲染。精选 24 款字体。注意 FIGlet 只处理 ASCII，**中文等非 ASCII 字符会被忽略**（不是报错）。
+2. **字体墙** —— 一次输入，同屏预览全部字体，点击即换即看（限 60 次/分钟）。
+3. **AI 创作** —— 用自然语言描述想要的效果，交给 LLM 生成，双模式：
+
+   | 模式 | 行为 | 适合 |
+   |------|------|------|
+   | `params` | LLM 解析出「文字 + 字体」参数，再交给 FIGlet 渲染 | 结果规整、字体可控 |
+   | `direct` | LLM 直接输出字符画 | 更有创意、超出字体库 |
+
+   生成后可继续**迭代**：给出修改意见（如"再粗一点""换个风格"）在当前结果上调整。
+   未配置 LLM 时，页面展示 AI 作品示例墙，而不是裸报错。
+
+### 导出矩阵
+
+| 格式 | 说明 |
+|------|------|
+| PNG | 终端风格图片，直接保存分享 |
+| ANSI 彩色 | 带颜色的纯文本，贴到支持 ANSI 的终端/编辑器 |
+| HTML | 单文件网页，浏览器打开即看 |
+| 终端命令 | 可直接粘贴执行的形式 |
+
+6 种配色主题：`green`（默认）/ `cyan` / `amber` / `magenta` / `red` / `white`。
+
+### LLM 配置（自部署，可选）
+
+不配置也能用——直转和字体墙不依赖 LLM。想用 AI 创作时，配置任意 **OpenAI 兼容端点**（含本地 Ollama）：
+
+```bash
+python demo.py llm --base-url http://localhost:11434/v1 --model qwen2.5:7b
+python demo.py llm --status          # 查看当前配置
+```
+
+配置存在服务端 `data/llm_config.json`，**不会上传、也不会回传给浏览器**。Ollama 等本地端点无需 API Key。
+
 ## 命令行用法
 
 ```bash
@@ -148,6 +190,26 @@ python demo.py my_cat.gif --charset blocks --width 120 --height 36
 
 # 指定输出目录
 python demo.py my_cat.gif --charset all --out my_outputs
+
+# 打印第一帧预览 / 关闭进度条
+python demo.py my_cat.gif --charset blocks --preview --quiet
+```
+
+### 子命令：文字艺术与 LLM
+
+```bash
+# 文字 → 艺术字（默认 standard 字体，打印到终端）
+python demo.py text "hello"
+
+# 指定字体 / 写入文件
+python demo.py text "hello" --font ansi_shadow --out out.txt
+
+# 列出全部可用字体
+python demo.py text --font list
+
+# LLM 配置（与 Web 端共用）
+python demo.py llm --base-url http://localhost:11434/v1 --model qwen2.5:7b
+python demo.py llm --status
 ```
 
 输出文件命名规则：`{图片名}_{字符集}.py` 和 `{图片名}_{字符集}.html`，生成在 `outputs/` 目录（或指定目录）。
@@ -265,6 +327,24 @@ A: Python 未安装或未加入 PATH。请安装 Python 3.10+ 并在安装时勾
 | `GET` | `/api/download/<filename>` | 下载生成的文件 |
 | `GET` | `/api/task-frames/<task_id>` | 拉取任务的源帧（base64 JPEG，≤400×240），供前端本地渲染；限 30 次/分钟，帧数 >600 或载荷 >40MB 返回 413 |
 | `POST` | `/api/upload-music` | 为任务附加背景音乐（mp3/wav/m4a/aac/ogg/flac ≤20MB），导出时优先于视频原声 |
+| `GET` | `/api/audio-info/<task_id>` | 查询任务是否已挂载音频 |
+
+### 文字艺术接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/text/fonts` | 精选字体列表（24 款），返回 `fonts:[{name, slug}]` |
+| `POST` | `/api/text/convert` | 文字 → 艺术字。入参 `text`、`font`（字体 slug）、`width`；返回 `art`/`rows`/`cols`。限 120 次/分钟 |
+| `POST` | `/api/text/fontwall` | 字体墙：一次输入 → 全部字体预览。入参 `text`。限 60 次/分钟 |
+| `POST` | `/api/text/ai` | AI 创作。入参 `prompt`（≤500 字）、`mode`（`params` \| `direct`）。限 6 次/分钟 |
+| `POST` | `/api/text/iterate` | 在已有结果上迭代。入参 `current_art`、`instruction`。限 6 次/分钟 |
+| `POST` | `/api/text/export-png` | 导出 PNG。入参 `art`、`theme`（6 主题，缺省 `green`）、`fg`、`name` |
+| `POST` | `/api/text/export-ansi` | 导出 ANSI 彩色文本。入参 `art`、`theme` |
+| `POST` | `/api/text/export-html` | 导出单文件 HTML。入参 `art`、`theme`、`name` |
+| `GET`/`POST` | `/api/llm/config` | 读取/写入 LLM 配置（`base_url`、`model`、`api_key`）。GET 只回传 `has_key`，**不回传密钥明文**。限 10 次/分钟 |
+
+> 主题取值：`green`（默认）/ `cyan` / `amber` / `magenta` / `red` / `white`。
+> 另有画廊接口（`/api/gallery/*`：发布、列表、点赞、举报、自定义标签、管理台）见源码，此处不展开。
 
 ### 示例
 
@@ -295,6 +375,12 @@ curl -X POST http://127.0.0.1:5000/api/fetch-url \
 
 # 视频上传（后端 ffmpeg 抽帧）
 curl -X POST http://127.0.0.1:5000/api/upload-video -F "file=@clip.mp4"
+
+# 文字艺术：列出字体 → 转换
+curl http://127.0.0.1:5000/api/text/fonts
+curl -X POST http://127.0.0.1:5000/api/text/convert \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Termify","font":"ansi_shadow"}'
 ```
 
 ## 桌面客户端（一键独立包）
@@ -349,9 +435,9 @@ dist/Termify/Termify   # 双击或在终端中打开
 
 ```
 Termify/
-├── app.py                  # Flask 入口（路由 + 内存任务存储）
-├── demo.py                 # CLI 冒烟测试
-├── requirements.txt        # flask / pillow / pytest
+├── app.py                  # Flask 入口（路由 + 限流 + 安全头）
+├── demo.py                 # CLI：图片转换 / text 文字艺术 / llm 配置
+├── requirements.txt        # flask / pillow / pyfiglet / pytest / beautifulsoup4 / yt-dlp
 ├── termify/                # 后端转换引擎（纯 Python 库）
 │   ├── charset.py          # 7 种字符集（含 shades/custom）+ 像素→字符映射
 │   ├── frames.py           # GIF 抽帧 + 等比缩放
@@ -360,28 +446,39 @@ Termify/
 │   ├── taskstore.py        # SQLite 任务存储（多 worker 共享）
 │   ├── paths.py            # 产物路径基准（仓库根锚定，TERMIFY_BASE_DIR 可覆盖）
 │   ├── gallery.py          # 画廊功能（SQLite 元数据 + 缩略图生成）
-│   ├── share.py            # 作品分享（.termify + URL 编码）
+│   ├── textart.py          # 文字艺术：FIGlet 直转 + LLM 双模式 + 导出矩阵
+│   ├── llm.py              # LLM 配置读写（OpenAI 兼容端点，key 不回传浏览器）
 │   ├── video.py            # 视频接入（ffmpeg 抽帧，自适应采样）
 │   ├── videofetch.py       # 视频链接解析（yt-dlp + 域名白名单）
 │   ├── urlfetch.py         # URL 直输（SSRF 防护下载）
 │   └── output/
 │       ├── python.py       # 生成 .py 播放脚本
-│       └── html.py         # 生成 .html 播放页
-├── templates/index.html    # 前端页面（Jinja2 模板）
+│       ├── html.py         # 生成 .html 播放页
+│       └── video.py        # 生成 .mp4（ffmpeg 同步编码）
+├── templates/              # Jinja2 页面模板
+│   ├── index.html          # 主工作台（图片/视频 → 字符动画）
+│   ├── text_art.html       # 文字艺术页
+│   ├── gallery.html        # 画廊列表
+│   ├── view_work.html      # 作品分享页
+│   ├── admin.html          # 管理台
+│   └── _gallery_modal.html # 发布到画廊弹窗（片段）
 ├── static/
-│   ├── css/{tokens,app}.css
-│   ├── js/app.js           # 前端逻辑
+│   ├── css/{tokens,app,text_art}.css
+│   ├── js/app.js           # 主工作台逻辑
+│   ├── js/text_art.js      # 文字艺术页逻辑
 │   └── js/termify-render.js # 浏览器本地渲染器（7 风格镜像实现）
-├── tests/                  # pytest 单元测试（381 tests + JS 渲染一致性脚本）
-├── ui-mockup.html          # UI 视觉唯一真相源
+├── tests/                  # pytest 单元测试（396 tests + JS 渲染一致性脚本）
+├── Caddyfile               # 生产反向代理（自动 HTTPS + 安全头）
+├── termify.service         # systemd 单元文件
+├── deploy.sh               # ECS 一键部署
 └── README.md               # 本文件
 ```
 
 ## 技术栈
 
-- **后端**：Python 3.10+、Flask、Pillow
+- **后端**：Python 3.10+、Flask、Pillow、pyfiglet（文字艺术）
 - **前端**：原生 HTML/CSS/JS，无框架依赖
-- **测试**：pytest（381 tests，运行 `pytest -q` 即可）
+- **测试**：pytest（396 tests，运行 `pytest -q` 即可）
 - **主题**：暗色终端美学，JetBrains Mono + Space Grotesk 字体
 
 ## 🐛 反馈与 ISSUE
@@ -459,7 +556,7 @@ git checkout -b feat/your-feature
 
 # 3. 改代码 + 跑全量测试
 pip install -r requirements.txt
-pytest -q                    # 基线 217 tests，必须全绿
+pytest -q                    # 基线 396 tests，必须全绿
 ```
 
 ### 代码规范

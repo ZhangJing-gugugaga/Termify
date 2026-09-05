@@ -94,7 +94,20 @@ test_dark.png
 build/
 dist/
 *.spec.bak
-docs/DEPLOY-MY-ECS.md
-docs/DEPLOY-MY-ECS.md
+# --- Internal dev docs / working logs（不进公开仓库）-----------------------
+# 这些是开发过程产物（需求、规划、AI 指引、审查报告），历史上曾误入库，
+# 已加规则防止再次提交。文件本身保留在本地，不影响查阅。
+PRD.md
+GOAL-PROMPT.md
+phase3-goal-prompt.md
+CLAUDE.md
+.project-state.md
+growth-plan.md
+demo-article.md
+Termify-*.md
+docs/RELEASE-REVIEW-*.md
 docs/DEPLOY-MY-ECS.md
 security-audit-report.md
+
+# Tool config / session data
+.mimosa/
