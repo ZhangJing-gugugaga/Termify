@@ -12,9 +12,38 @@
 |------|------|------|
 | **🔗 在线 Demo** | [https://termify.moonzj.com](https://termify.moonzj.com) | 直接上传 GIF/PNG/JPG，生成终端动画 |
 | **🖼️ 作品画廊** | [https://termify.moonzj.com/gallery](https://termify.moonzj.com/gallery) | 浏览社区作品，查看别人的终端创作 |
+| **📝 文字艺术** | [https://termify.moonzj.com/text-art](https://termify.moonzj.com/text-art) | 文字 → ASCII 艺术字（FIGlet / 字体墙 / AI 创作） |
 
 > 💡 **不懂命令行？直接点上面链接** —— 浏览器拖图进去就能玩，零安装、零配置。\
 > 📋 **想批量处理或离线用？** 继续看下面的本地安装指南。
+
+### 在线 Demo 与本地 / 桌面的区别与限制
+
+在线 Demo 是一个**公开的共享实例**。和你在自己机器上 `python app.py` 或运行桌面包相比，有这些区别：
+
+| 维度 | 在线 Demo（termify.moonzj.com） | 本地 / 桌面包 |
+|------|-------------------------------|--------------|
+| 安装 | 零安装，浏览器打开即用 | 需装 Python 或下载 `.exe` |
+| 算力 | 共享服务器，高峰期可能排队 | 用你自己的机器，独享 |
+| 上传大小 | ≤ 20MB（与 Flask 硬上限一致） | 可调 `TERMIFY_MAX_VIDEO_MB` 放宽 |
+| 速率限制 | 有（见下表） | 无 |
+| AI 创作（文字艺术） | 取决于部署方是否配置 LLM；未配置时展示示例墙 | 你自部署 LLM（Ollama 等）即可用 |
+| 数据保留 | 任务完成后约 1 小时自动清理，不长期存储源文件 | 文件在你本机，你掌控 |
+| 功能更新 | 自动随 `main` 分支更新，始终最新 | 取决于你何时拉取 / 构建 |
+| 隐私 | HTTPS 加密传输；源文件不用于他用 | 完全离线，最私密 |
+
+**在线 Demo 的速率限制**（防止滥用，所有接口均有；触达上限返回 `429` 中英双语提示，稍候重试即可）：
+
+| 接口 | 限制 |
+|------|------|
+| 图片上传 | 10 次/分钟，100 次/天 |
+| 视频上传 | 4 次/分钟，40 次/天 |
+| 视频 / URL 解析 | 2 次/分钟 |
+| 文字艺术转换 / 字体墙 | 120 / 60 次/分钟 |
+| AI 创作 / 迭代 | 6 次/分钟 |
+| LLM 配置读取 | 10 次/分钟 |
+
+> 本地 `python app.py` 与桌面包**没有上述限制**，适合批量、大文件、或需要配置私有 LLM 的场景。
 
 ![终端动画效果预览](images/terminal-preview.png)
 
@@ -67,8 +96,8 @@ python app.py
 
 点击 7 张风格卡片中的任意一张，预览区立即切换。试试不同风格 — 每次切换都在 100ms 内完成：
 
-> ⚡ **全程本地渲染**：上传完成后，7 种风格 × 5 档尺寸的切换全部在你的浏览器内即时完成（零服务器往返）。服务端预览仅作为旧设备自动回退。
-> ℹ️ 英文提示：After upload, all 7 styles × 5 terminal sizes switch instantly in your browser — no server round-trip.
+> ⚡ **全程本地渲染**：上传完成后，7 种风格 × 20–400 列连续尺寸的切换全部在你的浏览器内即时完成（零服务器往返）。服务端预览仅作为旧设备自动回退。
+> ℹ️ 英文提示：After upload, all 7 styles × continuous sizes (20–400 cols) switch instantly in your browser — no server round-trip.
 
 | 风格 | 字符 | 适合场景 | 颜色 |
 |------|------|---------|------|
@@ -264,6 +293,34 @@ A: 三种方式：
 **Q: 画廊是什么？**
 A: [termify.moonzj.com/gallery](https://termify.moonzj.com/gallery) — 上传作品到公共画廊，获得一个短链（如 `/v/aBcDeFgH`），朋友点开就能看到你转的动画。支持点赞、标签筛选。
 
+**Q: 怎么把作品发布到画廊？**
+A: 两种方式：
+
+**① Web 界面（最常用）**
+
+1. 在主工作台上传素材 → 选好风格 / 尺寸 / 配色 → 点「下载动画文件」之前或之后，点 **「发布到画廊」** 按钮（右下角，弹窗来自 `_gallery_modal.html`）。
+2. 在弹窗里填：标题、描述、作者名、标签（预设标签最多 3 个 + 自定义标签）。
+3. 选 **公开 / 私密**。私密作品只有拿到短链的人能看。
+4. 点「发布」→ 自动跳到 `/v/<id>` 分享页，并给你一个 **admin_token**（写在 URL 里，用于之后删除自己的作品）。
+
+> 💡 发布限 **3 次/分钟、10 次/天**（每 IP），防止刷屏。视频作品会抽首帧入库，源视频本身不长期存储。
+
+**② 程序调用（API）**
+
+```bash
+curl -X POST http://127.0.0.1:5000/api/gallery/upload \
+  -F "source=@cat.gif" \
+  -F 'title=我的第一只猫' \
+  -F 'author=Termify玩家' \
+  -F 'tags=["动物","萌宠"]' \
+  -F 'custom_tags=["我的标签"]' \
+  -F 'is_private=false' \
+  -F 'params={"charset":"blocks","width":120,"height":36,"color":"source"}'
+# 返回: {"ok":true,"id":"aBcDeFgH","admin_token":"...","url":"/v/aBcDeFgH",...}
+```
+
+返回里的 `admin_token` 请自己留存 —— 之后删除作品用 `DELETE /api/gallery/work/<id>`（Header `X-Termify-Admin: <token>`，或首次发布时种下的同名 Cookie）。完整画廊接口（列表 / 点赞 / 举报 / 管理台）见 `app.py` 的 `/api/gallery/*` 路由。
+
 **Q: 有桌面版吗？**
 A: 有。从 [Releases](https://github.com/ZhangJing-gugugaga/Termify/releases) 下载 `Termify.exe`，双击启动后自动打开浏览器访问本地 Web 界面，功能跟在线 Demo 完全一致，适合离线环境或大文件处理。
 
@@ -375,6 +432,17 @@ curl -X POST http://127.0.0.1:5000/api/fetch-url \
 
 # 视频上传（后端 ffmpeg 抽帧）
 curl -X POST http://127.0.0.1:5000/api/upload-video -F "file=@clip.mp4"
+
+# 视频链接解析（Bilibili / 抖音 / YouTube，域名白名单 SSRF 防护，限 2 次/分钟）
+curl -X POST http://127.0.0.1:5000/api/fetch-video-url \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://www.bilibili.com/video/BV1xx411c7mD"}'
+
+# 为任务附加背景音乐（导出时优先于视频原声，≤20MB，mp3/wav/m4a/aac/ogg/flac）
+curl -X POST http://127.0.0.1:5000/api/upload-music \
+  -F "task_id=abc123" -F "file=@bgm.mp3"
+# 查询是否已挂载音频
+curl http://127.0.0.1:5000/api/audio-info/abc123
 
 # 文字艺术：列出字体 → 转换
 curl http://127.0.0.1:5000/api/text/fonts
@@ -573,7 +641,7 @@ pytest -q                    # 基线 396 tests，必须全绿
 
 - Python 3.10+, Flask, Pillow
 - 前端原生 HTML/CSS/JS，无框架依赖（Jinja2 模板）
-- pytests（**217** tests，跑 `pytest -q`）
+- pytests（**396** tests，跑 `pytest -q`）
 - PyInstaller 做桌面包
 
 ### 我能贡献什么？
