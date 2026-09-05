@@ -290,7 +290,9 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
             f"文字过多（{len(clean)} 字）——请缩短到 "
             f"{max_cell_w // 20} 字以内 / Too many characters")
     cell_w = h * 2
-    scale = 3  # 高分辨率光栅化：3 倍于目标，给 min-pool 留采样余量
+    scale = 6  # 高分辨率光栅化：min-pool 采样窗口越大，细横画存活率越高
+    # （scale=3 时 songti 在 10-16 行低网格下笔画碎裂、时断时续，观感
+    # 如"字被截断"；scale=6 实测三字体笔画连贯结构完整，h16 不劣化）
     # 画布 = 字形外接正方形（字号 cell_w*scale），垂直居中在 h×scale
     # 画布内——字形按方块渲染，取中部 h*scale 条带映射到终端 1:2 格
     cell_px = cell_w * scale
