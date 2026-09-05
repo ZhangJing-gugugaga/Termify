@@ -179,6 +179,9 @@
 
 /* ── 右：终端输出 ── */
 .ta-stage { min-width: 0; }
+/* hidden 属性必须赢过本页所有 display 规则（.ta-theme-row 等都是
+   display:flex，UA 的 [hidden]{display:none} 会被覆盖 → 配色条藏不住） */
+.ta-stage [hidden] { display: none !important; }
 .ta-output {
     font-family: var(--font-mono);
     min-height: 320px;

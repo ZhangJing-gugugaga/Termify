@@ -95,9 +95,10 @@ def test_index_merges_into_studio(client):
     # 导航三项化
     assert 'href="/text-art"' in body and "文字艺术" in body
     assert 'href="#upload"' not in body and 'href="#styles"' not in body
-    # 文字艺术卡片已移除，仅留入口
+    # 文字艺术卡片已移除，入口横幅也已移除（2026-09-06 用户要求去掉
+    # "想用文字生成…"提示条）；文字艺术仍从导航进入
     assert 'id="textArtInput"' not in body
-    assert "前往文字艺术" in body
+    assert "前往文字艺术" not in body and "text-art-cta" not in body
 
 
 def test_text_art_page_renders(client):

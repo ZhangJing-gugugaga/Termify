@@ -1002,9 +1002,11 @@ def render_art_png(art: str, dst_path: str, *,
         if ln:
             draw.text((ART_PAD, y), ln, font=font, fill=fg)
         y += line_h
-    if canvas_w < 600:  # 小作品 NEAREST 放大，缩略图/OG 不至于模糊
-        factor = min(4.0, 600.0 / canvas_w)
-        img = img.resize((int(canvas_w * factor), int(canvas_h * factor)),
+    if canvas_w < 1200:  # 小作品整数倍 NEAREST 放大到 ≈1200px：
+        # 非整数倍会造成颗粒疏密不均（缩略图二次缩放后糊+锯齿），
+        # 整数倍每字符像素均匀，缩略图观感整齐锐利
+        factor = max(2, int(1200 / canvas_w))
+        img = img.resize((canvas_w * factor, canvas_h * factor),
                          Image.NEAREST)
     img.save(dst_path, format="PNG")
     return canvas_w

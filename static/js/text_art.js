@@ -95,6 +95,25 @@
       '<div class="ta-chips">' + chips + "</div></div>";
     if (taResultMeta) taResultMeta.hidden = true;
   }
+  /* 输出字号自适应：等宽字符画列数随内容变化（中文点阵 96-160 列、
+     FIGlet 更宽），固定 0.62rem 会在容器里横向截断——按 scrollWidth
+     超出比例缩小字号，保证整幅作品完整可见（与字体墙同算法）。 */
+  function fitOutputFont() {
+    if (!taOutput || !TA.art) return;
+    taOutput.style.fontSize = "";
+    var sw = taOutput.scrollWidth, cw = taOutput.clientWidth;
+    if (sw > cw && sw > 0) {
+      var base = parseFloat(getComputedStyle(taOutput).fontSize) || 10;
+      var fit = Math.max(4, Math.floor(base * cw / sw * 10) / 10);
+      taOutput.style.fontSize = fit + "px";
+    }
+  }
+  var outputFitTimer = null;
+  window.addEventListener("resize", function () {
+    if (outputFitTimer !== null) clearTimeout(outputFitTimer);
+    outputFitTimer = setTimeout(fitOutputFont, 120);
+  });
+
   function showArt(d) {
     TA.art = d.art; TA.cols = d.cols; TA.rows = d.rows;
     TA.font = d.font || ""; TA.text = d.text || "";
@@ -110,6 +129,7 @@
     if (taMetaText) taMetaText.textContent = modeLabel + " · " + d.cols + " x " + d.rows;
     if (taResultMeta) taResultMeta.hidden = false;
     if (taThemeRow) taThemeRow.hidden = false;  // 有作品 → 配色行可见
+    fitOutputFont();
   }
 
   /* ── 输入语言检测 + 字体源切换 ── */
@@ -649,6 +669,7 @@
     }
     if (taResultMeta) taResultMeta.hidden = false;
     if (taThemeRow) taThemeRow.hidden = true;  // 配色已由面板圆点决定
+    fitOutputFont();
   }
 
   /* TrueColor ANSI → HTML（逐行逐段解析 SGR，fg 着色 span）*/
