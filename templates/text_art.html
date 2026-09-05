@@ -42,7 +42,7 @@
                     <div class="ta-group">
                         <label class="ta-label" for="taInput">文本或描述</label>
                         <textarea class="ta-input" id="taInput" rows="4" maxlength="500"
-                                  placeholder="直接生成：输入英文/数字，如 hello（中文会被忽略）&#10;AI 生成：用一句中文描述，如「火焰感的 HELLO」或「画一只猫」"></textarea>
+                                  placeholder="直接生成：输入英文/数字，如 hello（中文会被忽略）&#10;AI 生成：用一句中文描述，如「火焰感的 HELLO」或「画一只猫」&#10;中文艺术字：输入 1-12 个汉字，如「你好世界」"></textarea>
                         <p class="ta-hint ta-input-hint" id="taInputHint" hidden></p>
                     </div>
 
@@ -63,9 +63,20 @@
                         <p class="ta-hint" id="taModeHint">AI 从描述中提取文字与字体，本地精确渲染，快且稳定。</p>
                     </div>
 
+                    <div class="ta-group">
+                        <label class="ta-label" for="taCjkStyle">中文字形风格</label>
+                        <select class="ta-select" id="taCjkStyle">
+                            <option value="pixel" selected>像素体</option>
+                            <option value="brush">笔刷体</option>
+                            <option value="outline">轮廓体</option>
+                        </select>
+                        <p class="ta-hint" id="taCjkHint">汉字活字引擎：为每个汉字生成等宽字符画字形并缓存，首次稍慢。</p>
+                    </div>
+
                     <div class="ta-group ta-actions">
                         <button type="button" class="ta-btn" id="taConvertBtn">生成</button>
                         <button type="button" class="ta-btn ta-btn-primary" id="taAiBtn">AI 生成</button>
+                        <button type="button" class="ta-btn" id="taCjkBtn">中文艺术字</button>
                     </div>
 
                     <div class="ta-group ta-settings-group">
@@ -188,6 +199,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260904e" defer></script>
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260904f" defer></script>
 </body>
 </html>

@@ -102,7 +102,7 @@
     { kind: "figlet", label: "hello", value: "hello" },
     { kind: "ai", label: "火焰感的 HELLO", value: "火焰感的 HELLO" },
     { kind: "ai-direct", label: "画一只猫", value: "画一只猫" },
-    { kind: "ai-direct", label: "戴墨镜的狗", value: "一只戴墨镜的狗" }
+    { kind: "cjk", label: "你好世界", value: "你好世界" }
   ];
 
   function showEmpty() {
@@ -127,11 +127,15 @@
     taOutput.textContent = d.art;
     if (taPreviewTitle) {
       taPreviewTitle.textContent = "text art · " +
-        (d.mode === "direct" ? "AI direct" : (d.font || "figlet")) +
+        (d.mode === "direct" ? "AI direct"
+          : (d.mode === "cjk" ? "cjk · " + (d.style || "")
+            : (d.font || "figlet"))) +
         " " + d.cols + "x" + d.rows;
     }
     var label = d.mode === "direct" ? "AI 直接创作"
-      : (d.mode === "params" ? "AI · " + (d.font || "") : (d.font || ""));
+      : (d.mode === "params" ? "AI · " + (d.font || "")
+        : (d.mode === "cjk" ? "中文艺术字 · " + (d.style || "")
+          : (d.font || "")));
     if (taMetaText) taMetaText.textContent = label + " · " + d.cols + " x " + d.rows;
     if (taResultMeta) taResultMeta.hidden = false;
     if (taThemeRow) taThemeRow.hidden = false;  // 有作品 → 配色行可见
@@ -846,6 +850,9 @@
         'input[name="taAiMode"][value="' + want + '"]');
       if (radio && !radio.checked) { radio.checked = true; syncModeHint(); }
       if (aiBtn) aiBtn.click();
+    } else if (kind === "cjk") {
+      if (cjkBtn && !cjkBtn.disabled) cjkBtn.click();
+      else toast("中文艺术字需先配置 LLM（点「⚙ 自部署 AI」）");
     } else if (convertBtn) {
       convertBtn.click();
     }
@@ -869,8 +876,85 @@
       });
     });
 
+  /* ── 中文艺术字（汉字活字引擎：字形缓存 + 本地混排） ── */
+  var cjkBtn = byId("taCjkBtn");
+  var cjkStyleSel = byId("taCjkStyle");
+  var cjkHint = byId("taCjkHint");
+
+  function loadCjkStyles() {
+    if (!cjkStyleSel) return;
+    fetch("/api/cjk/styles").then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok || !d.styles || !d.styles.length) return;
+        cjkStyleSel.innerHTML = "";
+        d.styles.forEach(function (s) {
+          var o = document.createElement("option");
+          o.value = s.slug;
+          o.textContent = s.name + "（" + s.height + "×" + s.width + "）";
+          cjkStyleSel.appendChild(o);
+        });
+      }).catch(function () { /* 保留 HTML 硬编码的 3 个静态选项 */ });
+  }
+
+  /* 未配置 LLM 时置灰 + 提示（对齐 AI 模式交互） */
+  function syncCjkAvailability() {
+    if (!cjkBtn) return;
+    fetch("/api/llm/config").then(function (r) { return r.json(); })
+      .then(function (d) {
+        var configured = !!(d && d.configured);
+        cjkBtn.disabled = !configured;
+        if (cjkHint) {
+          cjkHint.textContent = configured
+            ? "汉字活字引擎：为每个汉字生成等宽字符画字形并缓存，首次稍慢。"
+            : "中文艺术字由你自部署的 LLM 驱动——点「⚙ 自部署 AI」三步开通后可用。";
+        }
+      }).catch(function () { /* 查询失败时保持可用，由后端兜底提示 */ });
+  }
+
+  if (cjkBtn) cjkBtn.addEventListener("click", function () {
+    if (busy || cjkBtn.disabled) return;
+    var text = taInput ? taInput.value : "";
+    if (!text.trim()) {
+      toast("请输入 1-12 个汉字 / Enter 1-12 Chinese characters");
+      return;
+    }
+    busy = true;
+    cjkBtn.disabled = true; cjkBtn.textContent = "生成中…";
+    if (taResultMeta) taResultMeta.hidden = true;
+    skeleton();
+    waitbarStart("direct");  // 首个未缓存字形需真实调用 LLM，耗时同 AI 直创
+    fetch("/api/cjk/render", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: text,
+                             style: cjkStyleSel ? cjkStyleSel.value : "pixel" })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      busy = false; waitbarStop();
+      cjkBtn.disabled = false; cjkBtn.textContent = "中文艺术字";
+      if (d.error) {
+        if (d.need_config) { showNeedConfig(d); }
+        else { showOutputError(d.error); }
+        hideFontWall();
+        return;
+      }
+      showArt({ art: d.art, cols: d.cols, rows: d.rows,
+                mode: "cjk", font: "", style: d.style,
+                text: text.slice(0, 80) });
+      if (d.missing && d.missing.length) {
+        toast("「" + d.missing.join("") + "」生成失败，已用实心块占位");
+      }
+      hideFontWall();  // 中文路径与 FIGlet 字体墙互斥
+    }).catch(function () {
+      busy = false; waitbarStop();
+      cjkBtn.disabled = false; cjkBtn.textContent = "中文艺术字";
+      showOutputError("网络异常，请重试 / Network error, retry");
+    });
+  });
+
   /* ── init ── */
   loadFonts();
+  loadCjkStyles();
+  syncCjkAvailability();
   syncModeHint();
   showEmpty();  // 增强空态：含示例 chips（替换 HTML 硬编码版本）
 })();

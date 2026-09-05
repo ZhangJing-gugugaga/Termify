@@ -863,6 +863,8 @@ def fetch_url():
 # 艺术字文本存 params_json.frames，/v/ 页零渲染改动直接回放。
 from termify import llm as _llm_mod
 from termify import textart as _textart_mod
+from termify import cjk_glyph as _cjk_glyph_mod
+from termify import cjk_render as _cjk_render_mod
 
 
 def _llm_cfg() -> dict:
@@ -1174,6 +1176,52 @@ def text_export_html():
     resp.headers.set("Content-Disposition",
                      "attachment", filename=f"{name}.html")
     return resp
+
+
+# --- T36 汉字活字引擎（中文艺术字）------------------------------------------
+# 逐字字形 = LLM 生成 + SQLite 缓存（data/cjk_glyphs.db），渲染在本地完成。
+# 与 AI 直接创作共用「自部署 LLM」配置；未配置时 400 + 配置指引（同范式）。
+
+@app.route("/api/cjk/styles", methods=["GET"])
+def cjk_styles():
+    """可用的中文字形风格列表（slug/name/height/width）。"""
+    return jsonify({"ok": True, "styles": [
+        {"slug": s["slug"], "name": s["name"],
+         "height": s["height"], "width": s["width"]}
+        for s in _cjk_glyph_mod.GLYPH_STYLES]})
+
+
+@app.route("/api/cjk/render", methods=["POST"])
+def cjk_render():
+    """中文艺术字：{text, style} → 混排字符画。1-12 个汉字。"""
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "cjk-render", per_minute=6)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    style = data.get("style")
+    if _cjk_glyph_mod.style_by_slug(style) is None:
+        return jsonify({"error": "未知字形风格 / Unknown glyph style"}), 400
+    cfg = _llm_cfg()
+    if not _llm_mod.is_configured(cfg):
+        return jsonify({"error": "中文艺术字由你自部署的 LLM 驱动，点左下"
+                                 "「自部署 AI」查看三步指引 / CJK art runs "
+                                 "on your self-hosted LLM — open the "
+                                 "self-host AI guide at bottom-left",
+                        "need_config": True}), 400
+    try:
+        result = _cjk_render_mod.render_cjk_text(
+            data.get("text"), style, cfg, _llm_mod)
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except _llm_mod.LLMError as exc:
+        # generate_glyph 内部已吞异常；此处只兜底极端情况
+        return jsonify({"error": str(exc)}), 502
+    return jsonify({"ok": True, "art": result["art"],
+                    "missing": result["missing"], "style": result["style"],
+                    "cols": result["cols"], "rows": result["rows"]})
 
 
 @app.route("/api/gallery/upload-text", methods=["POST"])
