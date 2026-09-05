@@ -67,6 +67,8 @@ _*.py
 # Allow documentation images
 !images/
 !images/*.png
+!images/screenshots/
+!images/screenshots/*.png
 
 # Tool config and session data (personal, not part of the product)
 .mimocode/
