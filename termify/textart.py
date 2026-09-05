@@ -360,18 +360,34 @@ def render_font_previews(text: object) -> list[dict]:
     return out
 
 
-def validate_stored_art(art: object) -> str:
+def validate_stored_art(art: object, *, keep_ansi: bool = False) -> str:
     """Validate an art string coming from the client before storing it as a
-    gallery work (publish path). Dimension-capped, control chars stripped."""
+    gallery work (publish path). Dimension-capped, control chars stripped.
+
+    keep_ansi=True（原色作品）：保留 TrueColor SGR 转义（\\x1b[...m），
+    其余控制字符照剥；尺寸按"剥转义后的可见字符"计算——ANSI 序列不计入
+    列数，否则原色作品永远过不了 MAX_ART_COLS 红线。
+    """
     if not isinstance(art, str):
         raise TextArtError("缺少艺术字内容 / Missing art content")
+    # keep_ansi 时放行 ESC(0x1b)（SGR 序列的起始字节），其余控制字符照剥
     cleaned = "".join(
         ch for ch in art.replace("\r\n", "\n").replace("\r", "\n")
-        if ch == "\n" or (ord(ch) >= 0x20 and ord(ch) != 0x7F)
+        if ch == "\n" or (keep_ansi and ch == "\x1b")
+        or (not keep_ansi and ord(ch) >= 0x20 and ord(ch) != 0x7F)
+        or (keep_ansi and ord(ch) >= 0x20)
     )
     cleaned = cleaned.strip("\n")
     if not cleaned.strip():
         raise TextArtError("艺术字内容为空 / Art content is empty")
+    if keep_ansi:
+        # 尺寸校验走可见文本（剥 SGR），入库保留原始带色 art
+        plain = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", cleaned)
+        plain = plain.strip("\n")
+        if not plain.strip():
+            raise TextArtError("艺术字内容为空 / Art content is empty")
+        _tidy_art(plain)
+        return cleaned
     return _tidy_art(cleaned)
 
 

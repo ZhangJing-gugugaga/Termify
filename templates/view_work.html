@@ -6,7 +6,7 @@
     <title>{{ work.title }} · Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260903e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906a">
 </head>
 <body>
 <div id="toast"></div>
@@ -515,6 +515,38 @@
                                   availH / (curHeight * 1.3));
                 tb.style.fontSize = Math.max(2, Math.min(fs, 30)) + "px";
             }
+            function fitTextFontSize() {
+                // 文字作品专用：先按宽度铺满定字号，窗口高度随内容撑开
+                //（上限 75vh，超出再按高度收缩字号）——静态作品没有动画
+                // 窗口约束，小字号挤在窗口左上角的排版不适配。
+                var tb = preview;
+                var style = getComputedStyle(tb);
+                var padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+                var padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+                var availW = tb.clientWidth - padX;
+                if (availW <= 0 || !curWidth || !curHeight) return;
+                var fsByW = availW / (curWidth * 0.6);
+                var maxH = Math.max(300, Math.round(window.innerHeight * 0.75));
+                var fs = Math.min(fsByW, 30);
+                var needH = Math.round(curHeight * 1.3 * fs + padY);
+                if (needH > maxH) {
+                    fs = Math.min(fs, (maxH - padY) / (curHeight * 1.3));
+                    needH = maxH;
+                }
+                tb.style.height = Math.max(240, needH) + "px";
+                tb.style.fontSize = Math.max(2, fs) + "px";
+            }
+            function textMetaLabel() {
+                // 文字作品 meta：图片艺术化作品标注来源与配色，替代无意义的 "custom"
+                var parts = [];
+                if (params.color === "source") parts.push("图片艺术化 · 原色");
+                else if (params.palette) parts.push("图片艺术化 · " +
+                    ({green:"终端绿",cyan:"青",amber:"琥珀",
+                      magenta:"品红",red:"红",white:"白"}[params.palette] || params.palette));
+                else if (params.font) parts.push(params.font);
+                parts.push(curWidth + "×" + curHeight + " · 静态文字作品");
+                return parts.join(" · ");
+            }
             function loadTextPreview() {
                 var art = textArtString();
                 preview.style.opacity = "1";
@@ -525,8 +557,11 @@
                 totalFrames = 1;
                 preview.style.color = textFgColor() || "";
                 if (previewTitle) previewTitle.textContent = "text art · " +
-                    (params.font || "custom") + " " + curWidth + "×" + curHeight;
-                fitViewFontSize();
+                    (params.font || (params.color === "source" ? "source" : "custom")) +
+                    " " + curWidth + "×" + curHeight;
+                var _meta2 = document.getElementById("textWorkMeta");
+                if (_meta2) _meta2.textContent = textMetaLabel();
+                fitTextFontSize();
                 renderFrame(0);
             }
             function loadPreview() {
@@ -776,7 +811,10 @@
             loadPreview();
             // 视频作品：后台拉源帧，就绪后所有切换本地渲染（瞬时）
             ensureSourceFrames();
-            window.addEventListener("resize", fitViewFontSize);
+            window.addEventListener("resize", function () {
+                if (IS_TEXT) { fitTextFontSize(); return; }
+                fitViewFontSize();
+            });
         })();
     </script>
 </body>

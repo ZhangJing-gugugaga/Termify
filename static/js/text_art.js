@@ -403,7 +403,7 @@
   tagChecks.forEach(function (cb) {
     cb.addEventListener("change", function () {
       var checked = document.querySelectorAll('.gallery-tag-checkbox input:checked');
-      if (checked.length > 3) { this.checked = false; toast("预设标签最多选 3 个"); }
+      if (checked.length > 3) { this.checked = false; toast("最多选 3 个标签"); }
     });
   });
   var gModal = byId("galleryModal");
@@ -425,6 +425,7 @@
     });
     var body = {
       art: TA.art, font: TA.font, fg: TA.fg,
+      palette: TA.theme || currentTheme,  // 配色随结果区主题（source=原色）
       title: title, description: desc, author: author,
       tags: tags, custom_tags: readCustomTags(),
       is_private: vis ? vis.value : "0"
@@ -576,6 +577,10 @@
     if (taTextPanel) taTextPanel.hidden = isImage;
     if (taImagePanel) taImagePanel.hidden = !isImage;
     hideFontWall();  // 切模式时清字体墙
+    // 配色条收敛：图片模式的配色在左面板圆点行，结果区主题行只属于
+    // 文字模式——切到图片即隐藏（showImgArt 生成后也会保持隐藏），
+    // 切回文字且有作品时恢复，避免两个配色条同时出现。
+    if (taThemeRow) taThemeRow.hidden = isImage || !TA.art;
   });
 
   /* ── 图片艺术化（配色点 + 原色，导出复用结果区按钮行）── */

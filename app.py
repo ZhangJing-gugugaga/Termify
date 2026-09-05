@@ -1431,14 +1431,27 @@ def gallery_upload_text():
     ok, reason = _rate_check(ip, "upload", per_minute=3, per_day=10)
     if not ok:
         return jsonify({"error": reason}), 429
+    # 配色：主题名（green/cyan/...）或 "source"（原色 TrueColor，art 内嵌
+    # SGR 转义）。原色路径必须保留转义入库，否则作品回放丢彩色。
+    palette = data.get("palette")
+    is_source = palette == "source"
+    if not is_source and palette not in _textart_mod.ART_THEMES:
+        palette = None
     try:
-        art = _textart_mod.validate_stored_art(data.get("art"))
+        art = _textart_mod.validate_stored_art(
+            data.get("art"), keep_ansi=is_source)
     except _textart_mod.TextArtError as exc:
         return jsonify({"error": str(exc)}), 400
-    cols, rows = _textart_mod.art_dims(art)
+    cols, rows = _textart_mod.art_dims(
+        re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", art) if is_source else art)
     font = data.get("font") if _textart_mod.known_font(data.get("font")) \
         else ""
-    fg = _rgb_or_none(data.get("fg")) or _textart_mod.ART_FG_DEFAULT
+    if is_source:
+        fg = _textart_mod.ART_FG_DEFAULT  # 卡片缩略图兜底色；回放走内嵌 ANSI
+    elif palette:
+        fg = _textart_mod._theme_fg(palette)
+    else:
+        fg = _rgb_or_none(data.get("fg")) or _textart_mod.ART_FG_DEFAULT
 
     title = _gallery_mod.sanitize(data.get("title"), _gallery_mod._TITLE_MAX) \
         or "文字艺术字"
@@ -1461,8 +1474,11 @@ def gallery_upload_text():
     source_path = os.path.join(base, f"{work_id}.png")
     thumb_path = os.path.join(base, f"{work_id}_thumb.gif")
     og_path = os.path.join(base, f"{work_id}_og.png")
+    # 缩略图/OG 用纯文本渲染（原色作品的 SGR 转义不能画进 PNG）；
+    # 回放用原始 art（source 含彩色 ANSI）
+    art_plain = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", art) if is_source else art
     try:
-        _textart_mod.render_art_png(art, source_path, fg=fg)
+        _textart_mod.render_art_png(art_plain, source_path, fg=fg)
         _gallery_mod.make_thumbnail(source_path, thumb_path)
         _gallery_mod.make_og_image(source_path, og_path, title, author)
     except Exception as exc:  # noqa: BLE001
@@ -1474,8 +1490,10 @@ def gallery_upload_text():
                                  "failed"}), 500
 
     params = {"kind": "text", "charset": "text", "font": font,
-              "color": "mono", "fg": list(fg),
+              "color": "source" if is_source else "mono", "fg": list(fg),
               "width": cols, "height": rows, "frames": [art]}
+    if palette and not is_source:
+        params["palette"] = palette
     admin_token = _gallery_mod.make_admin_token()
     now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     GALLERY_DB.insert_work({

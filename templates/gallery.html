@@ -6,7 +6,7 @@
     <title>在线画廊 · Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906a">
 </head>
 <body>
 <div id="toast"></div>
@@ -166,9 +166,15 @@
             }
             empty.style.display = "none";
             grid.innerHTML = items.map(function (w) {
+                // 类型标识：文字/图片艺术化作品与动画作品卡片观感统一，
+                // 角标区分来源（kind=text 文字系；其余为动画工坊作品）
+                var kind = (w.params && w.params.kind) || "";
+                var badge = kind === "text"
+                    ? '<span class="gallery-card-badge">文字</span>' : "";
                 return '<a class="gallery-card" href="/v/' + escapeHtml(w.id) + '">' +
                     '<div class="gallery-card-img">' +
                     '<img src="' + escapeHtml(w.thumbnail_url) + '" alt="' + escapeHtml(w.title) + '" loading="lazy">' +
+                    badge +
                     '</div>' +
                     '<div class="gallery-card-info">' +
                     '<div class="gallery-card-title">' + escapeHtml(w.title) + '</div>' +
