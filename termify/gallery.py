@@ -110,11 +110,12 @@ def escape_html(text: str) -> str:
 
 # --- thumbnail / OG generation ----------------------------------------------
 
-def make_thumbnail(src_path: str, dst_path: str) -> None:
+def make_thumbnail(src_path: str, dst_path: str, *, fit: bool = False) -> None:
     """Save a small looping GIF thumbnail (THUMB_W x THUMB_H, THUMB_FRAMES).
 
-    Reads the source GIF (or still), samples frames, centre-crops to 4:3,
-    resizes, saves as GIF looping forever.
+    Reads the source GIF (or still), centre-crops to 4:3, resizes, saves as
+    GIF looping forever. fit=True（文字作品）：letterbox 适配而非裁剪——
+    超宽字符画（FIGlet 常见 5:1+）中心裁剪会切掉大半内容，必须整幅收进。
     """
     img = Image.open(src_path)
     n_frames = getattr(img, "n_frames", 1)
@@ -134,8 +135,20 @@ def make_thumbnail(src_path: str, dst_path: str) -> None:
         picks = [img.convert("RGBA")]
 
     # Centre-crop to 4:3 then resize
-    cropped = [_crop_to_aspect(im, THUMB_W / THUMB_H) for im in picks]
-    frames = [im.resize((THUMB_W, THUMB_H), Image.LANCZOS) for im in cropped]
+    if fit:
+        # letterbox：整幅缩进 4:3 画布（终端底色补边），内容零裁剪
+        fitted = []
+        for im in picks:
+            canvas = Image.new("RGBA", (THUMB_W, THUMB_H), (10, 14, 20, 255))
+            ratio = min(THUMB_W / im.width, THUMB_H / im.height)
+            nw, nh = max(1, int(im.width * ratio)), max(1, int(im.height * ratio))
+            canvas.paste(im.resize((nw, nh), Image.LANCZOS),
+                         ((THUMB_W - nw) // 2, (THUMB_H - nh) // 2))
+            fitted.append(canvas)
+        frames = fitted
+    else:
+        cropped = [_crop_to_aspect(im, THUMB_W / THUMB_H) for im in picks]
+        frames = [im.resize((THUMB_W, THUMB_H), Image.LANCZOS) for im in cropped]
 
     # First frame + rest; all frames 100 ms
     durations = [100] * len(frames)

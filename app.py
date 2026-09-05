@@ -1479,7 +1479,7 @@ def gallery_upload_text():
     art_plain = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", art) if is_source else art
     try:
         _textart_mod.render_art_png(art_plain, source_path, fg=fg)
-        _gallery_mod.make_thumbnail(source_path, thumb_path)
+        _gallery_mod.make_thumbnail(source_path, thumb_path, fit=True)
         _gallery_mod.make_og_image(source_path, og_path, title, author)
     except Exception as exc:  # noqa: BLE001
         for p in (source_path, thumb_path, og_path):
@@ -2414,6 +2414,11 @@ def _security_headers(resp):
         "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
         "script-src 'self' 'unsafe-inline'; media-src 'self' data:; font-src 'self'; "
         "connect-src 'self'")
+    # HTML 页面禁缓存：HTML 引用带版本号的静态资源，HTML 本身一旦被浏览器
+    # 启发式缓存，改版后用户会一直拿到旧页面（无版本号变化的旧 JS/CSS），
+    # 表现为"修了没生效"。静态资源带 ?v= 版本号，可长缓存。
+    if resp.mimetype == "text/html":
+        resp.headers["Cache-Control"] = "no-cache"
     return resp
 
 
