@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 0, 0, 0),
-    prodvers=(1, 0, 0, 0),
+    filevers=(1, 1, 0, 0),
+    prodvers=(1, 1, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -14,12 +14,12 @@ VSVersionInfo(
       StringStruct(u'Comments', u'Termify - 万物皆可终端'),
       StringStruct(u'CompanyName', u'Termify Team'),
       StringStruct(u'FileDescription', u'Termify Desktop — turn images into terminal animations'),
-      StringStruct(u'FileVersion', u'1.0.0'),
+      StringStruct(u'FileVersion', u'1.1.0'),
       StringStruct(u'InternalName', u'Termify'),
       StringStruct(u'LegalCopyright', u'MIT License'),
       StringStruct(u'OriginalFilename', u'Termify.exe'),
       StringStruct(u'ProductName', u'Termify'),
-      StringStruct(u'ProductVersion', u'1.0.0'),
+      StringStruct(u'ProductVersion', u'1.1.0'),
     ]),
     VarFileInfo([VarStruct(u'Translation', [2052, 1200])])
   ]
