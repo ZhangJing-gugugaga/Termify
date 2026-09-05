@@ -56,12 +56,22 @@ def test_launcher_resource_path_dev():
 
 
 def test_version_info_exists():
-    """version_info.txt 提供 Windows 版本信息。"""
+    """version_info.txt 提供 Windows 版本信息（结构与版本一致性，
+    不钉死具体版本号——发版升级不再误伤）。"""
     assert os.path.isfile("version_info.txt")
     with open("version_info.txt", "r", encoding="utf-8") as f:
         src = f.read()
     assert "VSVersionInfo" in src
-    assert "1, 0, 0, 0" in src
+    # filevers 元组与 FileVersion 字符串应一致（如 (1, 1, 0, 0) ↔ '1.1.0'，
+    # 末段 0 在版本串中可省略）
+    import re
+    m = re.search(r"filevers=\((\d+), (\d+), (\d+), (\d+)\)", src)
+    assert m, "filevers tuple missing"
+    parts = list(m.groups())
+    if len(parts) >= 3 and parts[-1] == "0":
+        parts.pop()
+    v = ".".join(parts)
+    assert f"u'{v}'" in src, f"FileVersion string {v!r} not in version_info"
 
 
 def test_icon_exists():

@@ -100,8 +100,9 @@ class TestRenderCjkTtf:
         assert rows <= textart.MAX_ART_ROWS
 
     def test_no_blank_row_collapse(self):
-        # 行数应接近 CJK_DEFAULT_HEIGHT（首尾全空白行会被裁掉，ascender
-        # 边距导致 1-2 行浮动，可接受；但不应塌成一半）
-        art1 = textart.render_cjk_ttf("一二三四五六七八九十")
+        # 短文本（≤5 字）：行数应接近 CJK_DEFAULT_HEIGHT（首尾全空白行会被
+        # 裁掉，ascender 边距导致 1-2 行浮动，可接受；但不应塌成一半）。
+        # 宽文本行高按 1:2 比例自动收缩（MAX_ART_COLS 红线），不在此断言。
+        art1 = textart.render_cjk_ttf("你好世界大")
         _, rows1 = textart.art_dims(art1)
         assert textart.CJK_DEFAULT_HEIGHT - 2 <= rows1 <= textart.CJK_DEFAULT_HEIGHT

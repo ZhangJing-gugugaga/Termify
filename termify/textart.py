@@ -163,8 +163,9 @@ def art_dims(art: str) -> tuple[int, int]:
 # 字形不可读；TTF 系统字体 16×16 光栅化 100% 可读（含繁体）。中文路径不走
 # FIGlet（非 ASCII 会被 filter_figlet_text 忽略），改为像素阈值 → 字符画。
 
-CJK_MAX_CHARS = 12          # 单次渲染汉字上限（与旧 cjk 路径一致）
-CJK_DEFAULT_HEIGHT = 20     # 单字光栅高度（px），决定字符画每字行数
+CJK_MAX_CHARS = 8           # 单次渲染汉字上限（1:2 比例 × 160 列红线推出，
+                            # 与 render_cjk_ttf 的行高收缩公式一致）
+CJK_DEFAULT_HEIGHT = 16     # 单字占的字符画行数（列数自动 = 2×行数，见下）
 # (key, 展示名, 字体候选)。候选按序探测，首个存在者生效（Win/Linux/macOS）。
 CJK_FONTS: list[tuple[str, str, tuple[str, ...]]] = [
     ("songti", "宋体", (
@@ -257,15 +258,17 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
                    height: object = CJK_DEFAULT_HEIGHT) -> str:
     """中文 → TTF 光栅化点阵字符画（无 LLM）。
 
-    PIL 渲染到灰度小图，按亮度阈值映射为「实/空」两态字符。
-    每个汉字纵向占 ``height`` 行、横向约 height/2 列（等宽前提）。
+    每个汉字先在高分辨率画布上逐字光栅化（字与字之间不重叠），再
+    统一横向压缩到 cell_w 列、纵向压到 ``height`` 行。横向压缩用
+    "取最暗" 而非平均——细横画在均值降采样里会被背景稀释到阈值以下
+    （「你好」碎成渣的根因），min-pool 保笔画存活。
     """
     from PIL import Image, ImageDraw, ImageFont
 
     clean = filter_cjk_text(text)
     if not clean:
         raise TextArtError(
-            "请输入汉字（1-12 个）/ Please enter 1-12 Chinese characters")
+            "请输入汉字（1-8 个）/ Please enter 1-8 Chinese characters")
     font_path = _resolve_cjk_font(font)
     if font_path is None:
         raise TextArtError(
@@ -274,36 +277,51 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
         h = int(height)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         h = CJK_DEFAULT_HEIGHT
-    h = max(8, min(48, h))
-    # 像素画布：字符画列宽约为行高的 1/2（等宽字符宽高比 ~1:2），
-    # 每个汉字先按 2 倍画布光栅化，避免低分辨率下笔画断裂。
-    cell_w = h // 2
-    canvas_w = cell_w
-    canvas_h = h
-    scale = 2
-    img = Image.new("L", (canvas_w * scale * len(clean),
-                          canvas_h * scale), 255)
-    draw = ImageDraw.Draw(img)
+    h = max(10, min(40, h))
+    # 终端字符宽高比 ≈ 1:2 → 每字列数 = 2×行数，字形在终端里才是
+    # 正常比例（此前 cell_w = h/2 是把像素比误当字符比，纵向拉长糊掉）
+    # 宽度红线：1:2 比例下 12 字 × 默认行高 = 384 列 > MAX_ART_COLS(200)，
+    # 行高随字数自动收缩（总列数封顶 160，留余量）；极限字数 × 行高下限
+    # 仍超红线时直接报错（语义清晰优于静默截断）。
+    max_cell_w = MAX_ART_COLS - 40  # 160：总宽上限（含余量，供导出预览）
+    h = min(h, max_cell_w // (2 * len(clean)))
+    if h < 10:
+        raise TextArtError(
+            f"文字过多（{len(clean)} 字）——请缩短到 "
+            f"{max_cell_w // 20} 字以内 / Too many characters")
+    cell_w = h * 2
+    scale = 3  # 高分辨率光栅化：3 倍于目标，给 min-pool 留采样余量
+    # 画布 = 字形外接正方形（字号 cell_w*scale），垂直居中在 h×scale
+    # 画布内——字形按方块渲染，取中部 h*scale 条带映射到终端 1:2 格
+    cell_px = cell_w * scale
+    grid: list[list[bool]] = [[False] * (cell_w * len(clean))
+                              for _ in range(h)]
     try:
-        f = ImageFont.truetype(font_path, canvas_h * scale)
+        f = ImageFont.truetype(font_path, cell_px)  # 字号 = 列数 = 方形
     except (OSError, IOError):
         raise TextArtError(
             "中文字体加载失败 / Failed to load Chinese font")
-    x = 0
-    for ch in clean:
-        # 逐字光栅：CJK 全角方块字，固定 advance = 字高（避免半角混排错位）
-        draw.text((x, 0), ch, font=f, fill=0)
-        x += canvas_w * scale
-    # 降采样 + 阈值二值化 → 字符画
-    small = img.resize((canvas_w * len(clean), canvas_h), Image.BOX)
-    px = small.load()
-    thresh = 128
-    rows = []
-    for yy in range(canvas_h):
-        line = "".join("#" if px[xx, yy] < thresh else " "
-                       for xx in range(canvas_w * len(clean)))
-        rows.append(line)
-    # 空白行填充会破坏逐字对齐 — 保留所有行，只去掉末尾全空白行
+    y_off = (h * scale - cell_px) // 2  # 方形字形在 h*scale 高画布内居中
+    for ci, ch in enumerate(clean):
+        if not (0x4E00 <= ord(ch) <= 0x9FFF or 0x3400 <= ord(ch) <= 0x4DBF):
+            continue  # 半角/空格：格子留白（列对齐由全角格保证）
+        img = Image.new("L", (cell_px, h * scale), 255)
+        ImageDraw.Draw(img).text((0, y_off), ch, font=f, fill=0)
+        sp = img.load()
+        # min-pool：每个目标格取 scale×scale 窗口的最暗值（保笔画）
+        for ty in range(h):
+            y0 = ty * scale
+            for tx in range(cell_w):
+                x0 = tx * scale
+                darkest = 255
+                for sy in range(scale):
+                    for sx in range(scale):
+                        v = sp[x0 + sx, y0 + sy]
+                        if v < darkest:
+                            darkest = v
+                if darkest < 128:
+                    grid[ty][ci * cell_w + tx] = True
+    rows = ["".join("#" if on else " " for on in row) for row in grid]
     while rows and not rows[-1].strip():
         rows.pop()
     return "\n".join(rows)

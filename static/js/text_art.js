@@ -155,6 +155,7 @@
     if (fontSource === source) return;
     fontSource = source;
     fillFontSelect();
+    if (cjkHeightGroup) cjkHeightGroup.hidden = source !== "cjk";
     if (taFontHint) {
       taFontHint.textContent = source === "cjk"
         ? "中文点阵：选择汉字字形（系统字体光栅化）。"
@@ -176,7 +177,7 @@
   }
 
   var FIGLET_MAX_CHARS = 64;  // 与服务端 textart.TEXT_MAX_CHARS 一致
-  var CJK_MAX_CHARS = 12;     // 与服务端 textart.CJK_MAX_CHARS 一致
+  var CJK_MAX_CHARS = 8;      // 与服务端 textart.CJK_MAX_CHARS 一致
   var taInputHint = byId("taInputHint");
 
   function syncInputHint() {
@@ -217,6 +218,8 @@
 
   /* ── 生成（唯一入口，服务端自动分流） ── */
   var convertBtn = byId("taConvertBtn");
+  var cjkHeightGroup = byId("taCjkHeightGroup");
+  var cjkHeightInput = byId("taCjkHeight");
   if (convertBtn) convertBtn.addEventListener("click", function () {
     if (busy) return;
     var text = taInput ? taInput.value : "";
@@ -225,10 +228,15 @@
     convertBtn.disabled = true; convertBtn.textContent = "生成中…";
     if (taResultMeta) taResultMeta.hidden = true;
     skeleton();
+    var body = { text: text, font: taFont ? taFont.value : "" };
+    // 中文点阵：行高随输入（10-40 行），英文 FIGlet 尺寸由字体决定
+    if (fontSource === "cjk" && cjkHeightInput && cjkHeightInput.value) {
+      body.height = cjkHeightInput.value;
+    }
     fetch("/api/text/convert", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: text, font: taFont ? taFont.value : "" })
+      body: JSON.stringify(body)
     }).then(function (r) { return r.json(); }).then(function (d) {
       busy = false;
       convertBtn.disabled = false; convertBtn.textContent = "生成";
@@ -552,6 +560,156 @@
     if (taInput) taInput.value = chip.getAttribute("data-value") || "";
     syncInputHint();
     if (convertBtn) convertBtn.click();
+  });
+
+  /* ── 模式切换：文字艺术化 / 图片艺术化 ══ */
+  var modeTabs = byId("taModeTabs");
+  var taTextPanel = byId("taTextPanel");
+  var taImagePanel = byId("taImagePanel");
+  if (modeTabs) modeTabs.addEventListener("click", function (e) {
+    var tab = e.target.closest(".ta-mode-tab");
+    if (!tab) return;
+    modeTabs.querySelectorAll(".ta-mode-tab").forEach(function (t) {
+      t.classList.toggle("active", t === tab);
+    });
+    var isImage = tab.getAttribute("data-mode") === "image";
+    if (taTextPanel) taTextPanel.hidden = isImage;
+    if (taImagePanel) taImagePanel.hidden = !isImage;
+    hideFontWall();  // 切模式时清字体墙
+  });
+
+  /* ── 图片艺术化（配色点 + 原色，导出复用结果区按钮行）── */
+  var imgFile = byId("taImgFile");
+  var imgPickBtn = byId("taImgPickBtn");
+  var imgNameHint = byId("taImgName");
+  var imgCharset = byId("taImgCharset");
+  var imgRamp = byId("taImgRamp");
+  var imgConvertBtn = byId("taImgConvertBtn");
+  var imgPaletteRow = byId("taImgPalette");
+  var imgPalette = "green";   // 当前配色：主题名或 "source"（原色）
+  var imgBusy = false;
+
+  if (imgPickBtn) imgPickBtn.addEventListener("click", function () {
+    if (imgFile) imgFile.click();
+  });
+  if (imgFile) imgFile.addEventListener("change", function () {
+    if (imgNameHint && imgFile.files.length) {
+      imgNameHint.textContent = "已选：" + imgFile.files[0].name;
+    }
+  });
+  if (imgCharset) imgCharset.addEventListener("change", function () {
+    if (imgRamp) imgRamp.hidden = imgCharset.value !== "custom";
+  });
+  if (imgPaletteRow) imgPaletteRow.addEventListener("click", function (e) {
+    var dot = e.target.closest(".ta-theme-dot");
+    if (!dot) return;
+    imgPalette = dot.getAttribute("data-palette") || "green";
+    imgPaletteRow.querySelectorAll(".ta-theme-dot").forEach(function (d) {
+      d.classList.toggle("active", d === dot);
+    });
+  });
+
+  function imgParams() {
+    return {
+      palette: imgPalette,
+      width: byId("taImgWidth") ? byId("taImgWidth").value : "80",
+      height: byId("taImgHeight") ? byId("taImgHeight").value : "40",
+      charset: imgCharset ? imgCharset.value : "ascii",
+      charset_ramp: imgRamp && !imgRamp.hidden ? imgRamp.value : "",
+      flip: byId("taImgFlip") ? byId("taImgFlip").value : "none"
+    };
+  }
+
+  function showImgArt(d, meta) {
+    TA.art = d.art; TA.cols = d.cols; TA.rows = d.rows;
+    TA.font = ""; TA.text = meta;
+    TA.theme = imgPalette;  // 导出（ANSI/PNG/HTML）随图片配色
+    if (!taOutput) return;
+    taOutput.classList.add("has-art");
+    // 原色：art 内嵌 TrueColor ANSI → 逐段着色 HTML；主题色纯文本 → CSS 着色
+    if (d.mode === "source") {
+      taOutput.innerHTML = ansiToHtml(d.art);
+      taOutput.style.color = "";
+    } else {
+      taOutput.textContent = d.art;
+      applyTheme(d.palette || "green");
+    }
+    if (taPreviewTitle) {
+      taPreviewTitle.textContent = "img art · " + meta +
+        " " + d.cols + "x" + d.rows;
+    }
+    if (taMetaText) {
+      taMetaText.textContent = "图片艺术化 · " + meta + " · " +
+        d.cols + " x " + d.rows;
+    }
+    if (taResultMeta) taResultMeta.hidden = false;
+    if (taThemeRow) taThemeRow.hidden = true;  // 配色已由面板圆点决定
+  }
+
+  /* TrueColor ANSI → HTML（逐行逐段解析 SGR，fg 着色 span）*/
+  function ansiToHtml(text) {
+    var sgr = /\x1b\[([0-9;]*)m/g;  // imgascii 只产 SGR 转义
+    var html = "";
+    var color = "";
+    var last = 0;
+    var m;
+    function flush(seg) {
+      if (!seg) return;
+      var safe = seg.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      html += color
+        ? '<span style="color:' + color + '">' + safe + "</span>"
+        : safe;
+    }
+    while ((m = sgr.exec(text)) !== null) {
+      flush(text.slice(last, m.index));
+      var parts = m[1].split(";");
+      if (parts[0] === "38" && parts[1] === "2") {
+        color = "rgb(" + parts[2] + "," + parts[3] + "," + parts[4] + ")";
+      } else if (parts[0] === "0" || parts[0] === "") {
+        color = "";
+      }
+      last = m.index + m[0].length;
+    }
+    flush(text.slice(last));
+    return html;
+  }
+
+  if (imgConvertBtn) imgConvertBtn.addEventListener("click", function () {
+    if (imgBusy) return;
+    if (!imgFile || !imgFile.files.length) {
+      toast("请先选择图片 / Choose an image first"); return;
+    }
+    imgBusy = true;
+    imgConvertBtn.disabled = true; imgConvertBtn.textContent = "生成中…";
+    if (taResultMeta) taResultMeta.hidden = true;
+    skeleton();
+    var p = imgParams();
+    var fd = new FormData();
+    fd.append("file", imgFile.files[0]);
+    Object.keys(p).forEach(function (k) { fd.append(k, p[k]); });
+    fetch("/api/text/imgascii", { method: "POST", body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        imgBusy = false;
+        imgConvertBtn.disabled = false; imgConvertBtn.textContent = "生成";
+        if (d.error) {
+          if (d.redirect) {
+            showOutputError(d.error);
+            toast("正在跳转动画工坊…");
+            setTimeout(function () { window.location.href = d.redirect; }, 1200);
+          } else {
+            showOutputError(d.error);
+          }
+          return;
+        }
+        showImgArt(d, imgFile.files[0].name);
+      })
+      .catch(function (msg) {
+        imgBusy = false;
+        imgConvertBtn.disabled = false; imgConvertBtn.textContent = "生成";
+        showOutputError(String(msg || "网络异常，请重试"));
+      });
   });
 
   /* ── init ── */

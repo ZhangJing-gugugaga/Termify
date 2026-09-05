@@ -903,8 +903,14 @@ def text_convert():
         return jsonify({"error": reason}), 429
     if _textart_mod.cjk_has_glyph(data.get("text")):
         try:
+            # 行高：用户可调（10-40 行，默认 CJK_DEFAULT_HEIGHT），非法值兜底
+            try:
+                cjk_height = int(data.get("height"))
+            except (TypeError, ValueError):
+                cjk_height = _textart_mod.CJK_DEFAULT_HEIGHT
+            cjk_height = max(10, min(40, cjk_height))
             art = _textart_mod.render_cjk_ttf(
-                data.get("text"), data.get("font"))
+                data.get("text"), data.get("font"), cjk_height)
         except _textart_mod.TextArtError as exc:
             return jsonify({"error": str(exc)}), 400
         cols, rows = _textart_mod.art_dims(art)
@@ -1279,6 +1285,137 @@ def cjk_ttf_render():
                     "font": font_slug,
                     "text": _textart_mod.filter_cjk_text(
                         data.get("text"))})
+
+
+# --- T38 图片字符化（lddgo image-ascii-converter 复刻）------------------------
+# 图片上传 → 静态字符画。动图（GIF 多帧）/视频 → 引导去动画工坊。
+# 复用 engine.convert 管线；同步转换（静态图单帧，耗时可控），不建任务。
+
+# 图片字符化接受的静态格式（gif 动图在上传层即拦截引导）
+IMGASCII_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
+
+IMGASCII_MIN_W, IMGASCII_MAX_W = 20, 400   # 字符宽度（列）边界
+IMGASCII_MIN_H, IMGASCII_MAX_H = 10, 400   # 字符高度（行）边界
+
+
+def _imgascii_flip(img, flip: object):
+    """翻转模式：hflip / vflip / hvflip / none（默认）。"""
+    from PIL import Image
+    if flip == "hflip":
+        return img.transpose(Image.FLIP_LEFT_RIGHT)
+    if flip == "vflip":
+        return img.transpose(Image.FLIP_TOP_BOTTOM)
+    if flip == "hvflip":
+        return img.transpose(Image.ROTATE_180)
+    return img
+
+
+@app.route("/api/text/imgascii", methods=["POST"])
+def text_imgascii():
+    """图片艺术化：multipart 图片 + 参数 → {art}。同步、无 LLM。
+
+    参数（配色/字符集复用动画工坊与文字艺术页的既有方案）：
+    - palette: green|cyan|amber|magenta|red|white（单色主题，映射 fg）
+               | source（原色：逐字符取源像素 TrueColor）
+    - width / height: 字符画目标列数/行数
+    - charset: ascii（默认）| braille | shades | geometric | binary | custom
+      （blocks 不提供：其字符本身即真彩色，与配色行冲突，动画工坊专属）
+    - charset_ramp: 自定义字符序列（密→疏，charset=custom 时必填）
+    - flip: none | hflip | vflip | hvflip
+    动图（GIF 多帧）→ 400 + redirect 引导去动画工坊。
+    输出统一为 txt：原色保留内嵌 TrueColor ANSI，主题色纯文本由前端着色预览，
+    彩色导出复用结果区的复制 ANSI 按钮。
+    """
+    from termify import engine as _engine
+    from PIL import Image
+
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "imgascii", per_minute=20)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    file = request.files.get("file")
+    if file is None or not file.filename:
+        return jsonify({"error": "请选择图片 / Choose an image"}), 400
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext == ".gif":
+        return jsonify({"error": "动图请移步「动画工坊」/ Animated images: "
+                                 "use the Animation Lab",
+                        "redirect": "/"}), 400
+    if ext not in IMGASCII_EXT:
+        return jsonify({"error": "不支持的格式（支持 png/jpg/bmp/webp）"
+                                 " / Unsupported format"}), 400
+
+    def _int_arg(name, lo, hi, default):
+        try:
+            v = int(request.form.get(name, default))
+        except (TypeError, ValueError):
+            return default
+        return max(lo, min(hi, v))
+
+    width = _int_arg("width", IMGASCII_MIN_W, IMGASCII_MAX_W, 80)
+    height = _int_arg("height", IMGASCII_MIN_H, IMGASCII_MAX_H, 40)
+    palette = request.form.get("palette", "green")
+    valid_palettes = set(_textart_mod.ART_THEMES) | {"source"}
+    if palette not in valid_palettes:
+        palette = "green"
+    charset = request.form.get("charset", "ascii")
+    if charset not in ("ascii", "braille", "shades", "geometric",
+                       "binary", "custom"):
+        charset = "ascii"
+    ramp = request.form.get("charset_ramp") or None
+    flip = request.form.get("flip", "none")
+    color_mode = "source" if palette == "source" else "mono"
+    # 主题色不嵌入 ANSI：mono 路径产纯文本，预览由前端 CSS 着色、
+    # 彩色导出由结果区「复制 ANSI」按钮（export-ansi 按主题套色）完成。
+
+    task_id = uuid.uuid4().hex[:12]
+    save_path = _safe_uploads_path(f"{task_id}{ext}")
+    file.save(save_path)
+    tmp_path = None
+    try:
+        img = Image.open(save_path)
+        n_frames = getattr(img, "n_frames", 1)
+        if n_frames and n_frames > 1:
+            return jsonify({"error": "检测到动图（多帧）——请移步「动画工坊」"
+                                     " / Animated image detected: use the "
+                                     "Animation Lab", "redirect": "/"}), 400
+        img = _imgascii_flip(img.convert("RGBA"), flip)
+        bg = (10, 14, 20)  # 透明区合成底色，与终端预览底一致
+        canvas = Image.new("RGB", img.size, bg)
+        canvas.paste(img, mask=img.split()[3])
+        tmp_path = _tmp_save(canvas, ".png")
+        seq = _engine.convert(tmp_path, charset, width, height,
+                              charset_ramp=ramp, color_mode=color_mode)
+        lines = seq.lines_per_frame[0]
+        _plain_lines = [re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", ln)
+                        for ln in lines]
+        plain = "\n".join(_plain_lines)
+        cols = max((len(ln) for ln in _plain_lines), default=0)
+        # source 模式保留 TrueColor ANSI（lines 原样，终端粘贴即显色）；
+        # 主题色模式产纯文本（预览前端着色、导出按钮按主题套色）
+        art = "\n".join(lines) if color_mode == "source" else plain
+        return jsonify({"ok": True, "mode": color_mode, "palette": palette,
+                        "art": art, "cols": cols, "rows": len(lines)})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)[:200]}), 400
+    except Exception as exc:  # noqa: BLE001
+        app.logger.warning("imgascii failed: %s", exc)
+        return jsonify({"error": "转换失败，图片可能已损坏 / Conversion failed"}), 400
+    finally:
+        for p in (save_path, tmp_path):
+            if p and os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+
+
+def _tmp_save(img, ext: str) -> str:
+    """PIL Image → 临时文件路径（engine.convert 吃路径不吃 Image）。"""
+    fd, path = tempfile.mkstemp(suffix=ext)
+    with os.fdopen(fd, "wb") as fh:
+        img.save(fh, format="PNG")
+    return path
 
 
 @app.route("/api/gallery/upload-text", methods=["POST"])

@@ -551,3 +551,40 @@
     border-color: var(--green); outline: none;
     box-shadow: 0 0 8px var(--green-glow);
 }
+
+/* ── T38 模式切换 + 图片字符化（lddgo 复刻）────────────────────── */
+.ta-mode-tabs {
+    display: flex; gap: var(--space-2); margin-bottom: var(--space-4);
+}
+.ta-mode-tab {
+    background: var(--bg-base); border: 1px solid var(--border-dim);
+    border-radius: var(--radius-sm); color: var(--text-dim);
+    cursor: pointer; font-size: 0.85rem; padding: 8px 18px;
+    transition: all var(--transition-fast);
+}
+.ta-mode-tab:hover { border-color: var(--green); color: var(--text-primary); }
+.ta-mode-tab.active {
+    background: var(--green-glow); border-color: var(--green);
+    color: var(--green);
+}
+.ta-upload {
+    align-items: center; display: flex; flex-wrap: wrap; gap: var(--space-2);
+}
+.ta-grid-2 {
+    display: grid; gap: var(--space-3); grid-template-columns: 1fr 1fr;
+}
+.ta-radio-row { display: flex; gap: var(--space-4); }
+.ta-color {
+    background: var(--bg-base); border: 1px solid var(--border-dim);
+    border-radius: var(--radius-sm); cursor: pointer; height: 36px;
+    padding: 2px; width: 100%;
+}
+.ta-img-palette { gap: var(--space-3); margin-top: 2px; }
+/* 原色彩色小球：conic-gradient 不可用 style="--c" 单色背景，独立绘制 */
+.ta-dot-source {
+    background: conic-gradient(#ff3b30, #ffb000, #00ff41,
+                               #00d4ff, #ff4fd8, #ff3b30) !important;
+}
+.ta-dot-source:hover { box-shadow: 0 0 8px rgba(255, 255, 255, 0.55); }
+.ta-dot-source.active { border-color: var(--text-primary); }
+#taOutput.has-art span[style] { line-height: 1.1; }

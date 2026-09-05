@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>文字艺术 · Termify</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260905a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260905a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260905c">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260905c">
 </head>
 <body class="page-text-art">
     <!-- ═══════════ NAVIGATION ═══════════ -->
@@ -33,16 +33,21 @@
         <div class="container">
             <header class="ta-head">
                 <h1 class="ta-title">文字<span class="ta-title-accent">艺术</span></h1>
-                <p class="ta-sub">把文字变成能在任何终端显示的 ASCII 艺术字：英文走 FIGlet，中文走点阵，自动识别。</p>
+                <p class="ta-sub">文字艺术化：英文走 FIGlet，中文走点阵；图片艺术化一键成画——全部自动。</p>
             </header>
 
+            <div class="ta-mode-tabs" id="taModeTabs">
+                <button type="button" class="ta-mode-tab active" data-mode="text">文字艺术化</button>
+                <button type="button" class="ta-mode-tab" data-mode="image">图片艺术化</button>
+            </div>
+
             <div class="ta-workbench">
-                <!-- 左：输入轨（单 Tab：中文→点阵字体，英文→FIGlet 字体） -->
-                <div class="ta-panel">
+                <!-- ══ 模式 A：文字艺术化 ══ -->
+                <div class="ta-panel" id="taTextPanel">
                     <div class="ta-group">
                         <label class="ta-label" for="taInput">文本</label>
                         <textarea class="ta-input" id="taInput" rows="4" maxlength="500"
-                                  placeholder="输入英文/数字（如 hello）或 1-12 个汉字（如 你好世界），自动识别"></textarea>
+                                  placeholder="输入英文/数字（如 hello）或 1-8 个汉字（如 你好世界），自动识别"></textarea>
                         <p class="ta-hint ta-input-hint" id="taInputHint" hidden></p>
                     </div>
 
@@ -54,8 +59,84 @@
                         <p class="ta-hint" id="taFontHint">FIGlet 精选字体，选择作品的整体字形。</p>
                     </div>
 
+                    <div class="ta-group ta-grid-2" id="taCjkHeightGroup" hidden>
+                        <div>
+                            <label class="ta-label" for="taCjkHeight">字符高度</label>
+                            <input type="number" class="ta-select" id="taCjkHeight"
+                                   min="10" max="40" value="16">
+                        </div>
+                        <div>
+                            <span class="ta-label">字符宽度</span>
+                            <p class="ta-hint" style="margin-top:10px">自动（= 高度 × 2，终端 1:2 比例）</p>
+                        </div>
+                    </div>
+
                     <div class="ta-group ta-actions">
                         <button type="button" class="ta-btn ta-btn-primary" id="taConvertBtn">生成</button>
+                    </div>
+                </div>
+
+                <!-- ══ 模式 B：图片艺术化 ══ -->
+                <div class="ta-panel" id="taImagePanel" hidden>
+                    <div class="ta-group">
+                        <span class="ta-label">图片</span>
+                        <div class="ta-upload" id="taImgUpload">
+                            <input type="file" id="taImgFile" accept=".png,.jpg,.jpeg,.bmp,.webp" hidden>
+                            <button type="button" class="ta-btn" id="taImgPickBtn">选择图片</button>
+                            <span class="ta-hint" id="taImgName">png / jpg / bmp / webp，动图请移步动画工坊</span>
+                        </div>
+                    </div>
+
+                    <div class="ta-group">
+                        <span class="ta-label">配色</span>
+                        <div class="ta-theme-row ta-img-palette" id="taImgPalette">
+                            <button type="button" class="ta-theme-dot active" data-palette="green"  style="--c:#00ff41" title="终端绿"></button>
+                            <button type="button" class="ta-theme-dot" data-palette="cyan"   style="--c:#00d4ff" title="青"></button>
+                            <button type="button" class="ta-theme-dot" data-palette="amber"  style="--c:#ffb000" title="琥珀"></button>
+                            <button type="button" class="ta-theme-dot" data-palette="magenta" style="--c:#ff4fd8" title="品红"></button>
+                            <button type="button" class="ta-theme-dot" data-palette="red"    style="--c:#ff3b30" title="红"></button>
+                            <button type="button" class="ta-theme-dot" data-palette="white"  style="--c:#e0e6ed" title="白"></button>
+                            <button type="button" class="ta-theme-dot ta-dot-source" data-palette="source" title="原色（逐字符取源像素真彩色）"></button>
+                        </div>
+                    </div>
+
+                    <div class="ta-group ta-grid-2">
+                        <div>
+                            <label class="ta-label" for="taImgWidth">字符宽度</label>
+                            <input type="number" class="ta-select" id="taImgWidth" min="20" max="400" value="80">
+                        </div>
+                        <div>
+                            <label class="ta-label" for="taImgHeight">字符高度</label>
+                            <input type="number" class="ta-select" id="taImgHeight" min="10" max="400" value="40">
+                        </div>
+                    </div>
+
+                    <div class="ta-group">
+                        <label class="ta-label" for="taImgCharset">使用字符</label>
+                        <select class="ta-select" id="taImgCharset">
+                            <option value="ascii" selected>默认字符</option>
+                            <option value="braille">盲文字符</option>
+                            <option value="shades">明暗渐变块</option>
+                            <option value="geometric">几何图形</option>
+                            <option value="binary">极简二值</option>
+                            <option value="custom">自定义字符</option>
+                        </select>
+                        <input type="text" class="ta-input" id="taImgRamp" hidden maxlength="64"
+                               placeholder="自定义字符，密→疏排列，如 @#%*+=-:. ">
+                    </div>
+
+                    <div class="ta-group">
+                        <label class="ta-label" for="taImgFlip">翻转</label>
+                        <select class="ta-select" id="taImgFlip">
+                            <option value="none" selected>不翻转</option>
+                            <option value="hflip">水平翻转</option>
+                            <option value="vflip">垂直翻转</option>
+                            <option value="hvflip">水平-垂直翻转</option>
+                        </select>
+                    </div>
+
+                    <div class="ta-group ta-actions">
+                        <button type="button" class="ta-btn ta-btn-primary" id="taImgConvertBtn">生成</button>
                     </div>
                 </div>
 
@@ -140,6 +221,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260905a" defer></script>
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260905c" defer></script>
 </body>
 </html>
