@@ -54,20 +54,6 @@ YOUR_DOMAIN {
     @static path /static/*
     header @static Cache-Control "public, max-age=86400"
 
-    # --- Security headers -------------------------------------------------
-    header {
-        # Mitigate the usual browser attacks; Termify doesn't need iframes
-        # or 3rd-party scripts.
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        # HSTS only makes sense once the cert is confirmed working; comment
-        # out for the first deploy to avoid lockout if HTTPS is mis-configured.
-        # Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        # Hide Caddy version.
-        -Server
-    }
-
     # --- Logging ----------------------------------------------------------
     log {
         output file /var/log/caddy/termify.log {
