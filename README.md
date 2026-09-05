@@ -12,7 +12,7 @@
 |------|------|------|
 | **🔗 在线 Demo** | [https://termify.moonzj.com](https://termify.moonzj.com) | 直接上传 GIF/PNG/JPG，生成终端动画 |
 | **🖼️ 作品画廊** | [https://termify.moonzj.com/gallery](https://termify.moonzj.com/gallery) | 浏览社区作品，查看别人的终端创作 |
-| **📝 文字艺术** | [https://termify.moonzj.com/text-art](https://termify.moonzj.com/text-art) | 文字 → ASCII 艺术字（FIGlet / 字体墙 / AI 创作） |
+| **📝 文字艺术** | [https://termify.moonzj.com/text-art](https://termify.moonzj.com/text-art) | 文字 / 图片 → 字符艺术（中文点阵 / FIGlet / 字体墙 / 图片艺术化） |
 
 > 💡 **不懂命令行？直接点上面链接** —— 浏览器拖图进去就能玩，零安装、零配置。\
 > 📋 **想批量处理或离线用？** 继续看下面的本地安装指南。
@@ -27,7 +27,7 @@
 | 算力 | 共享服务器，高峰期可能排队 | 用你自己的机器，独享 |
 | 上传大小 | ≤ 20MB（与 Flask 硬上限一致） | 可调 `TERMIFY_MAX_VIDEO_MB` 放宽 |
 | 速率限制 | 有（见下表） | 无 |
-| AI 创作（文字艺术） | 取决于部署方是否配置 LLM；未配置时展示示例墙 | 你自部署 LLM（Ollama 等）即可用 |
+| AI 接口（文字艺术） | 程序调用可用（`/api/text/ai`）；Web 页面不依赖 LLM | 你自部署 LLM（Ollama 等）即可用 |
 | 数据保留 | 任务完成后约 1 小时自动清理，不长期存储源文件 | 文件在你本机，你掌控 |
 | 功能更新 | 自动随 `main` 分支更新，始终最新 | 取决于你何时拉取 / 构建 |
 | 隐私 | HTTPS 加密传输；源文件不用于他用 | 完全离线，最私密 |
@@ -40,7 +40,8 @@
 | 视频上传 | 4 次/分钟，40 次/天 |
 | 视频 / URL 解析 | 2 次/分钟 |
 | 文字艺术转换 / 字体墙 | 120 / 60 次/分钟 |
-| AI 创作 / 迭代 | 6 次/分钟 |
+| 图片艺术化 | 20 次/分钟 |
+| AI 接口（/api/text/ai、/api/text/iterate） | 6 次/分钟 |
 | LLM 配置读取 | 10 次/分钟 |
 
 > 本地 `python app.py` 与桌面包**没有上述限制**，适合批量、大文件、或需要配置私有 LLM 的场景。
@@ -111,6 +112,12 @@ python app.py
 
 **我的第一张动画选什么？** 不确定就选 **Unicode 色块** —— 它的画质最接近原图，一眼就能看出效果。
 
+同一素材在不同风格下的效果（Braille 点阵 400×120 / 几何图形 400×120）：
+
+![Braille 点阵风格](images/screenshots/animation-braille.png)
+
+![几何图形风格](images/screenshots/animation-geometric.png)
+
 ### Step 03 · 预览 + 调整
 
 - **Play / Pause 按钮** — 控制播放
@@ -131,6 +138,8 @@ python app.py
 | **自定义** | 自选前景/背景色 |
 
 > 💡 选了**原色**后还会出现「py 用 256 色兼容老终端」选项——默认 24-bit 真彩在 Windows Terminal / iTerm2 等现代终端效果最佳；老终端（如默认 cmd）可勾选 256 色模式，色彩略降但兼容性更好。
+
+![动画工坊 · 琥珀橘配色 + 400 列](images/screenshots/animation-amber.png)
 
 ### Step 04 · 选择输出格式
 
@@ -167,36 +176,46 @@ python app.py
 
 ## 文字艺术（Text Art）
 
-独立页面 `/text-art`：把**文字**本身变成 ASCII 艺术字，和「图片 → 字符动画」并列。
+独立页面 `/text-art`：把**文字**和**图片**变成终端字符艺术。两个模式一键切换，全部本地自动识别，无需任何配置。
 
-### 三种创作方式
+![文字艺术化 · 中文点阵](images/screenshots/text-art-cjk.png)
 
-1. **直转（FIGlet）** —— 输入文字、选字体，即时渲染。精选 24 款字体。注意 FIGlet 只处理 ASCII，**中文等非 ASCII 字符会被忽略**（不是报错）。
-2. **字体墙** —— 一次输入，同屏预览全部字体，点击即换即看（限 60 次/分钟）。
-3. **AI 创作** —— 用自然语言描述想要的效果，交给 LLM 生成，双模式：
+### 文字艺术化（文字 → 字符画）
 
-   | 模式 | 行为 | 适合 |
-   |------|------|------|
-   | `params` | LLM 解析出「文字 + 字体」参数，再交给 FIGlet 渲染 | 结果规整、字体可控 |
-   | `direct` | LLM 直接输出字符画 | 更有创意、超出字体库 |
+1. **中文 → 点阵**：输入 1-8 个汉字，自动走系统字体光栅化（宋体 / 黑体 / 楷体可选），"字符高度"可调（10-40 行，宽度按终端 1:2 比例自动）。
+2. **英文 / 数字 → FIGlet**：输入 ASCII 文字自动走 FIGlet，精选 24 款字体。
+3. **字体墙**：英文输入后自动点亮，同屏预览全部字体，点击即换即看（限 60 次/分钟）。
 
-   生成后可继续**迭代**：给出修改意见（如"再粗一点""换个风格"）在当前结果上调整。
-   未配置 LLM 时，页面展示 AI 作品示例墙，而不是裸报错。
+![文字艺术化 · FIGlet 与字体墙](images/screenshots/text-art-figlet.png)
 
-### 导出矩阵
+### 图片艺术化（图片 → 字符画）
 
-| 格式 | 说明 |
+切到「图片艺术化」标签，上传 PNG / JPG / BMP / WEBP（动图请移步动画工坊）：
+
+| 参数 | 说明 |
 |------|------|
-| PNG | 终端风格图片，直接保存分享 |
-| ANSI 彩色 | 带颜色的纯文本，贴到支持 ANSI 的终端/编辑器 |
-| HTML | 单文件网页，浏览器打开即看 |
-| 终端命令 | 可直接粘贴执行的形式 |
+| **配色** | 终端绿 / 青 / 琥珀 / 品红 / 红 / 白 六色圆点 + **原色**（逐字符取源像素真彩色） |
+| **字符宽高** | 列数 20-400、行数 10-400 自由调整 |
+| **使用字符** | 默认字符 / 盲文 / 明暗渐变块 / 几何图形 / 极简二值 / 自定义字符 |
+| **翻转** | 水平 / 垂直 / 水平-垂直 |
+
+生成结果直接显示在终端预览区，导出方式与文字模式完全一致（见下）。
+
+### 导出与分享
+
+| 按钮 | 说明 |
+|------|------|
+| 复制文本 | 纯文本，粘贴到任何地方 |
+| 复制 ANSI | 带颜色的纯文本，贴到支持 ANSI 的终端即显色（原色作品保留逐字符真彩色） |
+| 终端命令 | `python -c` 一行命令，粘贴到任何终端运行即显示 |
+| 下载 PNG / HTML / .txt | 图片、单文件网页、纯文本文件 |
+| 分享到画廊 | 发布到公共画廊，获得 `/v/<id>` 短链 |
 
 6 种配色主题：`green`（默认）/ `cyan` / `amber` / `magenta` / `red` / `white`。
 
 ### LLM 配置（自部署，可选）
 
-不配置也能用——直转和字体墙不依赖 LLM。想用 AI 创作时，配置任意 **OpenAI 兼容端点**（含本地 Ollama）：
+Web 页面的文字 / 图片艺术化**不依赖 LLM**，开箱即用。`POST /api/text/ai` 与 `POST /api/text/iterate` 两个程序接口由任意 **OpenAI 兼容端点**（含本地 Ollama）驱动：
 
 ```bash
 python demo.py llm --base-url http://localhost:11434/v1 --model qwen2.5:7b
@@ -291,7 +310,19 @@ A: 三种方式：
 > 💡 推荐用 `.html`：朋友双击就能看，跨平台、零依赖。发微信群/AirDrop/邮件都行。
 
 **Q: 画廊是什么？**
-A: [termify.moonzj.com/gallery](https://termify.moonzj.com/gallery) — 上传作品到公共画廊，获得一个短链（如 `/v/aBcDeFgH`），朋友点开就能看到你转的动画。支持点赞、标签筛选。
+A: [termify.moonzj.com/gallery](https://termify.moonzj.com/gallery) — 上传作品到公共画廊，获得一个短链（如 `/v/aBcDeFgH`），朋友点开就能看到你转的动画。支持点赞、标签筛选、自定义标签。文字艺术 / 图片艺术化作品带「文字」角标，动画作品与字符画作品同场展示。
+
+**Q: 怎么访问已有画廊 / 看别人的作品？**
+A: 三种方式：
+
+| 方式 | 操作 |
+|------|------|
+| 画廊首页 | 打开 `/gallery`，按「最新 / 热门 / 随机」浏览，点自定义标签筛选 |
+| 分享短链 | 直接打开 `/v/<id>`（如 `/v/aBcDeFgH`），即可预览、点赞、下载 |
+| API | `GET /api/gallery/list?sort=latest&page=1` 分页拉取，`GET /api/gallery/work/<id>` 查单个作品 |
+
+**Q: 怎么把文字艺术字 / 图片艺术化作品发布到画廊？**
+A: 在 `/text-art` 页生成作品后，点结果区右下角的 **「分享到画廊」**，弹窗里填标题 / 描述 / 作者 / 标签，选公开或私密，点发布即可拿到短链。文字作品在画廊里带「文字」角标；**原色**作品的彩色会原样保留（作品页逐字符真彩回放）。
 
 **Q: 怎么把作品发布到画廊？**
 A: 两种方式：
@@ -390,14 +421,17 @@ A: Python 未安装或未加入 PATH。请安装 Python 3.10+ 并在安装时勾
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET` | `/api/text/fonts` | 精选字体列表（24 款），返回 `fonts:[{name, slug}]` |
-| `POST` | `/api/text/convert` | 文字 → 艺术字。入参 `text`、`font`（字体 slug）、`width`；返回 `art`/`rows`/`cols`。限 120 次/分钟 |
+| `GET` | `/api/text/fonts` | 精选 FIGlet 字体列表（24 款），返回 `fonts:[{name, slug}]` |
+| `GET` | `/api/cjk/ttf/fonts` | 中文点阵字体列表（宋体/黑体/楷体），返回 `fonts:[{name, slug, available}]` |
+| `POST` | `/api/text/convert` | 文字 → 艺术字，自动分流：含中文走点阵（`height` 10-40 行），纯 ASCII 走 FIGlet（`font` slug、`width`）。返回 `art`/`rows`/`cols`/`mode`。限 120 次/分钟 |
 | `POST` | `/api/text/fontwall` | 字体墙：一次输入 → 全部字体预览。入参 `text`。限 60 次/分钟 |
-| `POST` | `/api/text/ai` | AI 创作。入参 `prompt`（≤500 字）、`mode`（`params` \| `direct`）。限 6 次/分钟 |
-| `POST` | `/api/text/iterate` | 在已有结果上迭代。入参 `current_art`、`instruction`。限 6 次/分钟 |
+| `POST` | `/api/text/imgascii` | 图片艺术化：multipart 上传 `file` + `palette`（6 主题色或 `source` 原色）+ `charset`（ascii/braille/shades/geometric/binary/custom）+ `width`/`height`/`flip`，返回字符画文本。动图返回 400 引导去动画工坊。限 20 次/分钟 |
+| `POST` | `/api/text/ai` | AI 创作（需配置 LLM）。入参 `prompt`（≤500 字）、`mode`（`params` \| `direct`）。限 6 次/分钟 |
+| `POST` | `/api/text/iterate` | 在已有结果上迭代（需配置 LLM）。入参 `current_art`、`instruction`。限 6 次/分钟 |
 | `POST` | `/api/text/export-png` | 导出 PNG。入参 `art`、`theme`（6 主题，缺省 `green`）、`fg`、`name` |
 | `POST` | `/api/text/export-ansi` | 导出 ANSI 彩色文本。入参 `art`、`theme` |
 | `POST` | `/api/text/export-html` | 导出单文件 HTML。入参 `art`、`theme`、`name` |
+| `POST` | `/api/gallery/upload-text` | 文字作品入库：入参 `art`、`palette`（主题或 `source` 原色）、`title`、`author`、`tags` 等，返回 `/v/<id>` 短链 |
 | `GET`/`POST` | `/api/llm/config` | 读取/写入 LLM 配置（`base_url`、`model`、`api_key`）。GET 只回传 `has_key`，**不回传密钥明文**。限 10 次/分钟 |
 
 > 主题取值：`green`（默认）/ `cyan` / `amber` / `magenta` / `red` / `white`。
@@ -449,6 +483,16 @@ curl http://127.0.0.1:5000/api/text/fonts
 curl -X POST http://127.0.0.1:5000/api/text/convert \
   -H "Content-Type: application/json" \
   -d '{"text":"Termify","font":"ansi_shadow"}'
+
+# 中文点阵（自动分流，字符高度 10-40 可调）
+curl -X POST http://127.0.0.1:5000/api/text/convert \
+  -H "Content-Type: application/json" \
+  -d '{"text":"文字艺术","font":"songti","height":16}'
+
+# 图片艺术化（原色 + 盲文字符集）
+curl -X POST http://127.0.0.1:5000/api/text/imgascii \
+  -F "file=@photo.png" -F "palette=source" -F "charset=braille" \
+  -F "width=120" -F "height=60"
 ```
 
 ## 桌面客户端（一键独立包）
@@ -535,7 +579,7 @@ Termify/
 │   ├── js/app.js           # 主工作台逻辑
 │   ├── js/text_art.js      # 文字艺术页逻辑
 │   └── js/termify-render.js # 浏览器本地渲染器（7 风格镜像实现）
-├── tests/                  # pytest 单元测试（396 tests + JS 渲染一致性脚本）
+├── tests/                  # pytest 单元测试（443 tests + JS 渲染一致性脚本）
 ├── Caddyfile               # 生产反向代理（自动 HTTPS + 安全头）
 ├── termify.service         # systemd 单元文件
 ├── deploy.sh               # ECS 一键部署
@@ -546,7 +590,7 @@ Termify/
 
 - **后端**：Python 3.10+、Flask、Pillow、pyfiglet（文字艺术）
 - **前端**：原生 HTML/CSS/JS，无框架依赖
-- **测试**：pytest（396 tests，运行 `pytest -q` 即可）
+- **测试**：pytest（443 tests，运行 `pytest -q` 即可）
 - **主题**：暗色终端美学，JetBrains Mono + Space Grotesk 字体
 
 ## 🐛 反馈与 ISSUE
@@ -624,7 +668,7 @@ git checkout -b feat/your-feature
 
 # 3. 改代码 + 跑全量测试
 pip install -r requirements.txt
-pytest -q                    # 基线 396 tests，必须全绿
+pytest -q                    # 基线 443 tests，必须全绿
 ```
 
 ### 代码规范
@@ -641,7 +685,7 @@ pytest -q                    # 基线 396 tests，必须全绿
 
 - Python 3.10+, Flask, Pillow
 - 前端原生 HTML/CSS/JS，无框架依赖（Jinja2 模板）
-- pytests（**396** tests，跑 `pytest -q`）
+- pytests（**443** tests，跑 `pytest -q`）
 - PyInstaller 做桌面包
 
 ### 我能贡献什么？
