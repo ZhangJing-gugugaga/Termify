@@ -82,16 +82,18 @@
                     <div class="ta-group ta-settings-group">
                         <button type="button" class="ta-settings-toggle" id="taSettingsBtn" aria-expanded="false">⚙ 自部署 AI</button>
                         <div class="ta-settings" id="taSettings" hidden>
-                            <p class="ta-deploy-intro">「AI 生成」由<b>你自部署的 LLM</b> 驱动——Key 与内容不经过任何第三方页面。三步开通：</p>
+                            <p class="ta-deploy-intro">「AI 生成」由<b>你自部署的 LLM</b> 驱动——Key 与内容不经过任何第三方页面。<b>仅支持 OpenAI 兼容服务</b>（<code>/chat/completions</code> 协议），不支持 Anthropic / Gemini 原生接口。三步开通：</p>
                             <ol class="ta-deploy-steps">
-                                <li>跑一个 OpenAI 兼容服务：<code>ollama serve</code>（本地）或注册智谱 / DeepSeek 拿 API</li>
-                                <li>点下方预设自动填入，再补上 API Key（Ollama 无需 Key）</li>
+                                <li>跑一个 OpenAI 兼容服务：<code>ollama serve</code>（本地）或注册智谱 / DeepSeek / LongCat 拿 API</li>
+                                <li>点下方预设自动填入，或选「自定义」手填任意 OpenAI 兼容端点，再补上 API Key（Ollama 无需 Key）</li>
                                 <li>保存，回来点「AI 生成」</li>
                             </ol>
                             <div class="ta-deploy-presets">
                                 <button type="button" class="ta-btn ta-btn-sm" data-preset="ollama">Ollama 本地</button>
                                 <button type="button" class="ta-btn ta-btn-sm" data-preset="zhipu">智谱</button>
                                 <button type="button" class="ta-btn ta-btn-sm" data-preset="deepseek">DeepSeek</button>
+                                <button type="button" class="ta-btn ta-btn-sm" data-preset="longcat">LongCat</button>
+                                <button type="button" class="ta-btn ta-btn-sm" data-preset="custom">自定义</button>
                             </div>
                             <label class="ta-field">Base URL
                                 <input type="text" id="taBaseUrl" autocomplete="off" spellcheck="false"

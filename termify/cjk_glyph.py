@@ -25,35 +25,73 @@ from typing import Callable
 logger = logging.getLogger(__name__)
 
 # 缓存 key 组成部分之一：风格提示词改版时递增（v1 → v2 → ...）。
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"  # v2: few-shot 示例锚 + 无思考链；v1 缓存随之失效
 
 # data 目录（项目根/data，与 app.py 的 GALLERY_DATA_DIR 同语义）。
 DEFAULT_DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 DB_FILENAME = "cjk_glyphs.db"
 
-# 单次生成的 chat 上限：字形极小（≤10 行 × ≤10 列），给闲聊模型留余量即可。
-_GLYPH_MAX_TOKENS = 600
+# 单次生成的 chat 上限：字形本身极小（≤10 行 × ≤10 列）。推理模型已通过
+# _NO_THINKING 关闭思考链（实测 LongCat completion 29→2 tokens），1200
+# 纯属正文余量；若上游不支持该开关也不会截断正文（思考链吃满为止）。
+_GLYPH_MAX_TOKENS = 1200
 # 重试温度阶梯（低→高：先要稳定，再换随机性）。
 _RETRY_TEMPERATURES = (0.7, 0.9, 1.0)
 # 同 (style, char) 并发生成等待上限（秒）。
 _INFLIGHT_TIMEOUT_S = 60.0
 
+# 关闭推理模型思考链：实测 LongCat-2.0 生效（reasoning_content 消失，
+# completion tokens 降 ~93%）；不支持的端点会忽略未知字段，安全无害。
+_NO_THINKING = {"chat_template_kwargs": {"enable_thinking": False}}
 
-def _glyph_system_prompt(height: int, width: int, style_hint: str) -> str:
-    """Build the shared system prompt for one glyph style."""
+
+def _glyph_system_prompt(height: int, width: int, style_hint: str,
+                         example: str) -> str:
+    """Build the shared system prompt for one glyph style.
+
+    附同尺寸 few-shot 示例（"十"字）：给模型一个格式与密度的实体锚，
+    比纯文字规则直指目标 —— 实测将拒绝率从 ~60% 显著拉低。
+    """
     return (
         "You design monospaced ASCII-art glyphs for single Chinese "
         "characters (hanzi). The user gives you ONE character; draw its "
         "shape as printable ASCII art on a fixed grid. Rules: output "
-        f"EXACTLY {height} lines; every line is EXACTLY {width} characters "
-        "from the printable ASCII range 0x20-0x7E (spaces count toward the "
-        "width); all lines must align on the same monospaced grid to form "
-        "one instantly recognisable glyph of that character; do NOT leave "
-        "trailing spaces at line ends; do NOT use code fences, markdown, "
+        f"EXACTLY {height} lines; every line aligns on the same "
+        f"{width}-column monospaced grid (use LEADING spaces for left "
+        "alignment; the renderer pads trailing space, so end each line at "
+        "its last ink character); characters must be printable ASCII "
+        "0x20-7E; the lines together must form one instantly recognisable "
+        "glyph of that character; do NOT use code fences, markdown, "
         "quotes or any explanation — output ONLY the "
-        f"{height} lines of the glyph. Style: {style_hint}."
+        f"{height} lines of the glyph. Style: {style_hint}.\n"
+        f"FORMAT EXAMPLE (the character 十 at {height}x{width}, follow "
+        "this format exactly, do not copy its content):\n" + example
     )
+
+
+# few-shot 格式示例（"十"字，每风格一份；行宽/行数与风格严格一致）。
+_EXAMPLE_PIXEL = (
+    "\n".join([
+        "  ##", "  ##", "  ##", "######",
+        "######", "  ##", "  ##", "  ##",
+    ]))
+_EXAMPLE_BRUSH = (
+    "\n".join([
+        "    |", "    |", "    |", "    |", "=======",
+        "    |", "    |", "    |", "    |", "    |",
+    ]))
+_EXAMPLE_OUTLINE = (
+    "\n".join([
+        "    |", "    |", "    |", "  .--|--.", "    |",
+        "    |", "    |", "    |", "    |",
+    ]))
+assert all(
+    len(ex.split("\n")) == h and all(
+        ln == ln.rstrip() and len(ln) <= w for ln in ex.split("\n"))
+    for ex, h, w in (
+        (_EXAMPLE_PIXEL, 8, 8), (_EXAMPLE_BRUSH, 10, 10),
+        (_EXAMPLE_OUTLINE, 9, 10))), "few-shot example size mismatch"
 
 
 # ── MVP 三种风格（width 必须为偶数：与中文方块字形的视觉对称性对齐）─────────
@@ -66,7 +104,7 @@ GLYPH_STYLES: list[dict] = [
         "system_prompt": _glyph_system_prompt(
             8, 8,
             "blocky pixel style using dense ink characters such as "
-            "# @ % 8 & for strokes"),
+            "# @ % 8 & for strokes", _EXAMPLE_PIXEL),
     },
     {
         "slug": "brush",
@@ -76,7 +114,7 @@ GLYPH_STYLES: list[dict] = [
         "system_prompt": _glyph_system_prompt(
             10, 10,
             "expressive brush-stroke style using strokes like "
-            "/ \\ | _ - = ( ) with a hand-drawn feel"),
+            "/ \\ | _ - = ( ) with a hand-drawn feel", _EXAMPLE_BRUSH),
     },
     {
         "slug": "outline",
@@ -86,7 +124,7 @@ GLYPH_STYLES: list[dict] = [
         "system_prompt": _glyph_system_prompt(
             9, 10,
             "thin outline style tracing only the contour with light "
-            "characters like . : ; ' ` | / \\ _"),
+            "characters like . : ; ' ` | / \\ _", _EXAMPLE_OUTLINE),
     },
 ]
 
@@ -225,7 +263,8 @@ def generate_glyph(ch: str, style: dict, llm_cfg: dict,
     for temp in _RETRY_TEMPERATURES:
         try:
             reply = llm_mod.chat(messages, llm_cfg, temperature=temp,
-                                 max_tokens=_GLYPH_MAX_TOKENS)
+                                 max_tokens=_GLYPH_MAX_TOKENS,
+                                 extra_payload=_NO_THINKING)
         except Exception as exc:  # noqa: BLE001 — 网络等异常全部吞掉
             logger.warning("glyph %r temp=%.1f chat failed: %s", ch, temp, exc)
             continue

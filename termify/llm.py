@@ -105,9 +105,13 @@ def config_summary(cfg: dict) -> dict:
 
 
 def chat(messages: list[dict], cfg: dict, *, temperature: float = 0.4,
-         max_tokens: int = MAX_TOKENS) -> str:
+         max_tokens: int = MAX_TOKENS,
+         extra_payload: dict | None = None) -> str:
     """Blocking chat-completions call. Returns assistant text content.
 
+    ``extra_payload`` merges extra top-level request fields (e.g.
+    ``{"chat_template_kwargs": {"enable_thinking": False}}`` to disable
+    reasoning chains on thinking models — verified working on LongCat).
     Raises LLMError with user-safe messages; underlying response bodies are
     logged (truncated) server-side only and never include the api key.
     """
@@ -120,6 +124,8 @@ def chat(messages: list[dict], cfg: dict, *, temperature: float = 0.4,
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
+    if extra_payload:
+        payload.update(extra_payload)
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if cfg.get("api_key"):

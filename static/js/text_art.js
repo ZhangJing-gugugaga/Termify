@@ -858,11 +858,13 @@
     }
   });
 
-  /* ── 自部署预设一键填充 ── */
+  /* ── 自部署预设一键填充（仅支持 OpenAI 兼容服务） ── */
   var LLM_PRESETS = {
     ollama: { base_url: "http://localhost:11434/v1", model: "qwen2.5:7b" },
     zhipu: { base_url: "https://open.bigmodel.cn/api/paas/v4", model: "glm-4-flash" },
-    deepseek: { base_url: "https://api.deepseek.com/v1", model: "deepseek-chat" }
+    deepseek: { base_url: "https://api.deepseek.com/v1", model: "deepseek-chat" },
+    longcat: { base_url: "https://api.longcat.chat/openai", model: "LongCat-Flash-Chat" },
+    custom: { base_url: "", model: "" }  // 清空自填：任意 OpenAI 兼容端点
   };
   Array.prototype.forEach.call(
     document.querySelectorAll(".ta-deploy-presets [data-preset]"),
@@ -873,6 +875,7 @@
         var bu = byId("taBaseUrl"), mo = byId("taModel");
         if (bu) bu.value = p.base_url;
         if (mo) mo.value = p.model;
+        if (!p.base_url && bu) bu.focus();  // 自定义：清空后聚焦引导手填
       });
     });
 

@@ -37,8 +37,10 @@ class FakeLLM:
         self.replies = list(replies)
         self.calls = []
 
-    def chat(self, messages, cfg, *, temperature=0.4, max_tokens=2000):
-        self.calls.append({"temperature": temperature, "messages": messages})
+    def chat(self, messages, cfg, *, temperature=0.4, max_tokens=2000,
+             extra_payload=None):
+        self.calls.append({"temperature": temperature, "messages": messages,
+                           "extra_payload": extra_payload})
         item = self.replies.pop(0)
         if isinstance(item, Exception):
             raise item
