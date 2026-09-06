@@ -158,6 +158,59 @@ def test_convert_endpoint_errors(client):
     assert json.loads(resp.data)["font"] == "ghost"
 
 
+# ── 下载响应头：中文文件名（RFC 5987）────────────────────────
+# 回归：中文 name 曾直接放进 filename=，werkzeug 发响应头时
+# UnicodeEncodeError 崩掉整个响应——浏览器表现为下载失效。
+
+def test_export_png_chinese_name_header(client):
+    import re
+
+    resp = client.post("/api/text/export-png",
+                       json={"art": "HELLO\nWORLD", "name": "文字艺术"})
+    assert resp.status_code == 200
+    assert resp.data[:4] == b"\x89PNG"
+    cd = resp.headers["Content-Disposition"]
+    cd.encode("latin-1")  # 头必须 latin-1 可编码
+    assert "filename*=UTF-8''" in cd
+    ascii_part = re.search(r'filename="([^"]+)"', cd).group(1)
+    assert all(ord(c) < 128 for c in ascii_part), ascii_part
+
+
+def test_export_html_chinese_name_header(client):
+    resp = client.post("/api/text/export-html",
+                       json={"art": "HELLO\nWORLD", "name": "字符艺术"})
+    assert resp.status_code == 200
+    assert b"<pre>" in resp.data
+    cd = resp.headers["Content-Disposition"]
+    cd.encode("latin-1")
+    assert "filename*=UTF-8''" in cd
+
+
+def test_export_ascii_name_kept(client):
+    resp = client.post("/api/text/export-png",
+                       json={"art": "HELLO", "name": "my_art-01"})
+    assert resp.status_code == 200
+    assert 'filename="my_art-01.png"' in resp.headers["Content-Disposition"]
+
+
+def test_imgascii_endpoint_png(client):
+    import io as _io
+
+    from PIL import Image
+
+    buf = _io.BytesIO()
+    Image.new("RGB", (32, 16), (200, 60, 40)).save(buf, format="PNG")
+    buf.seek(0)
+    resp = client.post("/api/text/imgascii", data={
+        "file": (buf, "测试图.png"),
+        "palette": "green", "width": "40", "height": "20"},
+        content_type="multipart/form-data")
+    assert resp.status_code == 200, resp.data
+    data = resp.get_json()
+    assert data["ok"] is True and data["mode"] == "mono"
+    assert data["art"].strip() and data["rows"] > 0 and data["cols"] > 0
+
+
 # ── 文字作品入库 + /v/ 回放 ──────────────────────────────────
 
 def _publish_text(client, *, art="HELLO\nWORLD", font="ghost", private="0"):

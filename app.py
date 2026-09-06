@@ -930,6 +930,19 @@ def text_fontwall():
     return jsonify({"ok": True, "fonts": previews})
 
 
+def _download_disposition(name: str, ext: str) -> str:
+    """Content-Disposition 值：ASCII 回退名 + RFC 5987 UTF-8 名。
+
+    HTTP 头仅限 latin-1——中文文件名直接放进 filename= 会让 werkzeug 在
+    发送响应头时 UnicodeEncodeError 崩掉整个响应（浏览器表现为下载失败）。
+    """
+    from urllib.parse import quote
+
+    ascii_name = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._-")         or "termify-art"
+    return "attachment; filename=\"%s%s\"; filename*=UTF-8''%s" % (
+        ascii_name, ext, quote(name + ext, safe=""))
+
+
 @app.route("/api/text/export-png", methods=["POST"])
 def text_export_png():
     """工作台直下 PNG（免发布）：art → 终端风图片，文件名含内容。"""
@@ -962,7 +975,7 @@ def text_export_png():
     resp = make_response(png_bytes)
     resp.headers.set("Content-Type", "image/png")
     resp.headers.set("Content-Disposition",
-                     "attachment", filename=f"{name}.png")
+                     _download_disposition(name, ".png"))
     return resp
 
 
@@ -1004,7 +1017,7 @@ def text_export_html():
     resp = make_response(html)
     resp.headers.set("Content-Type", "text/html; charset=utf-8")
     resp.headers.set("Content-Disposition",
-                     "attachment", filename=f"{name}.html")
+                     _download_disposition(name, ".html"))
     return resp
 
 
