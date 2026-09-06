@@ -50,7 +50,12 @@ DEFAULT_BG = (10, 12, 16)
 # rasterize + x264 encode of ~120k character cells per second.
 _CELLS_PER_SECOND = 120_000
 
-MAX_VIDEO_FRAMES = 600  # hard guard for the public demo
+MAX_VIDEO_FRAMES = 600
+
+# 单次导出的"格×帧"预算：超过直接拒绝并建议降列数——
+# 400×240×514 帧 ≈ 5e7 在小规格 ECS 上 >900s 且内存抖动，会拖死整机
+# （2026-09-07 事故）。3e7 ≈ ECS 实测 600s 内可完成的上限。
+EXPORT_CELL_BUDGET = 3_000_000  # hard guard for the public demo
 
 
 def ffmpeg_available() -> bool:
@@ -352,10 +357,17 @@ def encode_mp4(seq: FrameSequence, out_path: str, font_size: int = 14,
     # 会被砍半重采样，内容错位、分辨率与预览不符）
     width = max(1, min(400, seq.width))
     height = max(1, min(240, seq.height))
-    # 大网格自动降字号，避免导出分辨率爆炸（400 列 × 14pt ≈ 3200px 宽）
-    font_size = font_size if width <= 260 else min(font_size, 10)
+    # 单元像素自适应：内容（网格）完整保留，光栅宽度封顶 ~1920px——
+    # 400×240 @14pt 会到 3200×4080（13MP），小规格 ECS 上 ffmpeg/内存
+    # 直接把主机打挂（2026-09-07 事故）。字符在播放器全屏下依旧清晰。
+    font_size = min(font_size, max(7, min(14, 1920 // width)))
     font = pick_font(font_size)
     char_w, char_h = _measure_cell(font)
+    # 光栅兜底：字号再小也要满足偶数与宽度预算
+    while width * char_w > 1920 and font_size > 6:
+        font_size -= 1
+        font = pick_font(font_size)
+        char_w, char_h = _measure_cell(font)
     # yuv420p needs even dimensions
     out_w = max(2, (width * char_w) // 2 * 2)
     out_h = max(2, (height * char_h) // 2 * 2)

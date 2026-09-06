@@ -1824,6 +1824,9 @@ def _generate_video(task_id, charset, width, height, fg_color, bg_color,
         filename = f"{task_id}_custom_{digest}{color_tag}.{ext}"
     out_path = _tmp_out_path(filename)
 
+    reject = _export_budget_reject(width, height, len(seq.lines_per_frame))
+    if reject is not None:
+        return reject
     if not _VIDEO_PROC_SLOTS.acquire(blocking=False):
         return jsonify({"error": "当前任务较多，请稍后再试"}), 429
     try:
@@ -2473,6 +2476,26 @@ def gallery_preview(work_id):
 
 
 @app.route("/api/gallery/download/<work_id>", methods=["GET"])
+def _export_budget_reject(width: int, height: int, frames: int):
+    """格×帧预算护栏：超限返回 400 响应（含建议列数），通过返回 None。
+
+    大网格 MP4 导出在小规格 ECS 上渲染 + 编码可达 10 分钟级——
+    超时不仅失败还会拖死整机（2026-09-07 事故），必须在编码前拒绝。
+    """
+    from termify.output import video as video_mod
+
+    cells = width * height * frames
+    if cells <= video_mod.EXPORT_CELL_BUDGET:
+        return None
+    sugg = max(60, int(width * (video_mod.EXPORT_CELL_BUDGET / cells) ** 0.5))
+    return jsonify({
+        "error": f"该尺寸渲染量过大（{width}×{height} × {frames} 帧），"
+                 f"服务器无法在时限内完成。请把列数降到 {sugg} 以内，"
+                 f"或截短素材后重试 / Too heavy to render server-side; "
+                 f"lower columns to ≤ {sugg} or trim the clip"
+    }), 400
+
+
 def gallery_download(work_id):
     """Generate + serve a .py, .html or .mp4 download for a gallery work.
 
@@ -2545,6 +2568,9 @@ def gallery_download(work_id):
         if len(seq.lines_per_frame) > video_mod.MAX_VIDEO_FRAMES:
             return jsonify({"error": f"帧数过多 ({len(seq.lines_per_frame)})，"
                                      f"视频导出上限 {video_mod.MAX_VIDEO_FRAMES} 帧"}), 400
+        reject = _export_budget_reject(width, height, len(seq.lines_per_frame))
+        if reject is not None:
+            return reject
         filename = f"gallery_{work_id}_{charset}{color_tag}.mp4"
         out_path = _tmp_out_path(filename, root=tmp_dir)
         work_audio = None

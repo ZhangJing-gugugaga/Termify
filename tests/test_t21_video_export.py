@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import io
+import re
 import os
 import json
 import shutil
@@ -180,23 +181,25 @@ def _upload_gif(client):
 
 @pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg 未安装")
 def test_encode_mp4_preserves_large_grid(tmp_path):
-    """400×266 网格导出：列数必须原样保留（不钳 200），行数 ≤240 上限。"""
+    """400×266 网格导出：列数必须原样保留（不钳 200），光栅 ≤1920px 预算。"""
     lines = ["█" * 400 for _ in range(266)]
     seq = FrameSequence(lines_per_frame=[lines, lines], interval=0.1,
                         width=400, height=266, charset="blocks")
     out = encode_mp4(seq, str(tmp_path / "big.mp4"))
     assert os.path.isfile(out) and os.path.getsize(out) > 1000
-    # 导出宽度必须覆盖全部 400 列（>200 列钳位时代只有 ~1600px）
-    from termify.output.video import _measure_cell, pick_font
-    cw, _ch = _measure_cell(pick_font(10))
-    assert os.path.getsize(out) > 0
-    # 用 ffprobe 校验宽度 ≥ 400 × 最小字符宽
+    # ffprobe：全部 400 列都在（≥4px/列），且光栅宽度不超 1920 预算
     import subprocess
     probe = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "stream=width",
          "-of", "csv=p=0", out], capture_output=True, text=True)
     w = int(probe.stdout.strip().split(",")[0])
-    assert w >= 400 * min(6, cw), f"export width {w} too small — grid clamped"
+    assert 1600 <= w <= 1920, f"export width {w} out of budget range"
+
+
+def test_encode_mp4_budget_constant_exists():
+    from termify.output import video
+    assert video.EXPORT_CELL_BUDGET == 3_000_000
+    assert video.MAX_VIDEO_FRAMES == 600
 
 
 @pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg 未安装")
@@ -240,3 +243,45 @@ def test_generate_mp4_no_ffmpeg_friendly(client, tmp_path, monkeypatch):
                        content_type="application/json")
     assert resp.status_code == 503
     assert "视频导出暂不可用" in json.loads(resp.data)["error"]
+
+
+def _upload_many_frame_gif(client, n_frames=350):
+    """n 帧小 GIF：触发格×帧预算护栏（2 帧 GIF 永远达不到预算）。"""
+    buf = io.BytesIO()
+    # 每帧颜色唯一：抽帧去重后帧数才会如实保留
+    frames = [Image.new("RGB", (16, 16), ((i * 7) % 256, (i * 13) % 256, (i * 29) % 256))
+              for i in range(n_frames)]
+    frames[0].save(buf, save_all=True, append_images=frames[1:], duration=66,
+                   loop=0, format="GIF")
+    buf.seek(0)
+    resp = client.post("/api/upload",
+                       data={"file": (buf, "many.gif")},
+                       content_type="multipart/form-data")
+    assert resp.status_code == 200
+    return json.loads(resp.data)["task_id"]
+
+
+def test_export_budget_reject_math(client):
+    """护栏（走真实 /api/generate）：超限 400 + 建议列数，按建议可通过。"""
+    task_id = _upload_many_frame_gif(client)
+    resp = client.post("/api/generate",
+                       data=json.dumps({"task_id": task_id, "charset": "blocks",
+                                        "format": "mp4", "width": 400,
+                                        "height": 240}),
+                       content_type="application/json")
+    assert resp.status_code == 400, resp.data[:200]
+    body = resp.get_json()
+    m = re.search(r"列数降到 (\d+)", body["error"])
+    assert m, body["error"]
+    # 按建议列数重试（高度按前端 auto-fit 等比缩放、留 10% 余量）
+    # → 不再被预算拒绝（进入编码或成功）
+    sugg = int(m.group(1))
+    resp2 = client.post("/api/generate",
+                        data=json.dumps({"task_id": task_id, "charset": "blocks",
+                                         "format": "mp4", "width": sugg,
+                                         "height": max(8, int(240 * sugg / 400 * 0.9))}),
+                        content_type="application/json")
+    err2 = (resp2.get_json() or {}).get("error", "")
+    assert "渲染量过大" not in err2, f"suggested {sugg} still rejected: {err2}"
+    from termify.output.video import EXPORT_CELL_BUDGET
+    assert EXPORT_CELL_BUDGET == 3_000_000
