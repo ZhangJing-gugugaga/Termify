@@ -6,7 +6,7 @@
     <title>在线画廊 · Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906e">
 </head>
 <body>
 <div id="toast"></div>
@@ -20,7 +20,7 @@
             </a>
             <ul class="nav-links">
                 <li><a href="/">动画工坊</a></li>
-                <li><a href="/text-art">文字艺术</a></li>
+                <li><a href="/text-art">字符艺术</a></li>
                 <li><a href="/gallery" class="nav-active">画廊</a></li>
             </ul>
             <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
@@ -167,10 +167,10 @@
             empty.style.display = "none";
             grid.innerHTML = items.map(function (w) {
                 // 类型标识：文字/图片艺术化作品与动画作品卡片观感统一，
-                // 角标区分来源（kind=text 文字系；其余为动画工坊作品）
+                // 角标区分来源（kind=text 字符艺术；其余为动画工坊作品）
                 var kind = (w.params && w.params.kind) || "";
                 var badge = kind === "text"
-                    ? '<span class="gallery-card-badge">文字</span>' : "";
+                    ? '<span class="gallery-card-badge">字符</span>' : "";
                 return '<a class="gallery-card" href="/v/' + escapeHtml(w.id) + '">' +
                     '<div class="gallery-card-img">' +
                     '<img src="' + escapeHtml(w.thumbnail_url) + '" alt="' + escapeHtml(w.title) + '" loading="lazy">' +

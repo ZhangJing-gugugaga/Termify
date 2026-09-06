@@ -1,4 +1,4 @@
-/* ═══════════ 文字艺术独立页（/text-art）
+/* ═══════════ 字符艺术独立页（/text-art）
    Design read: Termify 暗色终端语言内的专注创作工具页。
    VARIANCE 5（不对称工作台）/ MOTION 2（仅反馈动画，尊重 reduced-motion）/ DENSITY 4。
    单一 accent = --green；零 em-dash；无装饰圆点；radius 沿用 token 阶梯。 ═══════════ */
@@ -282,30 +282,7 @@
 .ta-meta-text { color: var(--text-dim); font-family: var(--font-mono); font-size: 0.8rem; }
 .ta-result-actions { display: flex; gap: var(--space-2); }
 
-/* ── 页面 1 复用：动画工坊归一区块 + 文字艺术入口 ── */
-.studio-section { padding: var(--space-12) 0 var(--space-16); }
-.studio-block { padding-top: var(--space-10); }
-.studio-block + .studio-block {
-    border-top: 1px solid var(--border-dim);
-    margin-top: var(--space-10);
-}
-.studio-block:first-of-type { padding-top: 0; }
-.studio-sub {
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-    font-size: 15px;
-    font-weight: 500;
-    letter-spacing: 1px;
-    margin-bottom: var(--space-5);
-}
-.section-title-en {
-    color: var(--text-dim);
-    font-size: 15px;
-    font-weight: 400;
-    letter-spacing: 0;
-    margin-left: var(--space-2);
-    text-transform: uppercase;
-}
+/* ── 页面 1 复用：动画工坊归一区块 + 字符艺术入口 ── */
 .text-art-cta {
     align-items: center;
     background: var(--bg-surface);
@@ -369,88 +346,12 @@
 .ta-hint-warn { color: var(--amber); }
 
 /* 检测到中文时 AI 按钮呼吸提示 */
-.ta-ai-suggest {
-    animation: ta-ai-pulse 1.6s ease-in-out infinite;
-    border-color: var(--green);
-    color: var(--green);
-}
 @keyframes ta-ai-pulse {
     0%, 100% { box-shadow: 0 0 0 transparent; }
     50% { box-shadow: 0 0 14px var(--green-glow); }
 }
 @media (prefers-reduced-motion: reduce) {
-    .ta-ai-suggest { animation: none; box-shadow: 0 0 10px var(--green-glow); }
-}
-
-/* 自部署 AI 引导面板 */
-.ta-deploy-intro {
-    color: var(--text-secondary); font-size: 0.84rem;
-    line-height: 1.6; margin: 0 0 var(--space-2);
-}
-.ta-deploy-intro b { color: var(--green); }
-.ta-deploy-steps {
-    color: var(--text-secondary); font-size: 0.82rem;
-    line-height: 1.7; margin: 0 0 var(--space-3);
-    padding-left: 18px;
-}
-.ta-deploy-steps code {
-    background: var(--bg-base); border-radius: var(--radius-sm);
-    color: var(--green); font-family: var(--font-mono);
-    padding: 1px 6px;
-}
-.ta-deploy-presets {
-    display: flex; flex-wrap: wrap; gap: var(--space-2);
-    margin-bottom: var(--space-3);
-}
-
-/* 未配置 LLM 时的示例墙（AI 价值预览） */
-.ta-needconfig {
-    display: flex; flex-direction: column;
-    height: 100%; justify-content: center;
-    min-height: 280px; padding: var(--space-3); white-space: normal;
-}
-.ta-nc-title {
-    color: var(--text-secondary); font-size: 0.88rem;
-    margin: 0 0 var(--space-3); text-align: center;
-}
-.ta-demo-grid {
-    display: grid; gap: var(--space-3);
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-}
-.ta-demo-card {
-    background: var(--bg-surface); border: 1px solid var(--border-dim);
-    border-radius: var(--radius-md); cursor: pointer;
-    display: flex; flex-direction: column; gap: var(--space-2);
-    padding: var(--space-3); text-align: center;
-    transition: all var(--transition-fast);
-}
-.ta-demo-card:hover {
-    border-color: var(--green); background: var(--bg-elevated);
-    box-shadow: 0 0 12px var(--green-glow);
-}
-.ta-demo-art {
-    color: var(--green); display: block;
-    font-family: var(--font-mono); font-size: 0.6rem; line-height: 1.15;
-    overflow: hidden; white-space: pre;
-}
-.ta-demo-label {
-    color: var(--text-dim); font-size: 0.75rem;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.ta-nc-guide {
-    color: var(--text-dim); font-size: 0.8rem;
-    margin: var(--space-4) 0 0; text-align: center;
-}
-.ta-nc-btn {
-    background: var(--green-glow); border: 1px solid var(--green);
-    border-radius: var(--radius-sm); color: var(--green);
-    cursor: pointer; font-family: var(--font-mono); font-size: 0.78rem;
-    margin-left: 6px; padding: 3px 10px;
-}
-.ta-nc-btn:hover { box-shadow: 0 0 10px var(--green-glow); }
-.ta-nc-btn:disabled {
-    border-color: var(--border-dim); box-shadow: none; color: var(--text-dim);
-    cursor: default; opacity: 0.75;
+    
 }
 
 /* 字体墙：全部精选字体预览卡，点击即换 */
@@ -541,19 +442,6 @@
     margin-top: 4px;
 }
 .ta-variant-card.active .ta-variant-label { color: var(--green); }
-.ta-iterate-bar {
-    display: flex; gap: var(--space-2); margin-top: var(--space-2);
-}
-.ta-iterate-input {
-    background: var(--bg-base); border: 1px solid var(--border-dim);
-    border-radius: var(--radius-sm); color: var(--text-primary);
-    flex: 1; font-family: var(--font-mono); font-size: 0.82rem;
-    padding: 8px 12px;
-}
-.ta-iterate-input:focus {
-    border-color: var(--green); outline: none;
-    box-shadow: 0 0 8px var(--green-glow);
-}
 
 /* ── T38 模式切换 + 图片字符化（lddgo 复刻）────────────────────── */
 .ta-mode-tabs {

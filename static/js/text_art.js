@@ -1,4 +1,4 @@
-/* Termify · 文字艺术独立页（/text-art）
+/* Termify · 字符艺术独立页（/text-art）
    单入口自动路由：中文输入 → TTF 点阵（/api/text/convert 服务端分流），
    英文/数字 → FIGlet。无 LLM。
    UX 契约：所有异步动作都有等待反馈（按钮 busy / 骨架）。 */
@@ -435,7 +435,7 @@
   var gSubmit = byId("gallerySubmitBtn");
   if (gSubmit) gSubmit.addEventListener("click", function () {
     if (!TA.art) { toast("请先生成艺术字 / Generate art first"); return; }
-    var title = byId("galleryTitle").value.trim() || "文字艺术字";
+    var title = byId("galleryTitle").value.trim() || "字符艺术";
     var desc = byId("galleryDesc").value.trim();
     var author = byId("galleryAuthor").value.trim();
     var vis = document.querySelector('input[name="galleryVis"]:checked');
@@ -583,7 +583,7 @@
     if (convertBtn) convertBtn.click();
   });
 
-  /* ── 模式切换：文字艺术化 / 图片艺术化 ══ */
+  /* ── 模式切换：字符艺术化 / 图片艺术化 ══ */
   var modeTabs = byId("taModeTabs");
   var taTextPanel = byId("taTextPanel");
   var taImagePanel = byId("taImagePanel");

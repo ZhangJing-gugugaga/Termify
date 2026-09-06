@@ -1,7 +1,7 @@
-"""Text → ASCII art (FIGlet 直转 + LLM 直接创作的归一化).
+"""Text → ASCII art (FIGlet 直转 + 中文 TTF 点阵 + 入库归一化).
 
 直转路径对齐 lddgo/figlet 语义：非 ASCII 字符被忽略（而不是报错），
-FIGlet 负责字形与 smushing；LLM 直接创作路径只做安全归一化（去代码围栏、
+FIGlet 负责字形与 smushing；入库/外部输入路径只做安全归一化（去代码围栏、
 统一缩进、剥离控制字符），不改动艺术内容。
 """
 
@@ -52,12 +52,9 @@ DEFAULT_LINE_WIDTH = 120     # FIGlet 自动换行宽度（列）
 MIN_LINE_WIDTH = 40
 MAX_LINE_WIDTH = 300
 
-MAX_ART_COLS = 200           # LLM 直接创作 / 入库作品的最大列
+MAX_ART_COLS = 200           # 入库作品 / 字符画的最大列
 MAX_ART_ROWS = 120           # ……与最大行
-AI_DIRECT_MAX_COLS = 120     # 提示词要求的创作宽度（归一化硬上限仍是上面值）
-AI_DIRECT_MAX_ROWS = 60
 
-_FENCE_RE = re.compile(r"^[ \t]*(?:```+|~~~+)(.*)$")
 _FIGLET_FONT_SLUGS: set[str] | None = None
 
 
@@ -158,10 +155,10 @@ def art_dims(art: str) -> tuple[int, int]:
     return (max((len(ln) for ln in lines), default=0), len(lines))
 
 
-# ── 中文 TTF 点阵路径（无 LLM，纯 PIL 光栅化）────────────────────────────────
-# 根因结论（2026-09-05 实测）：8×8/10×10 网格装不下复杂汉字笔画，LLM 生成
-# 字形不可读；TTF 系统字体 16×16 光栅化 100% 可读（含繁体）。中文路径不走
-# FIGlet（非 ASCII 会被 filter_figlet_text 忽略），改为像素阈值 → 字符画。
+# ── 中文 TTF 点阵路径（纯 PIL 光栅化）──────────────────────────────────────
+# 根因结论（2026-09-05 实测）：小尺寸等宽网格装不下复杂汉字笔画；TTF 系统
+# 字体 16×16 光栅化 100% 可读（含繁体）。中文路径不走 FIGlet（非 ASCII 会被
+# filter_figlet_text 忽略），改为像素阈值 → 字符画。
 
 CJK_MAX_CHARS = 8           # 单次渲染汉字上限（1:2 比例 × 160 列红线推出，
                             # 与 render_cjk_ttf 的行高收缩公式一致）
@@ -232,12 +229,26 @@ def _resolve_cjk_font(slug: object) -> str | None:
     return None
 
 
+def _cjk_font_file_exists(slug: str) -> bool:
+    """该字体的候选文件本身是否存在于搜索路径（不含跨字体兜底）。"""
+    entry = next((e for e in CJK_FONTS if e[0] == slug), None)
+    if entry is None:
+        return False
+    return any(_os.path.isfile(d + name)
+               for name in entry[2] for d in _CJK_FONT_DIRS)
+
+
 def cjk_available_fonts() -> list[dict]:
-    """前端中文字体下拉的数据源：slug + name + 是否可用。"""
+    """前端中文字体下拉的数据源：slug + name + 是否可用。
+
+    available 按「候选文件本身存在」判定——不能用带兜底的
+    _resolve_cjk_font（任一字体存在时三项全报可用，选中缺文件项会
+    静默渲染成兜底字体，前端置灰提示失效）。
+    """
     out = []
     for slug, name, candidates in CJK_FONTS:
-        found = _resolve_cjk_font(slug)
-        out.append({"slug": slug, "name": name, "available": found is not None})
+        out.append({"slug": slug, "name": name,
+                    "available": _cjk_font_file_exists(slug)})
     return out
 
 
@@ -256,7 +267,7 @@ def filter_cjk_text(text: object) -> str:
 
 def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
                    height: object = CJK_DEFAULT_HEIGHT) -> str:
-    """中文 → TTF 光栅化点阵字符画（无 LLM）。
+    """中文 → TTF 光栅化点阵字符画（纯本地）。
 
     每个汉字先在高分辨率画布上逐字光栅化（字与字之间不重叠），再
     统一横向压缩到 cell_w 列、纵向压到 ``height`` 行。横向压缩用
@@ -398,472 +409,6 @@ def validate_stored_art(art: object, *, keep_ansi: bool = False) -> str:
     return _tidy_art(cleaned)
 
 
-_FENCE_BLOCK_RE = re.compile(
-    r"```[^\n]*\n(.*?)\n?```", re.DOTALL)
-
-
-def normalize_direct_art(raw: object) -> str:
-    """Normalise LLM-produced ASCII art: strip code fences / markdown
-    indentation, expand tabs, drop control characters, enforce caps."""
-    art = _normalize_direct_art_strict(raw)
-    if art is None:
-        raise TextArtError(
-            "AI 没有返回有效内容，请重试 / AI returned nothing useful, retry")
-    return art
-
-
-def _normalize_direct_art_strict(raw: object) -> str | None:
-    """Normalize without size enforcement; None when nothing valid."""
-    if not isinstance(raw, str) or not raw.strip():
-        return None
-    text = raw.replace("\r\n", "\n").replace("\r", "\n").strip()
-    m = _FENCE_BLOCK_RE.search(text)
-    if m and m.group(1).strip():
-        text = m.group(1)
-    else:
-        # 无闭合围栏时剥掉孤立的起始/结束围栏行
-        lines = [ln for ln in text.split("\n") if not _FENCE_RE.match(ln)]
-        text = "\n".join(lines).strip()
-    if not text:
-        return None
-    text = "".join(ch for ch in text if ch in "\n\t" or ord(ch) >= 0x20)
-    text = text.expandtabs(4)
-    # 统一去掉非空行共有的前导缩进（LLM 常把作品整体缩进 4 空格），
-    # 等量去缩进不破坏字符画对齐
-    lines = text.split("\n")
-    indents = [len(ln) - len(ln.lstrip(" ")) for ln in lines if ln.strip()]
-    if indents:
-        pad = min(indents)
-        if pad > 0:
-            lines = [ln[pad:] if ln.strip() else "" for ln in lines]
-    lines = [ln.rstrip() for ln in lines]
-    while lines and not lines[0]:
-        lines.pop(0)
-    while lines and not lines[-1]:
-        lines.pop()
-    art = "\n".join(lines)
-    if not art.strip():
-        return None
-    return art
-
-
-def auto_fit_art(art: str, *, max_cols: int = MAX_ART_COLS,
-                 max_rows: int = MAX_ART_ROWS) -> tuple[str, bool]:
-    """Compact fallback（ascii-skills）：超尺寸自动等比缩小，永不拒绝。
-
-    返回 (art, fitted)。缩行方式：行数超限→隔行抽稀；列数超限→
-    无法安全缩列（等宽字符画删列会破坏字形），列超限时整体缩行数
-    按比例匹配，最后仍超则截断到上限并标注。
-    """
-    cols, rows = art_dims(art)
-    if cols <= max_cols and rows <= max_rows:
-        return art, False
-    # 行数超限 → 隔行抽稀（保留轮廓）
-    if rows > max_rows:
-        lines = art.split("\n")
-        step = rows / max_rows
-        picked = [lines[int(i * step)] for i in range(max_rows)]
-        art = "\n".join(picked)
-    cols, rows = art_dims(art)
-    # 列数仍超限 → 按比例再抽稀行数（视觉宽度近似匹配），最终截断
-    if cols > max_cols:
-        target_rows = max(4, int(rows * max_cols / cols))
-        lines = art.split("\n")
-        step = rows / target_rows if target_rows < rows else 0
-        if step > 0:
-            picked = [lines[min(len(lines) - 1, int(i * step))]
-                      for i in range(target_rows)]
-            art = "\n".join(picked)
-        # 单行仍超宽 → 截断（极限场景，标注 fitted）
-        lines = [ln[:max_cols] for ln in art.split("\n")]
-        art = "\n".join(lines)
-    return art, True
-
-
-def split_variants(raw: object) -> list[str]:
-    """Split multi-variant LLM output into normalised artworks (1..2)."""
-    if not isinstance(raw, str) or not raw.strip():
-        return []
-    parts = raw.split(VARIANT_SEPARATOR)
-    out = []
-    for part in parts[:2]:
-        art = _normalize_direct_art_strict(part)
-        if art:
-            out.append(art)
-    return out
-
-
-# ── LLM prompts ──────────────────────────────────────────────────────────────
-
-PARAM_SYSTEM_PROMPT = (
-    "You map a user's idea to parameters of a FIGlet ASCII-art generator. "
-    "Reply with STRICT JSON only, no markdown, no explanations: "
-    '{"text": "<letters/digits/short phrase>", "font": "<slug>"}. '
-    "`text`: 1-40 chars, English letters, digits, spaces and .,-!? only; "
-    "keep the user's intended wording (translate non-English ideas into a "
-    "short English word/phrase). "
-    "`font`: exactly one of the slugs: ansi_shadow, standard, big, colossal, "
-    "slant, small, doom, block, banner3, ghost, graffiti, bloody, ogre, "
-    "poison, starwars, fire_font-s, larry3d, nancyj, impossible, isometric1, "
-    "sub-zero, calvin_s, delta_corps_priest_1, js_stick_letters. "
-    "Pick the font matching the mood (fire -> fire_font-s, scary -> bloody, "
-    "sci-fi -> starwars or sub-zero, cyber -> ansi_shadow, elegant -> slant "
-    "or isometric1, cartoon -> larry3d)."
-)
-
-DIRECT_SYSTEM_PROMPT_TEMPLATE = (
-    "You are a world-class ASCII artist. Draw the user's idea as monospaced "
-    "ASCII art. Rules: reply with ONLY the artwork — no code fences, no "
-    "explanations, no line numbers. Use printable ASCII characters (letters, "
-    "# @ % * + = - : . ^ ~ etc). Keep it under {cols} columns and {rows} "
-    "lines. Make the subject instantly recognisable."
-)
-
-# ── AI 迭代回路（ascii-skills 方法论：结构化输入 + 变体输出 + 无条件降级）──
-#
-# 方法论来源 full-stack-skills/ascii-skills：
-#   1. 结构化输入：把用户意图翻译为明确参数（尺寸/风格/主体），
-#      而非裸描述 —— 对应 ITERATE 的「当前作品 + 修改意见」结构。
-#   2. 变体输出：banner 技能的 short/long variants 模式 —— DIRECT
-#      多候选一次产出 2 版，用户挑选而非盲盒。
-#   3. 紧凑降级：宽度不足时的 compact fallback —— 超尺寸不再报错，
-#      服务端自动缩行，永不拒绝用户。
-#   4. 对齐安全：颜色不破坏布局（空格不着色）—— ANSI 导出同规则。
-
-ITERATE_SYSTEM_PROMPT_TEMPLATE = (
-    "You are a world-class ASCII artist refining an existing artwork. "
-    "The user will give you the CURRENT artwork and a MODIFICATION "
-    "request. Apply the modification while keeping everything else "
-    "recognisably the same. Rules: reply with ONLY the modified artwork "
-    "— no code fences, no explanations. Monospaced, printable ASCII "
-    "only. Keep it under {cols} columns and {rows} lines."
-)
-
-# 多候选分隔标记（banner 技能的 variants 模式）：一次生成两版供挑选。
-VARIANT_SEPARATOR = "===VARIANT==="
-
-
-DIRECT_MULTI_SYSTEM_PROMPT_TEMPLATE = (
-    "You are a world-class ASCII artist. Draw the user's idea as "
-    "monospaced ASCII art in TWO distinct variants (different style or "
-    "composition — not pixel-identical twins). Rules: output exactly two "
-    "artworks separated by a line containing only: ===VARIANT=== "
-    "No code fences, no explanations, no line numbers. Printable ASCII "
-    "characters only. Each artwork under {cols} columns and {rows} lines. "
-    "Make the subject instantly recognisable."
-)
-
-
-# ── AI 作品示例（未配置 LLM 时的价值预览）────────────────────────────────────
-# 手工精选 24 幅示范作品，按 6 个主题批次排列（动物 / 食物 / 物件 / 自然 /
-# 符号 / 终端文化），每批 4 幅 —— 前端「换一批」最多刷新 5 次，
-# 初始 + 5 次刷新恰好完整展示 24 幅、零重复。
-# 风格对齐 ascii-skills（banner/图形/对齐安全）：等宽可辨识、宽度克制（≤44 列）。
-
-AI_SHOWCASE: list[dict] = [
-    # 批次 1 · 动物
-    {
-        "title": "猫",
-        "prompt": "画一只猫",
-        "art": (
-            " |\\      _,,,---,,_\n"
-            " /,`.-'`'    -.  ;-;;,_\n"
-            " |,4-  ) )-,_..;\\ (  `'-'\n"
-            " '---''(_/--'  `-\\_)"
-        ),
-    },
-    {
-        "title": "狗",
-        "prompt": "画一只吐舌头的狗",
-        "art": (
-            "   / \\__\n"
-            "  (    @\\___\n"
-            "  /         O\n"
-            " /   (_____/\n"
-            "/_____/   U"
-        ),
-    },
-    {
-        "title": "猫头鹰",
-        "prompt": "画一只猫头鹰",
-        "art": (
-            "  ,___,\n"
-            "  (O,O)\n"
-            "  (   )\n"
-            "  /)_)\n"
-            "   \"\""
-        ),
-    },
-    {
-        "title": "鲸鱼",
-        "prompt": "画一头喷水的鲸鱼",
-        "art": (
-            "       .\n"
-            "      \":\"\n"
-            "    ___:____     |\"\\/\"|\n"
-            "  ,'        `.    \\  /\n"
-            "  |  O        \\___/  |\n"
-            "~^~^~^~^~^~^~^~^~^~^~^~^~"
-        ),
-    },
-    # 批次 2 · 食物
-    {
-        "title": "咖啡",
-        "prompt": "一杯冒着热气的咖啡",
-        "art": (
-            "       ) )\n"
-            "      ( (\n"
-            "    ._______.\n"
-            "    |       |]\n"
-            "    \\       /\n"
-            "     `-----'"
-        ),
-    },
-    {
-        "title": "披萨",
-        "prompt": "画一块披萨",
-        "art": (
-            "  ___________\n"
-            "  \\  o   o  /\n"
-            "   \\   o   /\n"
-            "    \\  o  /\n"
-            "     \\ o /\n"
-            "      \\o/\n"
-            "       V"
-        ),
-    },
-    {
-        "title": "冰激凌",
-        "prompt": "画一个甜筒冰激凌",
-        "art": (
-            "   ( o o o )\n"
-            "    \\     /\n"
-            "     \\   /\n"
-            "      \\ /\n"
-            "       V"
-        ),
-    },
-    {
-        "title": "蘑菇",
-        "prompt": "画一朵蘑菇",
-        "art": (
-            "     ________\n"
-            "    /        \\\n"
-            "   /  o    o  \\\n"
-            "  (____________)\n"
-            "      |    |\n"
-            "      |____|"
-        ),
-    },
-    # 批次 3 · 物件
-    {
-        "title": "火箭",
-        "prompt": "一枚正在升空的火箭",
-        "art": (
-            "        /\\\n"
-            "       /  \\\n"
-            "      | () |\n"
-            "      |    |\n"
-            "     /|    |\\\n"
-            "    / |    | \\\n"
-            "      |____|\n"
-            "       |  |\n"
-            "      (____)"
-        ),
-    },
-    {
-        "title": "相机",
-        "prompt": "画一台老式相机",
-        "art": (
-            "    ___________\n"
-            "   |  _______  |\n"
-            "   | |       | |\n"
-            "   | |  (o)  | |\n"
-            "   | |_______| |\n"
-            "   |___________|"
-        ),
-    },
-    {
-        "title": "灯泡",
-        "prompt": "画一个亮着的灯泡",
-        "art": (
-            "       .-\"\"-.\n"
-            "      /      \\\n"
-            "     |  \\  /  |\n"
-            "     |   \\/   |\n"
-            "      \\      /\n"
-            "       '-..-'\n"
-            "       .-__-."
-        ),
-    },
-    {
-        "title": "时钟",
-        "prompt": "画一个指针时钟",
-        "art": (
-            "    \\\\     //\n"
-            "       _____\n"
-            "     .'     '.\n"
-            "    /    |    \\\n"
-            "   |     |     |\n"
-            "   |  9--o--3  |\n"
-            "    \\         /\n"
-            "     '._____.'"
-        ),
-    },
-    # 批次 4 · 自然
-    {
-        "title": "山脉",
-        "prompt": "画连绵的雪山",
-        "art": (
-            "        /\\\n"
-            "       /  \\        /\\\n"
-            "      /    \\      /  \\\n"
-            "     /      \\    /    \\\n"
-            "    /        \\  /      \\\n"
-            " __/          \\/        \\__"
-        ),
-    },
-    {
-        "title": "松树",
-        "prompt": "画一棵松树",
-        "art": (
-            "       ###\n"
-            "      #####\n"
-            "     #######\n"
-            "    #########\n"
-            "        ##\n"
-            "        ##\n"
-            "       ####"
-        ),
-    },
-    {
-        "title": "月亮",
-        "prompt": "画一弯新月",
-        "art": (
-            "       _..._\n"
-            "     .::::. `.\n"
-            "    :::::::.  :\n"
-            "    ::::::::  :\n"
-            "    `::::::' .'\n"
-            "      `'::'-'"
-        ),
-    },
-    {
-        "title": "帆船",
-        "prompt": "画一艘帆船",
-        "art": (
-            "        |\\\n"
-            "        | \\\n"
-            "        |  \\\n"
-            "        |___\\\n"
-            "    ____|____\n"
-            "    \\       /\n"
-            " ~~~~`-----'~~~~"
-        ),
-    },
-    # 批次 5 · 符号
-    {
-        "title": "爱心",
-        "prompt": "画一颗像素风的心",
-        "art": (
-            "  ,d88b.d88b,\n"
-            "  88888888888\n"
-            "  `Y8888888Y'\n"
-            "    `Y888Y'\n"
-            "      `Y'"
-        ),
-    },
-    {
-        "title": "星星",
-        "prompt": "画一颗闪亮的星",
-        "art": (
-            "        .\n"
-            "       ,O,\n"
-            "      ,OOO,\n"
-            " \"OOOOOOOOOOOOO\"\n"
-            "  'OOOOOOOOOOO'\n"
-            "    'OOOOOOO'\n"
-            "     'OOOOO'\n"
-            "      OOO\n"
-            "       O"
-        ),
-    },
-    {
-        "title": "宝石",
-        "prompt": "画一颗钻石",
-        "art": (
-            "    *   /\\   *\n"
-            "       /  \\\n"
-            "      /    \\\n"
-            "     <      >\n"
-            "      \\    /\n"
-            "       \\  /\n"
-            "    *   \\/   *"
-        ),
-    },
-    {
-        "title": "笑脸",
-        "prompt": "画一个笑脸",
-        "art": (
-            "    _______\n"
-            "   /       \\\n"
-            "  |  o   o  |\n"
-            "  |    ^    |\n"
-            "  |  \\___/  |\n"
-            "   \\_______/"
-        ),
-    },
-    # 批次 6 · 终端文化
-    {
-        "title": "终端",
-        "prompt": "画一个终端窗口",
-        "art": (
-            " .-------------------------.\n"
-            " | [~]$ whoami             |\n"
-            " | terminal_artist         |\n"
-            " | [~]$ _                  |\n"
-            " '-------------------------'"
-        ),
-    },
-    {
-        "title": "横幅",
-        "prompt": "画一个 TERMIFY 横幅",
-        "art": (
-            " _____ _____ ____  __  __ ___ _______   __\n"
-            "|_   _| ____|  _ \\|  \\/  |_ _|  ___\\ \\ / /\n"
-            "  | | |  _| | |_) | |\\/| || || |_   \\ V /\n"
-            "  | | | |___|  _ <| |  | || ||  _|   | |\n"
-            "  |_| |_____|_| \\_\\_|  |_|___|_|     |_|"
-        ),
-    },
-    {
-        "title": "软盘",
-        "prompt": "画一张软盘",
-        "art": (
-            "  .-----------.\n"
-            "  | .-------. |\n"
-            "  | | [=]   | |\n"
-            "  | '-------' |\n"
-            "  |  _______  |\n"
-            "  | |_______| |\n"
-            "  '-----------'"
-        ),
-    },
-    {
-        "title": "幽灵",
-        "prompt": "画一只小幽灵",
-        "art": (
-            "     .----.\n"
-            "    /      \\\n"
-            "   |  o  o  |\n"
-            "   |   __   |\n"
-            "    \\______/\n"
-            "    | |  | |"
-        ),
-    },
-]
-
-
 # ── 导出矩阵：ANSI 彩色 / HTML 单文件 / 终端命令 ─────────────────────────────
 
 # 配色主题（预览 + ANSI/HTML/PNG 导出共用）
@@ -943,7 +488,19 @@ def render_standalone_html(art: str, theme: object = DEFAULT_THEME) -> str:
 
 
 
+def _bundled_mono_font() -> str:
+    """仓库内置 DejaVu Sans Mono 的绝对路径（static/fonts/）。
+
+    块元素 █▓▒░ / 盒线 / 盲文点阵 / 几何形状全覆盖——系统字体
+    （如 consola）缺这些字形时字符画 PNG 会渲染成豆腐块/噪声，
+    画廊缩略图"乱码"的根因。许可证见 static/fonts/LICENSE.DejaVu。
+    """
+    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    return _os.path.join(root, "static", "fonts", "DejaVuSansMono.ttf")
+
+
 _MONO_FONT_CANDIDATES = (
+    _bundled_mono_font(),
     "consola.ttf", "cour.ttf", "DejaVuSansMono.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
     "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",

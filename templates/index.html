@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>动画工坊 · Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260903f">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260906a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906e">
 </head>
 <body>
 <div id="toast"></div>
@@ -21,7 +21,7 @@
             </a>
             <ul class="nav-links">
                 <li><a href="/" class="nav-active">动画工坊</a></li>
-                <li><a href="/text-art">文字艺术</a></li>
+                <li><a href="/text-art">字符艺术</a></li>
                 <li><a href="/gallery">画廊</a></li>
             </ul>
             <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
@@ -351,9 +351,9 @@
             <h2 class="section-title">为什么选择 Termify</h2>
             <div class="features-grid">
                 <div class="feature-card">
-                    <div class="feature-icon-box">5</div>
+                    <div class="feature-icon-box">7</div>
                     <h3 class="feature-title">7种渲染风格</h3>
-                    <p class="feature-desc">从经典ASCII到Unicode色块，从Braille点阵到自定义字符集。总有一款适合你的终端。</p>
+                    <p class="feature-desc">经典ASCII、Unicode色块、Braille点阵、几何图形、极简二值、明暗渐变、自定义字符梯——总有一款适合你的素材。</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon-box">&gt;_</div>
@@ -361,9 +361,14 @@
                     <p class="feature-desc">Python脚本、HTML页面零依赖，双击就能播放。发微信、开浏览器、进终端，随时随地播放你的动画。</p>
                 </div>
                 <div class="feature-card">
+                    <div class="feature-icon-box">▶</div>
+                    <h3 class="feature-title">视频直出 MP4</h3>
+                    <p class="feature-desc">转换结果一键导出 MP4，微信、朋友圈、手机直接播放——分享最快的一档，无需任何终端知识。</p>
+                </div>
+                <div class="feature-card">
                     <div class="feature-icon-box">∞</div>
                     <h3 class="feature-title">万物皆可</h3>
-                    <p class="feature-desc">GIF表情包、宠物照片、产品截图、任何你想终端化的东西。上传，转换，分享。</p>
+                    <p class="feature-desc">GIF表情包、宠物照片、产品截图、B站/YouTube 视频，任何你想终端化的东西。上传，转换，分享。</p>
                 </div>
             </div>
         </div>
@@ -534,8 +539,8 @@
         }
         requestAnimationFrame(demoTick);
     </script>
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903f"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260903f" defer></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260906a"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260906a" defer></script>
 
     <!-- Termify 自定义弹窗（替代浏览器原生 alert/confirm） -->
     <div class="termify-modal" id="termifyModal" hidden>

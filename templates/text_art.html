@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>文字艺术 · Termify</title>
+    <title>字符艺术 · Termify</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906b">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260906b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260906e">
 </head>
 <body class="page-text-art">
     <!-- ═══════════ NAVIGATION ═══════════ -->
@@ -18,7 +18,7 @@
             </a>
             <ul class="nav-links">
                 <li><a href="/">动画工坊</a></li>
-                <li><a href="/text-art" class="nav-active">文字艺术</a></li>
+                <li><a href="/text-art" class="nav-active">字符艺术</a></li>
                 <li><a href="/gallery">画廊</a></li>
             </ul>
             <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
@@ -28,21 +28,21 @@
         </div>
     </nav>
 
-    <!-- ═══════════ 文字艺术工作台 ═══════════ -->
+    <!-- ═══════════ 字符艺术工作台 ═══════════ -->
     <main class="ta-main" id="textArt">
         <div class="container">
             <header class="ta-head">
-                <h1 class="ta-title">文字<span class="ta-title-accent">艺术</span></h1>
-                <p class="ta-sub">文字艺术化：英文走 FIGlet，中文走点阵；图片艺术化一键成画——全部自动。</p>
+                <h1 class="ta-title">字符<span class="ta-title-accent">艺术</span></h1>
+                <p class="ta-sub">字符艺术化：英文走 FIGlet，中文走点阵；图片艺术化一键成画——全部自动。</p>
             </header>
 
             <div class="ta-mode-tabs" id="taModeTabs">
-                <button type="button" class="ta-mode-tab active" data-mode="text">文字艺术化</button>
+                <button type="button" class="ta-mode-tab active" data-mode="text">字符艺术化</button>
                 <button type="button" class="ta-mode-tab" data-mode="image">图片艺术化</button>
             </div>
 
             <div class="ta-workbench">
-                <!-- ══ 模式 A：文字艺术化 ══ -->
+                <!-- ══ 模式 A：字符艺术化 ══ -->
                 <div class="ta-panel" id="taTextPanel">
                     <div class="ta-group">
                         <label class="ta-label" for="taInput">文本</label>
@@ -221,6 +221,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260906b" defer></script>
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260906e" defer></script>
 </body>
 </html>
