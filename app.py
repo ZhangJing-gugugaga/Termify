@@ -600,6 +600,32 @@ _MUSIC_MIME = {
 }
 
 
+def _safe_remove_task_upload(prefix: str, task_id: str) -> None:
+    """Locate uploads/<prefix>_<id>.<ext> and delete it — one guarded flow.
+
+    与 _find_uploaded_file + _safe_remove_upload 等效，但校验与删除
+    在同一函数内可见：id 形状先 fail-closed，路径包含性再验一次。
+    """
+    if not re.fullmatch(r"[0-9a-f]{12}", task_id or ""):
+        return
+    base = paths.uploads_dir()
+    if not os.path.isdir(base):
+        return
+    marker = f"{prefix}_{task_id}."
+    for name in os.listdir(base):
+        if not name.startswith(marker):
+            continue
+        resolved = os.path.abspath(os.path.join(base, name))
+        if os.path.dirname(resolved) != base:
+            continue
+        if not resolved.startswith(base + os.sep) or ".." in resolved:
+            continue
+        try:
+            os.remove(resolved)
+        except OSError:
+            pass
+
+
 def _safe_remove_upload(path: str | None) -> None:
     """Delete a file only when it provably lives inside uploads/."""
     if not path:
@@ -686,7 +712,7 @@ def upload_music():
         return jsonify({"error": "音乐文件过大 (上限 20MB)"}), 413
 
     # One music file per task: drop previous uploads first.
-    _safe_remove_upload(_find_uploaded_file("music", task_id))
+    _safe_remove_task_upload("music", task_id)
     dest = _safe_uploads_path("music_" + task_id + ext)
     Path(dest).write_bytes(blob)
 
@@ -704,7 +730,7 @@ def remove_music():
     task_id = (data.get("task_id") or "").strip()
     if not _valid_task_id(task_id):
         return jsonify({"error": "No task_id"}), 400
-    _safe_remove_upload(_find_uploaded_file("music", task_id))
+    _safe_remove_task_upload("music", task_id)
     return jsonify({"ok": True})
 
 
@@ -1515,6 +1541,10 @@ def task_frames(task_id):
 
     filepath = task.get("filepath")
     interval = task.get("interval") or 0.1
+    from termify import paths as _pkg_paths
+    if filepath and not os.path.abspath(filepath).startswith(
+            os.path.abspath(_pkg_paths.uploads_dir() + os.sep)):
+        return jsonify({"error": "任务不存在 / Task not found"}), 404
 
     def _payload_guard(total_b64: int):
         """Return a 413 response when the accumulated payload is too big."""

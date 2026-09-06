@@ -180,7 +180,7 @@ def test_task_frames_video_dir_missing_files_skipped(client):
     with open("uploads/frames_bbaabbccddee/frame_001.png", "wb") as f:
         f.write(b"not a png")
 
-    get_store().put("bbaabbccddee", filepath=frames_dir,
+    get_store().put("bbaabbccddee", filepath="uploads/frames_bbaabbccddee",
                     target_size=(80, 24), frames_count=2, interval=0.1)
 
     body = json.loads(client.get("/api/task-frames/bbaabbccddee").data)

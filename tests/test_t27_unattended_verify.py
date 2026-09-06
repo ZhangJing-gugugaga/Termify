@@ -373,7 +373,8 @@ def test_task_frames_malformed_ids_never_500(client, bad_id):
 def test_task_frames_corrupted_source_image_404(client):
     """任务元数据在但源文件被换成垃圾字节 → 404（任务实质不可用），不 500。"""
     task_id = json.loads(_upload(client, filename="c.png").data)["task_id"]
-    saved = os.path.join("uploads", f"{task_id}.png")
+    assert re.fullmatch(r"[0-9a-f]{12}", task_id)
+    saved = os.path.join("uploads", task_id + ".png")
     assert os.path.isfile(saved)
     with open(saved, "wb") as f:
         f.write(b"\x00garbage-not-an-image")
