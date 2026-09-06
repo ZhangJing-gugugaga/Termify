@@ -977,7 +977,10 @@ def _download_disposition(name: str, ext: str) -> str:
 @app.route("/api/text/export-png", methods=["POST"])
 def text_export_png():
     """工作台直下 PNG（免发布）：art → 终端风图片，文件名含内容。"""
-    data = request.get_json(silent=True) or {}
+    # JSON（桌面 fetch）与表单 POST（移动端原生下载）双兼容
+    data = request.get_json(silent=True)
+    if data is None:
+        data = request.form.to_dict()
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON body"}), 400
     ip = _client_ip()
@@ -1031,7 +1034,10 @@ def text_export_ansi():
 @app.route("/api/text/export-html", methods=["POST"])
 def text_export_html():
     """HTML 单文件：自包含 <pre> + 内联样式，可直接发给任何人。"""
-    data = request.get_json(silent=True) or {}
+    # JSON（桌面 fetch）与表单 POST（移动端原生下载）双兼容
+    data = request.get_json(silent=True)
+    if data is None:
+        data = request.form.to_dict()
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON body"}), 400
     ip = _client_ip()
@@ -1218,6 +1224,36 @@ def _tmp_save(img, ext: str) -> str:
     with os.fdopen(fd, "wb") as fh:
         img.save(fh, format="PNG")
     return path
+
+
+@app.route("/api/text/export-txt", methods=["POST"])
+def text_export_txt():
+    """纯文本 .txt 下载（表单 POST → 浏览器原生 attachment 下载）。
+
+    移动端浏览器（UC/X5 等）对 blob+a.click 下载支持不可靠——txt 从
+    blob 改走服务端 attachment，与 PNG/HTML 同一模式。
+    """
+    # JSON（桌面 fetch）与表单 POST（移动端原生下载）双兼容
+    data = request.get_json(silent=True)
+    if data is None:
+        data = request.form.to_dict()
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "text-convert", per_minute=120)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    try:
+        art = _textart_mod.validate_stored_art(data.get("art"))
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    name = _gallery_mod.sanitize(data.get("name"),
+                                 40).replace(" ", "_") or "textart"
+    resp = make_response(art)
+    resp.headers.set("Content-Type", "text/plain; charset=utf-8")
+    resp.headers.set("Content-Disposition",
+                     _download_disposition(name, ".txt"))
+    return resp
 
 
 @app.route("/api/text/terminal-command", methods=["POST"])

@@ -337,3 +337,13 @@ def test_convert_cjk_height_auto_shrink_for_long_text(client):
                        json={"text": "你好世界万物更新", "height": 64})
     d = json.loads(resp.data)
     assert d["height"] == 10  # 8 字 × 2 列/行 → 收缩到宽度红线内
+
+
+def test_export_txt_endpoint(client):
+    resp = client.post("/api/text/export-txt",
+                       json={"art": "HELLO\nWORLD", "name": "我的作品"})
+    assert resp.status_code == 200
+    assert b"HELLO" in resp.data
+    cd = resp.headers["Content-Disposition"]
+    cd.encode("latin-1")
+    assert "filename*=UTF-8''" in cd  # 中文名走 RFC 5987

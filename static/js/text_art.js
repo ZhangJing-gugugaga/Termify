@@ -315,22 +315,51 @@
   }
 
   var copyBtn = byId("taCopyBtn");
+  /* ── 移动端兼容助手 ──
+     copyText：clipboard API 在 UC/X5 等 webview 常被拒 → execCommand 回退。
+     postDownload：blob+a.click 下载在 UC/X5 不可靠（0KB 失败）→ 隐藏表单
+     POST 走服务端 attachment，浏览器原生下载。 */
+  function copyText(text, okMsg, failMsg) {
+    function legacy() {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      toast(ok ? (okMsg || "已复制") : (failMsg || "复制失败 / Copy failed"));
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        function () { toast(okMsg || "已复制"); }, legacy);
+    } else { legacy(); }
+  }
+  function postDownload(path, fields) {
+    var form = document.createElement("form");
+    form.method = "POST";
+    form.action = path;
+    Object.keys(fields).forEach(function (k) {
+      var input = document.createElement("input");
+      input.type = "hidden";
+      input.name = k;
+      input.value = fields[k];
+      form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+  }
   if (copyBtn) copyBtn.addEventListener("click", function () {
     if (!TA.art) return;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(TA.art).then(function () { toast("已复制 / Copied"); },
-        function () { toast("复制失败 / Copy failed"); });
-    }
+    copyText(TA.art, "已复制 / Copied", "复制失败 / Copy failed");
   });
   var dlBtn = byId("taDownloadBtn");
   if (dlBtn) dlBtn.addEventListener("click", function () {
     if (!TA.art) return;
-    var blob = new Blob([TA.art], { type: "text/plain;charset=utf-8" });
-    var a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = exportName() + ".txt";
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(a.href);
+    postDownload("/api/text/export-txt",
+                 { art: TA.art, name: exportName() });
   });
 
   /* ANSI 彩色复制（对齐安全：整行着色一次 reset） */
@@ -343,11 +372,8 @@
       body: JSON.stringify({ art: TA.art, theme: TA.theme || currentTheme })
     }).then(function (r) { return r.json(); }).then(function (d) {
       if (d.error) { toast(d.error); return; }
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(d.ansi).then(
-          function () { toast("已复制 ANSI（粘贴到终端即显色）"); },
-          function () { toast("复制失败 / Copy failed"); });
-      }
+      copyText(d.ansi, "已复制 ANSI（粘贴到终端即显色）",
+               "复制失败 / Copy failed");
     }).catch(function () { toast("网络异常，请重试"); });
   });
 
@@ -369,33 +395,21 @@
     }).catch(function () { toast("网络异常，请重试"); });
   });
 
-  /* PNG 下载（走后端渲染，配色随主题） */
-  function downloadBlob(url, filename) {
-    fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ art: TA.art, theme: TA.theme || currentTheme,
-                             name: exportName() })
-    }).then(function (r) {
-      if (!r.ok) return r.json().then(function (d) { throw d.error || "export failed"; });
-      return r.blob();
-    }).then(function (blob) {
-      var a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(a.href);
-    }).catch(function (msg) { toast(String(msg || "导出失败")); });
-  }
+  /* PNG / HTML 下载：表单 POST → 服务端 attachment 原生下载
+     （blob+a.click 在 UC/X5 等移动浏览器 0KB 失败） */
   var pngBtn = byId("taPngBtn");
   if (pngBtn) pngBtn.addEventListener("click", function () {
     if (!TA.art) { toast("请先生成 / Generate first"); return; }
-    downloadBlob("/api/text/export-png", exportName() + ".png");
+    postDownload("/api/text/export-png", {
+      art: TA.art, theme: TA.theme || currentTheme, name: exportName()
+    });
   });
   var htmlBtn = byId("taHtmlBtn");
   if (htmlBtn) htmlBtn.addEventListener("click", function () {
     if (!TA.art) { toast("请先生成 / Generate first"); return; }
-    downloadBlob("/api/text/export-html", exportName() + ".html");
+    postDownload("/api/text/export-html", {
+      art: TA.art, theme: TA.theme || currentTheme, name: exportName()
+    });
   });
   var shareBtn = byId("taShareBtn");
   if (shareBtn) shareBtn.addEventListener("click", function () {

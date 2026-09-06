@@ -842,8 +842,11 @@
                         a.click();
                         a.remove();
                     }).catch(function (e) {
+                        // blob 下载在 UC/X5 等移动浏览器不可靠 → 回退原生下载
+                        //（含生成接口本身报错——原生下载会展示服务端错误信息）
                         btn.disabled = false; btn.innerHTML = oldText;
-                        toast("视频生成失败: " + e.message);
+                        toast("已切换浏览器直接下载");
+                        window.location.href = url;
                     });
                     return;
                 }

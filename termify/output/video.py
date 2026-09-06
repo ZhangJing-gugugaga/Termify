@@ -21,7 +21,18 @@ class VideoEncodeError(Exception):
 
 # Monospace font candidates, per platform. First hit wins; fall back to the
 # PIL bitmap default (ugly but always available) when none can load.
+_BUNDLED_FONT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "static", "fonts", "web", "JetBrainsMono-VF.ttf")
+
 _FONT_CANDIDATES = [
+    # 内置 JetBrains Mono 优先：盲文/块字符/盒线/几何形状全覆盖——
+    # DejaVu Sans Mono 没有 Braille Patterns（盲文只在比例版 DejaVu Sans），
+    # consola 等系统字体同样缺，导出视频整屏豆腐块（2026-09-06 手机端报障）
+    _BUNDLED_FONT,
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "static", "fonts", "DejaVuSansMono.ttf"),
     # Windows
     "consola.ttf",
     "C:/Windows/Fonts/consola.ttf",
@@ -157,6 +168,36 @@ def _parse_line_cells(line: str) -> list[tuple]:
     return parse_ansi_line(line)
 
 
+# 盲文点阵：U+2800 块 → 2×4 点位掩码（与 termify.charset 的盲文表同源）。
+# 视频渲染对盲文走矢量点阵而非字形——JetBrains Mono / DejaVu Sans Mono /
+# consola 均无 Braille Patterns，靠字体渲染会整屏豆腐块（2026-09-06 报障）。
+_BRAILLE_DOTS = (
+    (0, 0, 0x01), (0, 1, 0x02), (0, 2, 0x04),
+    (1, 0, 0x08), (1, 1, 0x10), (1, 2, 0x20),
+    (0, 3, 0x40), (1, 3, 0x80),
+)
+
+
+def _is_braille(ch: str) -> bool:
+    return "\u2800" <= ch <= "\u28ff"
+
+
+def _draw_braille_cell(draw, ch: str, x: int, y: int,
+                       char_w: int, char_h: int, color) -> None:
+    bits = ord(ch) - 0x2800
+    if not bits:
+        return
+    sw = char_w / 2.0
+    sh = char_h / 4.0
+    for col, row, mask in _BRAILLE_DOTS:
+        if bits & mask:
+            draw.rectangle(
+                [round(x + col * sw), round(y + row * sh),
+                 round(x + (col + 1) * sw) - 1, round(y + (row + 1) * sh) - 1],
+                fill=color,
+            )
+
+
 def frame_to_image(lines: list[str], font, char_w: int, char_h: int,
                    out_w: int, out_h: int,
                    default_fg=DEFAULT_FG, default_bg=DEFAULT_BG) -> Image.Image:
@@ -230,6 +271,15 @@ def frame_to_image(lines: list[str], font, char_w: int, char_h: int,
                     fill=bg_fill,
                 )
             text = "".join(c for _, _, c in cells)[:max_cells]
+            if any(_is_braille(c) for c in text):
+                # 盲文行：逐格矢量点阵（字体普遍缺 Braille Patterns）
+                for i, c in enumerate(text):
+                    if _is_braille(c):
+                        _draw_braille_cell(draw, c, i * char_w, y0,
+                                           char_w, char_h, color)
+                    else:
+                        draw.text((i * char_w, y0), c, fill=color, font=font)
+                continue
             draw.text((0, y0), text, fill=color, font=font)
             continue
         # per-cell fallback (mixed colors within the line)
@@ -244,7 +294,11 @@ def frame_to_image(lines: list[str], font, char_w: int, char_h: int,
                     [x * char_w, y0, (x + 1) * char_w - 1, y0 + char_h - 1],
                     fill=bg_fill,
                 )
-            draw.text((x * char_w, y0), ch, fill=color, font=font)
+            if _is_braille(ch):
+                _draw_braille_cell(draw, ch, x * char_w, y0,
+                                   char_w, char_h, color)
+            else:
+                draw.text((x * char_w, y0), ch, fill=color, font=font)
             x += 1
     return img
 
