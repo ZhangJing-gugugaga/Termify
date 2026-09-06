@@ -1,6 +1,6 @@
 # Termify
 
-> 万物皆可终端 —— 把任何 GIF / 图片转换成终端可播放的动画
+> 万物皆可终端 —— 把任何 GIF / 图片 / 视频转换成终端动画，一键导出 MP4 随手分享
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
@@ -10,9 +10,9 @@
 
 | 入口 | 链接 | 说明 |
 |------|------|------|
-| **🔗 在线 Demo** | [https://termify.moonzj.com](https://termify.moonzj.com) | 直接上传 GIF/PNG/JPG，生成终端动画 |
+| **🔗 在线 Demo** | [https://termify.moonzj.com](https://termify.moonzj.com) | 直接上传 GIF/图片/视频，生成终端动画或导出 MP4 |
 | **🖼️ 作品画廊** | [https://termify.moonzj.com/gallery](https://termify.moonzj.com/gallery) | 浏览社区作品，查看别人的终端创作 |
-| **📝 文字艺术** | [https://termify.moonzj.com/text-art](https://termify.moonzj.com/text-art) | 文字 / 图片 → 字符艺术（中文点阵 / FIGlet / 字体墙 / 图片艺术化） |
+| **✏️ 字符艺术** | [https://termify.moonzj.com/text-art](https://termify.moonzj.com/text-art) | 文字 / 图片 → 字符艺术（中文点阵 / FIGlet / 字体墙 / 图片艺术化） |
 
 > 💡 **不懂命令行？直接点上面链接** —— 浏览器拖图进去就能玩，零安装、零配置。\
 > 📋 **想批量处理或离线用？** 继续看下面的本地安装指南。
@@ -27,7 +27,6 @@
 | 算力 | 共享服务器，高峰期可能排队 | 用你自己的机器，独享 |
 | 上传大小 | ≤ 20MB（与 Flask 硬上限一致） | 可调 `TERMIFY_MAX_VIDEO_MB` 放宽 |
 | 速率限制 | 有（见下表） | 无 |
-| AI 接口（文字艺术） | 程序调用可用（`/api/text/ai`）；Web 页面不依赖 LLM | 你自部署 LLM（Ollama 等）即可用 |
 | 数据保留 | 任务完成后约 1 小时自动清理，不长期存储源文件 | 文件在你本机，你掌控 |
 | 功能更新 | 自动随 `main` 分支更新，始终最新 | 取决于你何时拉取 / 构建 |
 | 隐私 | HTTPS 加密传输；源文件不用于他用 | 完全离线，最私密 |
@@ -39,12 +38,11 @@
 | 图片上传 | 10 次/分钟，100 次/天 |
 | 视频上传 | 4 次/分钟，40 次/天 |
 | 视频 / URL 解析 | 2 次/分钟 |
-| 文字艺术转换 / 字体墙 | 120 / 60 次/分钟 |
+| 字符艺术转换 / 字体墙 | 120 / 60 次/分钟 |
+| 动画导出（.py/.html/.mp4） | 12 次/分钟，200 次/天 |
 | 图片艺术化 | 20 次/分钟 |
-| AI 接口（/api/text/ai、/api/text/iterate） | 6 次/分钟 |
-| LLM 配置读取 | 10 次/分钟 |
 
-> 本地 `python app.py` 与桌面包**没有上述限制**，适合批量、大文件、或需要配置私有 LLM 的场景。
+> 本地 `python app.py` 与桌面包**没有上述限制**，适合批量、大文件场景。
 
 ![终端动画效果预览](images/terminal-preview.png)
 
@@ -62,9 +60,9 @@ python app.py
 ```
 
 在浏览器里：
-1. 把 GIF / PNG / JPG 拖到页面上（或点一下选择文件）
+1. 把 GIF / 图片 / 视频拖到页面上（或点一下选择文件）
 2. 点击卡片选择风格，预览区立即播放
-3. 点"下载动画文件"，拿到 `.py` 或 `.html` 文件
+3. 点"下载动画文件"，拿到 `.py` / `.html` 文件，或一键导出 `.mp4`
 
 下载后怎么用？
 
@@ -72,6 +70,7 @@ python app.py
 |---------|---------|
 | `.py` 脚本 | 打开终端，运行 `python 你下载的文件.py`，按 Ctrl+C 停止 |
 | `.html` 页面 | 双击即可在浏览器里播放，无需网络、无需安装 |
+| `.mp4` 视频 | 微信 / 朋友圈 / 手机直接播放——**分享首选**，接收方无需懂任何终端知识 |
 
 ## 两种用法：Web vs 命令行
 
@@ -147,9 +146,9 @@ python app.py
 
 右侧面板里选择：
 
+- **MP4 视频（.mp4）**：把字符动画渲染成真视频，微信 / 朋友圈 / QQ / 手机直接播放。导出在服务器同步进行，弹窗会显示预计耗时（限 12 次/分钟，服务器繁忙时会提示稍后再试）。**分享首选。**
 - **Python 脚本（.py）**：在终端播放，零依赖，按 Ctrl+C 停止。
-- **HTML 页面（.html）**：浏览器打开即播放，更适合分享、手机查看。
-- **MP4 视频（.mp4）**：把字符动画渲染成真视频，微信/朋友圈/QQ 直接播放。导出在服务器同步进行，弹窗会显示预计耗时（限 12 次/分钟，服务器繁忙时会提示稍后再试）。
+- **HTML 页面（.html）**：浏览器打开即播放，适合网页嵌入或离线存档。
 
 ### Step 05 · 选择终端尺寸
 
@@ -176,19 +175,19 @@ python app.py
 
 > 📦 `.py` 产物的帧数据以 zlib+Base85 压缩内嵌。运行时自动解压，仍只需 Python 3.6+、零第三方依赖。
 
-## 文字艺术（Text Art）
+## 字符艺术（Character Art）
 
 独立页面 `/text-art`：把**文字**和**图片**变成终端字符艺术。两个模式一键切换，全部本地自动识别，无需任何配置。
 
-![文字艺术化 · 中文点阵](images/screenshots/text-art-cjk.png)
+![字符艺术化 · 中文点阵](images/screenshots/text-art-cjk.png)
 
-### 文字艺术化（文字 → 字符画）
+### 字符艺术化（文字 → 字符画）
 
 1. **中文 → 点阵**：输入 1-8 个汉字，自动走系统字体光栅化（宋体 / 黑体 / 楷体可选），"字符高度"可调（10-40 行，宽度按终端 1:2 比例自动）。
 2. **英文 / 数字 → FIGlet**：输入 ASCII 文字自动走 FIGlet，精选 24 款字体。
 3. **字体墙**：英文输入后自动点亮，同屏预览全部字体，点击即换即看（限 60 次/分钟）。
 
-![文字艺术化 · FIGlet 与字体墙](images/screenshots/text-art-figlet.png)
+![字符艺术化 · FIGlet 与字体墙](images/screenshots/text-art-figlet.png)
 
 ### 图片艺术化（图片 → 字符画）
 
@@ -215,17 +214,6 @@ python app.py
 
 6 种配色主题：`green`（默认）/ `cyan` / `amber` / `magenta` / `red` / `white`。
 
-### LLM 配置（自部署，可选）
-
-Web 页面的文字 / 图片艺术化**不依赖 LLM**，开箱即用。`POST /api/text/ai` 与 `POST /api/text/iterate` 两个程序接口由任意 **OpenAI 兼容端点**（含本地 Ollama）驱动：
-
-```bash
-python demo.py llm --base-url http://localhost:11434/v1 --model qwen2.5:7b
-python demo.py llm --status          # 查看当前配置
-```
-
-配置存在服务端 `data/llm_config.json`，**不会上传、也不会回传给浏览器**。Ollama 等本地端点无需 API Key。
-
 ## 命令行用法
 
 ```bash
@@ -245,7 +233,7 @@ python demo.py my_cat.gif --charset all --out my_outputs
 python demo.py my_cat.gif --charset blocks --preview --quiet
 ```
 
-### 子命令：文字艺术与 LLM
+### 子命令：字符艺术
 
 ```bash
 # 文字 → 艺术字（默认 standard 字体，打印到终端）
@@ -257,9 +245,6 @@ python demo.py text "hello" --font ansi_shadow --out out.txt
 # 列出全部可用字体
 python demo.py text --font list
 
-# LLM 配置（与 Web 端共用）
-python demo.py llm --base-url http://localhost:11434/v1 --model qwen2.5:7b
-python demo.py llm --status
 ```
 
 输出文件命名规则：`{图片名}_{字符集}.py` 和 `{图片名}_{字符集}.html`，生成在 `outputs/` 目录（或指定目录）。
@@ -305,14 +290,15 @@ A: 三种方式：
 
 | 方式 | 朋友看到什么 | 朋友要装什么 |
 |------|-------------|-------------|
-| **发 .html 文件** | 浏览器打开直接播放动画 | 零 |
+| **发 .mp4 视频** | 微信 / 手机相册直接播放 | 零 |
 | **分享画廊链接** | 点 `/v/<id>` 短链，直接预览 + 下载 | 零 |
+| **发 .html 文件** | 浏览器打开直接播放动画 | 零 |
 | **发 .py 脚本** | 终端播放动画 | Python 3.10+ |
 
-> 💡 推荐用 `.html`：朋友双击就能看，跨平台、零依赖。发微信群/AirDrop/邮件都行。
+> 💡 推荐 **MP4**：微信里点开就放，接收方零门槛；画廊短链适合公开发布与二次传播。
 
 **Q: 画廊是什么？**
-A: [termify.moonzj.com/gallery](https://termify.moonzj.com/gallery) — 上传作品到公共画廊，获得一个短链（如 `/v/aBcDeFgH`），朋友点开就能看到你转的动画。支持点赞、标签筛选、自定义标签。文字艺术 / 图片艺术化作品带「文字」角标，动画作品与字符画作品同场展示。
+A: [termify.moonzj.com/gallery](https://termify.moonzj.com/gallery) — 上传作品到公共画廊，获得一个短链（如 `/v/aBcDeFgH`），朋友点开就能看到你转的动画。支持点赞、标签筛选、自定义标签。字符艺术 / 图片艺术化作品带「字符」角标，动画作品与字符画作品同场展示。
 
 **Q: 怎么访问已有画廊 / 看别人的作品？**
 A: 三种方式：
@@ -323,8 +309,8 @@ A: 三种方式：
 | 分享短链 | 直接打开 `/v/<id>`（如 `/v/aBcDeFgH`），即可预览、点赞、下载 |
 | API | `GET /api/gallery/list?sort=latest&page=1` 分页拉取，`GET /api/gallery/work/<id>` 查单个作品 |
 
-**Q: 怎么把文字艺术字 / 图片艺术化作品发布到画廊？**
-A: 在 `/text-art` 页生成作品后，点结果区右下角的 **「分享到画廊」**，弹窗里填标题 / 描述 / 作者 / 标签，选公开或私密，点发布即可拿到短链。文字作品在画廊里带「文字」角标；**原色**作品的彩色会原样保留（作品页逐字符真彩回放）。
+**Q: 怎么把字符艺术 / 图片艺术化作品发布到画廊？**
+A: 在 `/text-art` 页生成作品后，点结果区右下角的 **「分享到画廊」**，弹窗里填标题 / 描述 / 作者 / 标签，选公开或私密，点发布即可拿到短链。字符作品在画廊里带「字符」角标；**原色**作品的彩色会原样保留（作品页逐字符真彩回放）。
 
 **Q: 怎么把作品发布到画廊？**
 A: 两种方式：
@@ -419,7 +405,7 @@ A: Python 未安装或未加入 PATH。请安装 Python 3.10+ 并在安装时勾
 | `POST` | `/api/upload-music` | 为任务附加背景音乐（mp3/wav/m4a/aac/ogg/flac ≤20MB），导出时优先于视频原声 |
 | `GET` | `/api/audio-info/<task_id>` | 查询任务是否已挂载音频 |
 
-### 文字艺术接口
+### 字符艺术接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -428,13 +414,10 @@ A: Python 未安装或未加入 PATH。请安装 Python 3.10+ 并在安装时勾
 | `POST` | `/api/text/convert` | 文字 → 艺术字，自动分流：含中文走点阵（`height` 10-40 行），纯 ASCII 走 FIGlet（`font` slug、`width`）。返回 `art`/`rows`/`cols`/`mode`。限 120 次/分钟 |
 | `POST` | `/api/text/fontwall` | 字体墙：一次输入 → 全部字体预览。入参 `text`。限 60 次/分钟 |
 | `POST` | `/api/text/imgascii` | 图片艺术化：multipart 上传 `file` + `palette`（6 主题色或 `source` 原色）+ `charset`（ascii/braille/shades/geometric/binary/custom）+ `width`/`height`/`flip`，返回字符画文本。动图返回 400 引导去动画工坊。限 20 次/分钟 |
-| `POST` | `/api/text/ai` | AI 创作（需配置 LLM）。入参 `prompt`（≤500 字）、`mode`（`params` \| `direct`）。限 6 次/分钟 |
-| `POST` | `/api/text/iterate` | 在已有结果上迭代（需配置 LLM）。入参 `current_art`、`instruction`。限 6 次/分钟 |
 | `POST` | `/api/text/export-png` | 导出 PNG。入参 `art`、`theme`（6 主题，缺省 `green`）、`fg`、`name` |
 | `POST` | `/api/text/export-ansi` | 导出 ANSI 彩色文本。入参 `art`、`theme` |
 | `POST` | `/api/text/export-html` | 导出单文件 HTML。入参 `art`、`theme`、`name` |
 | `POST` | `/api/gallery/upload-text` | 文字作品入库：入参 `art`、`palette`（主题或 `source` 原色）、`title`、`author`、`tags` 等，返回 `/v/<id>` 短链 |
-| `GET`/`POST` | `/api/llm/config` | 读取/写入 LLM 配置（`base_url`、`model`、`api_key`）。GET 只回传 `has_key`，**不回传密钥明文**。限 10 次/分钟 |
 
 > 主题取值：`green`（默认）/ `cyan` / `amber` / `magenta` / `red` / `white`。
 > 另有画廊接口（`/api/gallery/*`：发布、列表、点赞、举报、自定义标签、管理台）见源码，此处不展开。
@@ -480,7 +463,7 @@ curl -X POST http://127.0.0.1:5000/api/upload-music \
 # 查询是否已挂载音频
 curl http://127.0.0.1:5000/api/audio-info/abc123
 
-# 文字艺术：列出字体 → 转换
+# 字符艺术：列出字体 → 转换
 curl http://127.0.0.1:5000/api/text/fonts
 curl -X POST http://127.0.0.1:5000/api/text/convert \
   -H "Content-Type: application/json" \
@@ -489,7 +472,7 @@ curl -X POST http://127.0.0.1:5000/api/text/convert \
 # 中文点阵（自动分流，字符高度 10-40 可调）
 curl -X POST http://127.0.0.1:5000/api/text/convert \
   -H "Content-Type: application/json" \
-  -d '{"text":"文字艺术","font":"songti","height":16}'
+  -d '{"text":"字符艺术","font":"songti","height":16}'
 
 # 图片艺术化（原色 + 盲文字符集）
 curl -X POST http://127.0.0.1:5000/api/text/imgascii \
@@ -550,7 +533,7 @@ dist/Termify/Termify   # 双击或在终端中打开
 ```
 Termify/
 ├── app.py                  # Flask 入口（路由 + 限流 + 安全头）
-├── demo.py                 # CLI：图片转换 / text 文字艺术 / llm 配置
+├── demo.py                 # CLI：图片/视频转换 / text 字符艺术
 ├── requirements.txt        # flask / pillow / pyfiglet / pytest / beautifulsoup4 / yt-dlp
 ├── termify/                # 后端转换引擎（纯 Python 库）
 │   ├── charset.py          # 7 种字符集（含 shades/custom）+ 像素→字符映射
@@ -560,8 +543,7 @@ Termify/
 │   ├── taskstore.py        # SQLite 任务存储（多 worker 共享）
 │   ├── paths.py            # 产物路径基准（仓库根锚定，TERMIFY_BASE_DIR 可覆盖）
 │   ├── gallery.py          # 画廊功能（SQLite 元数据 + 缩略图生成）
-│   ├── textart.py          # 文字艺术：FIGlet 直转 + LLM 双模式 + 导出矩阵
-│   ├── llm.py              # LLM 配置读写（OpenAI 兼容端点，key 不回传浏览器）
+│   ├── textart.py          # 字符艺术：FIGlet 直转 + 中文点阵 + 导出矩阵
 │   ├── video.py            # 视频接入（ffmpeg 抽帧，自适应采样）
 │   ├── videofetch.py       # 视频链接解析（yt-dlp + 域名白名单）
 │   ├── urlfetch.py         # URL 直输（SSRF 防护下载）
@@ -571,7 +553,7 @@ Termify/
 │       └── video.py        # 生成 .mp4（ffmpeg 同步编码）
 ├── templates/              # Jinja2 页面模板
 │   ├── index.html          # 主工作台（图片/视频 → 字符动画）
-│   ├── text_art.html       # 文字艺术页
+│   ├── text_art.html       # 字符艺术页
 │   ├── gallery.html        # 画廊列表
 │   ├── view_work.html      # 作品分享页
 │   ├── admin.html          # 管理台
@@ -579,7 +561,7 @@ Termify/
 ├── static/
 │   ├── css/{tokens,app,text_art}.css
 │   ├── js/app.js           # 主工作台逻辑
-│   ├── js/text_art.js      # 文字艺术页逻辑
+│   ├── js/text_art.js      # 字符艺术页逻辑
 │   └── js/termify-render.js # 浏览器本地渲染器（7 风格镜像实现）
 ├── tests/                  # pytest 单元测试（443 tests + JS 渲染一致性脚本）
 ├── Caddyfile               # 生产反向代理（自动 HTTPS + 安全头）
@@ -590,7 +572,7 @@ Termify/
 
 ## 技术栈
 
-- **后端**：Python 3.10+、Flask、Pillow、pyfiglet（文字艺术）
+- **后端**：Python 3.10+、Flask、Pillow、pyfiglet（字符艺术）
 - **前端**：原生 HTML/CSS/JS，无框架依赖
 - **测试**：pytest（443 tests，运行 `pytest -q` 即可）
 - **主题**：暗色终端美学，JetBrains Mono + Space Grotesk 字体
