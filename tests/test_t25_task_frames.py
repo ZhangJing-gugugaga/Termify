@@ -173,11 +173,11 @@ def test_task_frames_video_dir_missing_files_skipped(client):
 
     from termify.taskstore import get_store
 
-    frames_dir = os.path.join("uploads", "frames_bbaabbccddee")
+    frames_dir = "uploads/frames_bbaabbccddee"
     os.makedirs(frames_dir, exist_ok=True)
     Image.new("RGB", (10, 6), (0, 0, 0)).save(
-        os.path.join(frames_dir, "frame_000.png"))
-    with open(os.path.join(frames_dir, "frame_001.png"), "wb") as f:
+        "uploads/frames_bbaabbccddee/frame_000.png")
+    with open("uploads/frames_bbaabbccddee/frame_001.png", "wb") as f:
         f.write(b"not a png")
 
     get_store().put("bbaabbccddee", filepath=frames_dir,

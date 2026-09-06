@@ -620,6 +620,8 @@ def _safe_remove_upload(path: str | None) -> None:
 
 def _find_uploaded_file(prefix: str, task_or_work: str) -> str | None:
     """Locate an existing uploads/<prefix>_<id>.<ext> artifact (any ext)."""
+    if not re.fullmatch(r"[0-9a-f]{12}", task_or_work or ""):
+        return None  # id 形状不符（含路径字符）直接 fail-closed
     base = paths.uploads_dir()
     if not os.path.isdir(base):
         return None
@@ -1504,6 +1506,8 @@ def task_frames(task_id):
     if not allowed:
         return jsonify({"error": "请求太频繁，请稍后再试 (限 30 次/分钟) / "
                                  "Too many requests, please try again later (30/min)"}), 429
+    if not _valid_task_id(task_id):
+        return jsonify({"error": "任务不存在 / Task not found"}), 404
 
     task = _task_get(task_id)
     if task is None:
