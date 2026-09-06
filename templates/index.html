@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>动画工坊 · Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260906a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260906b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906f">
 </head>
 <body>
 <div id="toast"></div>
@@ -125,6 +125,21 @@
                     <div class="style-info">
                         <div class="style-name">经典ASCII灰度</div>
                         <div class="style-desc">最复古，任何终端可显示</div>
+                    </div>
+                </div>
+
+                <!-- ASCII Lite -->
+                <div class="style-card" data-style="ascii-lite">
+                    <div class="style-preview ascii">.#####++++..
+##++    ++##
+#+-      -+#
+#+-      -+#
+#+--    --+#
+.##+    ++#.
+..###++++...</div>
+                    <div class="style-info">
+                        <div class="style-name">简约ASCII</div>
+                        <div class="style-desc">大颗粒海报感，字符更粗</div>
                     </div>
                 </div>
 
@@ -351,9 +366,9 @@
             <h2 class="section-title">为什么选择 Termify</h2>
             <div class="features-grid">
                 <div class="feature-card">
-                    <div class="feature-icon-box">7</div>
-                    <h3 class="feature-title">7种渲染风格</h3>
-                    <p class="feature-desc">经典ASCII、Unicode色块、Braille点阵、几何图形、极简二值、明暗渐变、自定义字符梯——总有一款适合你的素材。</p>
+                    <div class="feature-icon-box">8</div>
+                    <h3 class="feature-title">8种渲染风格</h3>
+                    <p class="feature-desc">经典ASCII、简约ASCII、Unicode色块、Braille点阵、几何图形、极简二值、明暗渐变、自定义字符梯——总有一款适合你的素材。</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon-box">&gt;_</div>
@@ -539,8 +554,8 @@
         }
         requestAnimationFrame(demoTick);
     </script>
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260906a"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260906a" defer></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260906b"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260906b" defer></script>
 
     <!-- Termify 自定义弹窗（替代浏览器原生 alert/confirm） -->
     <div class="termify-modal" id="termifyModal" hidden>

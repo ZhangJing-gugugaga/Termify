@@ -94,14 +94,15 @@ python app.py
 
 ### Step 02 · 选择渲染风格
 
-点击 7 张风格卡片中的任意一张，预览区立即切换。试试不同风格 — 每次切换都在 100ms 内完成：
+点击 8 张风格卡片中的任意一张，预览区立即切换。试试不同风格 — 每次切换都在 100ms 内完成：
 
-> ⚡ **全程本地渲染**：上传完成后，7 种风格 × 20–400 列连续尺寸的切换全部在你的浏览器内即时完成（零服务器往返）。服务端预览仅作为旧设备自动回退。
-> ℹ️ 英文提示：After upload, all 7 styles × continuous sizes (20–400 cols) switch instantly in your browser — no server round-trip.
+> ⚡ **全程本地渲染**：上传完成后，8 种风格 × 20–400 列连续尺寸的切换全部在你的浏览器内即时完成（零服务器往返）。服务端预览仅作为旧设备自动回退。
+> ℹ️ 英文提示：After upload, all 8 styles × continuous sizes (20–400 cols) switch instantly in your browser — no server round-trip.
 
 | 风格 | 字符 | 适合场景 |
 |------|------|---------|
 | **经典 ASCII** 灰度 | `@#%*+=-:.` | 复古感、极简、任何终端 |
+| **简约 ASCII** | `#+-.` | 大颗粒海报感，字符更少更粗 |
 | **Unicode 色块** | `█▀▄` + TrueColor | 最像原图、视觉冲击力（每格显示上下两个源像素色） |
 | **Braille 点阵** | `⠁⠂⠄⡀` | 高分辨率、科技感 |
 | **几何图形** | `■●◆▪▫◇○` | 设计感、现代 |
@@ -109,7 +110,7 @@ python app.py
 | **明暗渐变块** | `█▓▒░ ` | 平滑灰度渐变，比标点更有质感 |
 | **自定义字符** | 你说了算 | 在 Tweaks 面板填任意字符序列（密→疏） |
 
-> 🎨 **7 种风格全部支持配色**：配色面板的黑白 / 磷光绿 / 琥珀橘 / 冰蓝 / 自定义（单色着色）与**原色**（逐字符取源像素真彩色）对所有风格生效；「Unicode 色块」本身即逐字符真彩，不受配色单色影响。
+> 🎨 **8 种风格全部支持配色**：配色面板的黑白 / 磷光绿 / 琥珀橘 / 冰蓝 / 自定义（单色着色）与**原色**（逐字符取源像素真彩色）对所有风格生效；「Unicode 色块」本身即逐字符真彩，不受配色单色影响。
 
 **我的第一张动画选什么？** 不确定就选 **Unicode 色块** —— 它的画质最接近原图，一眼就能看出效果。
 
@@ -536,7 +537,7 @@ Termify/
 ├── demo.py                 # CLI：图片/视频转换 / text 字符艺术
 ├── requirements.txt        # flask / pillow / pyfiglet / pytest / beautifulsoup4 / yt-dlp
 ├── termify/                # 后端转换引擎（纯 Python 库）
-│   ├── charset.py          # 7 种字符集（含 shades/custom）+ 像素→字符映射
+│   ├── charset.py          # 8 种字符集（含 shades/custom）+ 像素→字符映射
 │   ├── frames.py           # GIF 抽帧 + 等比缩放
 │   ├── engine.py           # convert() → FrameSequence
 │   ├── ansi_to_html.py     # ANSI → HTML 颜色转换

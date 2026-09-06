@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>字符艺术 · Termify</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906e">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260906e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906f">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260906f">
 </head>
 <body class="page-text-art">
     <!-- ═══════════ NAVIGATION ═══════════ -->
@@ -115,6 +115,7 @@
                         <label class="ta-label" for="taImgCharset">使用字符</label>
                         <select class="ta-select" id="taImgCharset">
                             <option value="ascii" selected>默认字符</option>
+                            <option value="ascii-lite">简约字符</option>
                             <option value="braille">盲文字符</option>
                             <option value="shades">明暗渐变块</option>
                             <option value="geometric">几何图形</option>
@@ -221,6 +222,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260906e" defer></script>
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260906f" defer></script>
 </body>
 </html>

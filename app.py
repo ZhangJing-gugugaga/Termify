@@ -1117,7 +1117,7 @@ def text_imgascii():
     if palette not in valid_palettes:
         palette = "green"
     charset = request.form.get("charset", "ascii")
-    if charset not in ("ascii", "braille", "shades", "geometric",
+    if charset not in ("ascii", "ascii-lite", "braille", "shades", "geometric",
                        "binary", "custom"):
         charset = "ascii"
     ramp = request.form.get("charset_ramp") or None

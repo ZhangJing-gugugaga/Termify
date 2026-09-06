@@ -30,6 +30,7 @@
   // 预展开成码点数组（按码点索引，行为与 Python 字符串索引一致）
   var RAMP_ARRAYS = {
     ascii: Array.from(RAMP_CHARS.ascii),
+    "ascii-lite": Array.from("#+-. "),
     shades: Array.from(RAMP_CHARS.shades),
     geometric: Array.from("■●◆▪▫◇○ "),
   };
@@ -369,6 +370,7 @@
     }
     var lums = luminance(data);
     if (charset === "ascii") return renderRamp(lums, w, h, RAMP_ARRAYS.ascii, fg, bg, src);
+    if (charset === "ascii-lite") return renderRamp(lums, w, h, RAMP_ARRAYS["ascii-lite"], fg, bg, src);
     if (charset === "shades") return renderRamp(lums, w, h, RAMP_ARRAYS.shades, fg, bg, src);
     if (charset === "custom") {
       var ramp = sanitizeRamp(opts.ramp);
@@ -453,6 +455,7 @@
       var data = sourceMode ? scaledData(i) : null;
       var lums = lumsFor(i);
       if (charset === "ascii") return renderRamp(lums, dims.w, dims.h, RAMP_ARRAYS.ascii, fg, bg, data);
+      if (charset === "ascii-lite") return renderRamp(lums, dims.w, dims.h, RAMP_ARRAYS["ascii-lite"], fg, bg, data);
       if (charset === "shades") return renderRamp(lums, dims.w, dims.h, RAMP_ARRAYS.shades, fg, bg, data);
       if (charset === "custom") return renderRamp(lums, dims.w, dims.h, customRamp, fg, bg, data);
       if (charset === "binary") return renderBinary(lums, dims.w, dims.h, fg, bg, data);

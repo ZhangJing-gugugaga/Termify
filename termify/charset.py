@@ -14,6 +14,12 @@ CHARSETS: dict[str, dict] = {
         "color": False,
         "description": "最复古的味道，任何终端都能显示",
     },
+    "ascii-lite": {
+        "name": "简约ASCII",
+        "chars": "#+-. ",  # 5 级明暗：大颗粒海报感（吸收 ASCII-generator 明暗双梯思路）
+        "color": False,
+        "description": "大颗粒复古海报感，字符更少更粗",
+    },
     "blocks": {
         "name": "Unicode色块",
         "chars": "█▀▄",  # used with TrueColor ANSI
@@ -378,6 +384,11 @@ def _render_ascii(img, width, height, fg=None, bg=None, color_mode="mono"):
                         color_mode)
 
 
+def _render_ascii_lite(img, width, height, fg=None, bg=None, color_mode="mono"):
+    return _render_ramp(img, width, height, fg, bg,
+                        CHARSETS["ascii-lite"]["chars"], color_mode)
+
+
 def _render_shades(img, width, height, fg=None, bg=None, color_mode="mono"):
     return _render_ramp(img, width, height, fg, bg, CHARSETS["shades"]["chars"],
                         color_mode)
@@ -573,6 +584,7 @@ def _render_binary(img, width, height, fg=None, bg=None, color_mode="mono"):
 
 _RENDERERS = {
     "ascii": _render_ascii,
+    "ascii-lite": _render_ascii_lite,
     "blocks": _render_blocks,
     "braille": _render_braille,
     "geometric": _render_geometric,
