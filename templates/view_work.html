@@ -826,7 +826,7 @@
                 var btn = fmt === "mp4" ? document.getElementById("exportAnimBtn") : null;
                 if (fmt === "mp4" && btn) {
                     // 视频编码耗时较长：按钮进入等待态 + 预计时间
-                    var est = Math.max(5, Math.round((frames.length || 1) * curWidth * curHeight / 100000) + 3);
+                    var est = Math.max(8, Math.round((frames.length || 1) * curWidth * curHeight / 700000) + 12);
                     var oldText = btn.innerHTML;
                     btn.disabled = true;
                     btn.innerHTML = "⏳ 生成中…预计约 " + est + " 秒";

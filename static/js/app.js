@@ -1178,7 +1178,7 @@
       }
       if (fmt === "mp4") {
         // 实测 ~100k 字符格/秒（字节合成 + x264），加 3s 编码固定开销
-        var est = Math.max(5, Math.round((S.totalFrames || 1) * S.width * S.height / 100000) + 3);
+        var est = Math.max(8, Math.round((S.totalFrames || 1) * S.width * S.height / 700000) + 12);
         showModal("正在导出 MP4 视频", "预计约 " + est + " 秒，完成后自动下载…");
         fetch("/api/generate", {
           method: "POST", headers: { "Content-Type": "application/json" },

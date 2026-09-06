@@ -23,16 +23,14 @@ class VideoEncodeError(Exception):
 # PIL bitmap default (ugly but always available) when none can load.
 _BUNDLED_FONT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "static", "fonts", "web", "JetBrainsMono-VF.ttf")
+    "static", "fonts", "DejaVuSansMono.ttf")
 
 _FONT_CANDIDATES = [
-    # 内置 JetBrains Mono 优先：盲文/块字符/盒线/几何形状全覆盖——
-    # DejaVu Sans Mono 没有 Braille Patterns（盲文只在比例版 DejaVu Sans），
-    # consola 等系统字体同样缺，导出视频整屏豆腐块（2026-09-06 手机端报障）
+    # 内置 DejaVu Sans Mono（静态）优先：静态字体渲染比可变字体快 ~46 倍
+    # （JetBrains Mono VF 一次整行 draw.text 28ms → 514 帧导出 7 分钟，
+    # 2026-09-06 手机端/桌面端导出超时事故）。盲文已走矢量点阵，
+    # 不依赖字体字形；块/盒线/几何/灰度块 DejaVu 全覆盖。
     _BUNDLED_FONT,
-    os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "static", "fonts", "DejaVuSansMono.ttf"),
     # Windows
     "consola.ttf",
     "C:/Windows/Fonts/consola.ttf",
@@ -207,9 +205,24 @@ def frame_to_image(lines: list[str], font, char_w: int, char_h: int,
     - blocks: every cell is "▀" (top fg / bottom bg) → byte-level composite
       of the whole frame, no font rendering at all.
     - "█" full-block cells (binary) → byte-level composite.
-    - uniform-color lines (ramp charsets) → one draw.text per line.
+    - uniform-color lines (ramp charsets) → 字形条带缓存 + 字节拼装。
     Anything else falls back to per-cell drawing on the composed frame.
     """
+    _strip_cache: dict[tuple, bytes] = {}
+
+    def _glyph_strip(ch: str, color, bg) -> bytes:
+        key = (color, bg, ch)
+        hit = _strip_cache.get(key)
+        if hit is not None:
+            return hit
+        img = Image.new("RGB", (char_w, char_h), bg)
+        ImageDraw.Draw(img).text((0, 0), ch, fill=color, font=font)
+        data = img.tobytes()
+        if len(_strip_cache) > 8192:
+            _strip_cache.clear()
+        _strip_cache[key] = data
+        return data
+
     buf = bytearray(out_w * out_h * 3)
     bg_span = bytes(default_bg) * out_w
     for yy in range(out_h):
@@ -249,6 +262,25 @@ def frame_to_image(lines: list[str], font, char_w: int, char_h: int,
                 off = yy * out_w * 3
                 buf[off:off + len(span)] = span
             continue
+        fgs = {fg for fg, _, _ in cells}
+        bgs = {bg for _, bg, _ in cells}
+        text = "".join(chars)[:max_cells]
+        # uniform 非盲文行：字形条带拼装（每字符整格字节条带，行内拼接）
+        if len(fgs) <= 1 and len(bgs) <= 1 \
+                and not any(_is_braille(c) for c in text):
+            fg = next(iter(fgs)) if fgs else None
+            bg = next(iter(bgs)) if bgs else None
+            color = fg if fg is not None else default_fg
+            bg_fill = bg if bg is not None else default_bg
+            block = b"".join(_glyph_strip(c, color, bg_fill)
+                             for c in text)
+            row_w = len(text) * char_w * 3
+            for yy in range(y0, min(y0 + char_h, out_h)):
+                r = yy - y0
+                off = yy * out_w * 3
+                span = block[r * row_w:(r + 1) * row_w]
+                buf[off:off + len(span)] = span
+            continue
         text_lines.append((y, cells))
 
     img = Image.frombytes("RGB", (out_w, out_h), bytes(buf))
@@ -257,49 +289,50 @@ def frame_to_image(lines: list[str], font, char_w: int, char_h: int,
     draw = ImageDraw.Draw(img)
     for y, cells in text_lines:
         y0 = y * char_h
-        fgs = {fg for fg, _, _ in cells}
-        bgs = {bg for _, bg, _ in cells}
-        if len(fgs) <= 1 and len(bgs) <= 1:
-            # uniform color line → single draw.text call
-            fg = next(iter(fgs)) if fgs else None
-            bg = next(iter(bgs)) if bgs else None
-            color = fg if fg is not None else default_fg
-            bg_fill = bg if bg is not None else default_bg
-            if bg_fill != default_bg:
-                draw.rectangle(
-                    [0, y0, min(len(cells), max_cells) * char_w - 1, y0 + char_h - 1],
-                    fill=bg_fill,
-                )
-            text = "".join(c for _, _, c in cells)[:max_cells]
-            if any(_is_braille(c) for c in text):
-                # 盲文行：逐格矢量点阵（字体普遍缺 Braille Patterns）
-                for i, c in enumerate(text):
-                    if _is_braille(c):
-                        _draw_braille_cell(draw, c, i * char_w, y0,
-                                           char_w, char_h, color)
-                    else:
-                        draw.text((i * char_w, y0), c, fill=color, font=font)
-                continue
-            draw.text((0, y0), text, fill=color, font=font)
-            continue
-        # per-cell fallback (mixed colors within the line)
+        # 该阶段只剩两类行：含盲文（矢量点阵）或逐字符异色（原色）
+        # per-cell 行——同 (fg,bg) 连续段合并为一次 draw.text（游程合并，
+        # 输出与逐格绘制逐字节一致的前提：等宽字体步进 == char_w 整数格，
+        # 已由 runnable 守卫；DejaVu 在 10/14pt 实测步进恰为 6/8 整数）。
+        runnable = (font.getlength("M") == char_w)
         x = 0
-        for fg, bg, ch in cells:
-            if x >= max_cells:
-                break
+        i = 0
+        n = len(cells)
+        while i < n and x < max_cells:
+            fg, bg, ch = cells[i]
             color = fg if fg is not None else default_fg
             bg_fill = bg if bg is not None else default_bg
-            if bg_fill != default_bg:
-                draw.rectangle(
-                    [x * char_w, y0, (x + 1) * char_w - 1, y0 + char_h - 1],
-                    fill=bg_fill,
-                )
             if _is_braille(ch):
+                # 盲文格：矢量点阵单格绘制（不进游程）
+                if bg_fill != default_bg:
+                    draw.rectangle(
+                        [x * char_w, y0, (x + 1) * char_w - 1, y0 + char_h - 1],
+                        fill=bg_fill,
+                    )
                 _draw_braille_cell(draw, ch, x * char_w, y0,
                                    char_w, char_h, color)
+                x += 1
+                i += 1
+                continue
+            j = i
+            while (j < n and cells[j][0] == fg and cells[j][1] == bg
+                   and not _is_braille(cells[j][2])
+                   and x + (j - i) <= max_cells):
+                j += 1
+            run_len = j - i
+            if bg_fill != default_bg:
+                draw.rectangle(
+                    [x * char_w, y0, (x + run_len) * char_w - 1, y0 + char_h - 1],
+                    fill=bg_fill,
+                )
+            if runnable:
+                run_text = "".join(c for _, _, c in cells[i:j])
+                draw.text((x * char_w, y0), run_text, fill=color, font=font)
             else:
-                draw.text((x * char_w, y0), ch, fill=color, font=font)
-            x += 1
+                for k in range(i, j):
+                    draw.text((k * char_w, y0), cells[k][2],
+                              fill=color, font=font)
+            x += run_len
+            i = j
     return img
 
 
