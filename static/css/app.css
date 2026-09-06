@@ -1145,7 +1145,7 @@
 
         .features-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
             gap: var(--space-6);
             margin-top: var(--space-10);
         }
@@ -1743,7 +1743,7 @@
             display: block; transition: transform 0.5s ease;
         }
         .gallery-card:hover .gallery-card-img img { transform: scale(1.05); }
-        /* 作品类型角标：文字艺术作品（含图片艺术化）与动画作品区分 */
+        /* 作品类型角标：字符艺术作品（含图片艺术化）与动画作品区分 */
         .gallery-card-badge {
             position: absolute; top: 8px; right: 8px; z-index: 2;
             background: rgba(10, 14, 20, 0.82); border: 1px solid var(--green);
@@ -1915,7 +1915,7 @@
         }
         .gallery-tag-checkbox input { accent-color: var(--green); }
         /* 预设标签按页面互斥显隐（_gallery_modal 共享 include）：
-           文字艺术页显示 data-scope="text"，动画工坊显示 data-scope="anim"，
+           字符艺术页显示 data-scope="text"，动画工坊显示 data-scope="anim"，
            无 data-scope（ASCII art）两页共用 */
         body.page-text-art .gallery-tag-checkbox[data-scope="anim"] { display: none; }
         body:not(.page-text-art) .gallery-tag-checkbox[data-scope="text"] { display: none; }
@@ -2208,7 +2208,7 @@
             cursor: grab;
         }
 
-/* ═══════════ T33 文字艺术字：FIGlet 直转 + AI 双模式 ═══════════ */
+/* ═══════════ T33 字符艺术：FIGlet 直转 + 中文点阵 ═══════════ */
 .text-art {
     margin-top: var(--space-5);
     padding: var(--space-5);
@@ -2371,3 +2371,81 @@
 
 /* /v/ 文字作品元信息 */
 .text-work-meta { color: var(--text-dim); font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.5; }
+
+        /* ── /v/ 导出弹窗配色行（弹窗结构复用主页 .export-*） ── */
+        .export-theme-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: var(--space-5);
+        }
+        .export-theme-label {
+            color: var(--text-dim, #8b949e);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            letter-spacing: 1px;
+            margin-right: 2px;
+            text-transform: uppercase;
+        }
+        .export-theme-dot {
+            background: #333;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            height: 22px;
+            outline: 2px solid transparent;
+            outline-offset: 2px;
+            padding: 0;
+            transition: transform var(--transition-fast, 0.15s),
+                        outline-color var(--transition-fast, 0.15s);
+            width: 22px;
+        }
+        .export-theme-dot:hover { transform: scale(1.12); }
+        .export-theme-dot.selected { outline-color: var(--green, #00ff41); }
+
+        /* ── /v/ 渲染覆盖层提示：切风格保留旧画面 + 悬浮进度条 ── */
+        .animation-terminal .terminal { position: relative; }
+        .render-chip {
+            align-items: center;
+            background: rgba(10, 14, 20, 0.85);
+            border: 1px solid var(--border-active, rgba(0, 255, 65, 0.45));
+            border-radius: 999px;
+            color: var(--green, #00ff41);
+            display: inline-flex;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            padding: 4px 12px;
+            pointer-events: none;
+            position: absolute;
+            right: 16px;
+            top: 52px;
+            z-index: 6;
+        }
+        .render-chip[hidden] { display: none; }
+
+        /* ── 动画工坊区块（主页与字符艺术页共用，原在 text_art.css 导致主页缺失间距） ── */
+.studio-section { padding: var(--space-12) 0 var(--space-16); }
+.studio-block { padding-top: var(--space-10); }
+.studio-block + .studio-block {
+        border-top: 1px solid var(--border-dim);
+        margin-top: var(--space-10);
+}
+.studio-block:first-of-type { padding-top: 0; }
+.studio-sub {
+        color: var(--text-secondary);
+        font-family: var(--font-mono);
+        font-size: 15px;
+        font-weight: 500;
+        letter-spacing: 1px;
+        margin-bottom: var(--space-5);
+}
+.section-title-en {
+        color: var(--text-dim);
+        font-size: 15px;
+        font-weight: 400;
+        letter-spacing: 0;
+        margin-left: var(--space-2);
+        text-transform: uppercase;
+}
+

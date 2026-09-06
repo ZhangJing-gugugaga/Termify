@@ -6,7 +6,7 @@
     <title>{{ work.title }} · Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906e">
 </head>
 <body>
 <div id="toast"></div>
@@ -20,7 +20,7 @@
             </a>
             <ul class="nav-links">
                 <li><a href="/">动画工坊</a></li>
-                <li><a href="/text-art">文字艺术</a></li>
+                <li><a href="/text-art">字符艺术</a></li>
                 <li><a href="/gallery">画廊</a></li>
             </ul>
             <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
@@ -164,6 +164,7 @@
                             <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
                             <span class="frame-counter" id="frameCounter">0.0s / 0.0s</span>
                         </div>
+                        <div class="render-chip" id="renderChip" hidden>渲染中…</div>
                     </div>
                 </div>
                 <div class="output-panel" id="outputPanel">
@@ -176,7 +177,7 @@
                     </div>
                     <div id="textTools" hidden>
                         <div class="output-card">
-                            <div class="output-card-title">文字艺术字 / Text art</div>
+                            <div class="output-card-title">字符艺术 / Character art</div>
                             <div class="text-work-meta" id="textWorkMeta"></div>
                         </div>
                         <button class="download-btn" id="textCopyBtnV">
@@ -225,6 +226,41 @@
         </div>
     </div>
 
+    <!-- ═══════════ EXPORT MODAL（与主页一致的两步导出 + 配色选择） ═══════════ -->
+    <div class="export-backdrop" id="exportBackdrop" hidden>
+        <div class="export-modal" role="dialog" aria-modal="true" aria-labelledby="exportModalTitle">
+            <div class="export-modal-title" id="exportModalTitle">选择导出格式 / Choose export format</div>
+            <div class="export-options">
+                <button class="export-option selected" data-format="python" type="button">
+                    <span class="export-icon">.py</span>
+                    <span class="export-label"><b>Python 脚本</b><i>终端直接运行 / Runs in any terminal</i></span>
+                </button>
+                <button class="export-option" data-format="html" type="button">
+                    <span class="export-icon">.html</span>
+                    <span class="export-label"><b>HTML 页面</b><i>浏览器打开即播 / Plays in any browser</i></span>
+                </button>
+                <button class="export-option" data-format="mp4" type="button">
+                    <span class="export-icon">.mp4</span>
+                    <span class="export-label"><b>MP4 视频</b><i>微信/手机直接播放 / Plays anywhere, share-ready</i></span>
+                </button>
+            </div>
+            <div class="export-theme-row" id="exportThemeRow">
+                <span class="export-theme-label">配色 / Colors</span>
+                <button class="export-theme-dot selected" data-theme="saved" id="savedThemeDot" type="button" title="原作配色 / Original"></button>
+                <button class="export-theme-dot" data-theme="green" type="button" title="磷光绿" style="background:#33ff33"></button>
+                <button class="export-theme-dot" data-theme="cyan" type="button" title="冰蓝" style="background:#00d4ff"></button>
+                <button class="export-theme-dot" data-theme="amber" type="button" title="琥珀" style="background:#ffb000"></button>
+                <button class="export-theme-dot" data-theme="magenta" type="button" title="品红" style="background:#ff4fd8"></button>
+                <button class="export-theme-dot" data-theme="red" type="button" title="红" style="background:#ff3b30"></button>
+                <button class="export-theme-dot" data-theme="white" type="button" title="白" style="background:#e0e6ed"></button>
+            </div>
+            <div class="export-modal-actions">
+                <button class="export-cancel" id="exportCancelBtn" type="button">取消 / Cancel</button>
+                <button class="export-confirm" id="exportConfirmBtn" type="button">开始导出 / Start export</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══════════ FOOTER ═══════════ -->
     <footer>
         <div class="container">
@@ -244,7 +280,7 @@
         <div class="tweak-group"><div class="tweak-label">主题色</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button><button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button><button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button></div></div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260903e"></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260906a"></script>
     <script>
         // ═══════════ Embedded work data ═══════════
         // tojson：JS 字符串上下文的安全转义（反斜杠/引号/HTML 结束标签全覆盖）。
@@ -343,8 +379,21 @@
             var pauseBtn = document.getElementById("pauseBtn");
             var previewTitle = document.getElementById("previewTitle");
             var latestReq = 0;
+            // 本地渲染缓存（缩放 RGBA + 亮度）：换风格时跨风格复用，
+            // 换尺寸（滑杆）时整体作废重建。结构与 termify-render 的
+            // cachePut 契约一致（map/used，budget 首写时自动补默认值）。
+            var renderCache = { map: {}, used: 0 };
 
             // ── helpers ──
+            function setRenderChip(text) {
+                // 切风格时保留旧画面，用右上角悬浮条提示渲染进度
+                //（旧版把预览清成 spinner——"渲染中/播放中交替闪烁"的根源）
+                var chip = document.getElementById("renderChip");
+                if (!chip) return;
+                if (!text) { chip.hidden = true; return; }
+                chip.hidden = false;
+                chip.textContent = text;
+            }
             function toast(msg) {
                 var el = document.getElementById("toast"); if (!el) return;
                 el.textContent = msg; el.classList.add("show");
@@ -470,12 +519,12 @@
             // ── load preview ──
             // 方案B：视频作品一次性取回源帧（base64 JPEG），此后全部切换本地渲染
             var IS_VIDEO = params.kind === "video";
-            var srcFrames = null, srcLoading = false;
+            var srcFrames = null, srcLoading = false, srcLoadFailed = false;
             function ensureSourceFrames() {
                 if (srcFrames || srcLoading || !IS_VIDEO) return;
                 srcLoading = true;
                 fetch("/api/gallery/source-frames/" + WORK_ID).then(function (r) { return r.json(); }).then(function (d) {
-                    if (!d.ok) { srcLoading = false; return; }
+                    if (!d.ok) { srcLoading = false; srcLoadFailed = true; loadPreview(); return; }
                     var jobs = d.frames.map(function (b64) {
                         return new Promise(function (res) {
                             var img = new Image();
@@ -494,7 +543,7 @@
                         srcLoading = false;
                         loadPreview();  // 源帧就绪 → 之后的切换全部本地渲染
                     });
-                }).catch(function () { srcLoading = false; });
+                }).catch(function () { srcLoading = false; srcLoadFailed = true; loadPreview(); });
             }
             function fitViewFontSize() {
                 // 窗口贴合内容（与主页同算法）：高度按网格像素比宽定高，
@@ -567,21 +616,36 @@
             function loadPreview() {
                 if (IS_TEXT) { loadTextPreview(); return; }
                 var myId = ++latestReq;
-                preview.style.transition = "opacity 0.15s ease";
-                preview.style.opacity = "0.5";
-                preview.innerHTML = '<div class="view-loading"><div class="view-spinner"></div><span>' +
-                    (srcFrames ? "渲染中..." : "加载中...") + '</span></div>';
-                // 本地渲染路径：源帧已在内存，瞬时完成
+                var hasContent = frames.length > 0;
+                if (hasContent) {
+                    // 已有画面：暂停播放但保留旧帧，仅显示渲染提示（不闪黑）
+                    pausePlayer();
+                    setRenderChip("渲染中…");
+                } else {
+                    preview.style.transition = "opacity 0.15s ease";
+                    preview.style.opacity = "0.5";
+                    preview.innerHTML = '<div class="view-loading"><div class="view-spinner"></div><span>加载中...</span></div>';
+                }
+                // 视频作品：源帧未就绪时直接等本地渲染路径——不再先拉服务端
+                // 全帧 JSON 再整体重渲（首载卡顿 + 双重渲染闪烁的根源）；
+                // 源帧拉取失败时由 ensureSourceFrames 置 srcLoadFailed 回落服务端。
+                if (IS_VIDEO && !srcFrames && !srcLoadFailed) return;
+                // 本地渲染路径：源帧已在内存
                 if (srcFrames && srcFrames.bitmaps.length) {
                     TermifyRender.renderFrames(srcFrames.bitmaps, curCharset, curWidth, curHeight,
-                        viewerRenderOpts(),
+                        (function (o) {
+                            o.cache = renderCache;
+                            // 用户再切一次风格/尺寸时放弃本轮渲染（新一轮会重置）
+                            o.shouldCancel = function () { return myId !== latestReq; };
+                            return o;
+                        })(viewerRenderOpts()),
                         function (done, total) {
                             if (myId === latestReq) {
-                                preview.innerHTML = '<div class="view-loading"><span>渲染中 ' +
-                                    Math.round(done / total * 100) + '%</span></div>';
+                                setRenderChip("渲染中 " + Math.round(done / total * 100) + "%");
                             }
                         }).then(function (lf) {
-                            if (myId !== latestReq) return;
+                            if (!lf || myId !== latestReq) return;
+                            setRenderChip(null);
                             preview.style.opacity = "1";
                             frames = lf;
                             interval = srcFrames.interval;
@@ -597,6 +661,7 @@
                 var url = "/api/gallery/preview/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight + viewerQueryColors();
                 fetch(url).then(function (r) { return r.json(); }).then(function (d) {
                     if (myId !== latestReq) return;
+                    setRenderChip(null);
                     preview.style.opacity = "1";
                     if (d.error) { preview.textContent = "错误: " + d.error; return; }
                     frames = d.frames || [];
@@ -609,6 +674,7 @@
                     if (frames.length >= 2) startPlayer();
                 }).catch(function () {
                     if (myId !== latestReq) return;
+                    setRenderChip(null);
                     preview.style.opacity = "1";
                     preview.textContent = "加载失败";
                 });
@@ -653,7 +719,7 @@
                     pending = cols;
                 });
                 slider.addEventListener("change", function () {
-                    if (pending !== null) { loadPreview(); pending = null; }
+                    if (pending !== null) { renderCache = {}; loadPreview(); pending = null; }
                 });
                 // 初始值 = 作品保存的列数
                 slider.value = String(curWidth);
@@ -671,9 +737,73 @@
             if (playBtn) playBtn.addEventListener("click", startPlayer);
             if (pauseBtn) pauseBtn.addEventListener("click", pausePlayer);
 
-            // ── downloads ──
-            function doDownload(fmt, btn) {
-                var url = "/api/gallery/download/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight + "&format=" + fmt + viewerQueryColors();
+            // ── downloads：两步导出弹窗 + 配色选择（对齐主页导出体验） ──
+            var THEME_FG = {
+                green: [51, 255, 51], cyan: [0, 212, 255], amber: [255, 176, 0],
+                magenta: [255, 79, 216], red: [255, 59, 48], white: [224, 230, 237]
+            };
+            var curTheme = "saved";
+            var pendingFmt = "python";
+            function markExportFormat(fmt) {
+                document.querySelectorAll("#exportBackdrop .export-option").forEach(function (o) {
+                    o.classList.toggle("selected", o.getAttribute("data-format") === fmt);
+                });
+            }
+            function markThemeDot(key) {
+                document.querySelectorAll("#exportThemeRow .export-theme-dot").forEach(function (d) {
+                    d.classList.toggle("selected", d.getAttribute("data-theme") === key);
+                });
+            }
+            // 原作配色点用作品的实际前景色填充（无 fg 时回退默认绿）
+            (function initSavedDot() {
+                var dot = document.getElementById("savedThemeDot");
+                if (!dot) return;
+                var c = isRgbArr(params.fg) ? params.fg : [51, 255, 51];
+                dot.style.background = "rgb(" + c.join(",") + ")";
+            })();
+            function exportColorsQuery() {
+                // 选中主题 → 覆盖 fg（mono）；未选（saved）→ 沿用作品保存配色
+                if (curTheme !== "saved" && THEME_FG[curTheme]) {
+                    return "&fg=rgb(" + THEME_FG[curTheme].join(",") + ")";
+                }
+                return viewerQueryColors();
+            }
+            function openExportModal(fmt) {
+                pendingFmt = fmt || "python";
+                var backdrop = document.getElementById("exportBackdrop");
+                if (!backdrop) { doDownloadNow(pendingFmt); return; }
+                markExportFormat(pendingFmt);
+                backdrop.hidden = false;
+            }
+            document.querySelectorAll("#exportBackdrop .export-option").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    pendingFmt = btn.getAttribute("data-format");
+                    markExportFormat(pendingFmt);
+                });
+            });
+            document.querySelectorAll("#exportThemeRow .export-theme-dot").forEach(function (dot) {
+                dot.addEventListener("click", function () {
+                    curTheme = dot.getAttribute("data-theme") || "saved";
+                    markThemeDot(curTheme);
+                });
+            });
+            var exportCancelBtn = document.getElementById("exportCancelBtn");
+            if (exportCancelBtn) exportCancelBtn.addEventListener("click", function () {
+                document.getElementById("exportBackdrop").hidden = true;
+            });
+            var exportBackdropEl = document.getElementById("exportBackdrop");
+            if (exportBackdropEl) exportBackdropEl.addEventListener("click", function (e) {
+                if (e.target === exportBackdropEl) exportBackdropEl.hidden = true;
+            });
+            var exportConfirmBtn = document.getElementById("exportConfirmBtn");
+            if (exportConfirmBtn) exportConfirmBtn.addEventListener("click", function () {
+                exportBackdropEl.hidden = true;
+                doDownloadNow(pendingFmt);
+            });
+
+            function doDownloadNow(fmt) {
+                var url = "/api/gallery/download/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight + "&format=" + fmt + exportColorsQuery();
+                var btn = fmt === "mp4" ? document.getElementById("downloadMp4Btn") : null;
                 if (fmt === "mp4" && btn) {
                     // 视频编码耗时较长：按钮进入等待态 + 预计时间
                     var est = Math.max(5, Math.round((frames.length || 1) * curWidth * curHeight / 100000) + 3);
@@ -699,10 +829,10 @@
                 }
                 window.location.href = url;
             }
-            document.getElementById("downloadPyBtn").addEventListener("click", function () { doDownload("python"); });
-            document.getElementById("downloadHtmlBtn").addEventListener("click", function () { doDownload("html"); });
+            document.getElementById("downloadPyBtn").addEventListener("click", function () { openExportModal("python"); });
+            document.getElementById("downloadHtmlBtn").addEventListener("click", function () { openExportModal("html"); });
             var _mp4Btn = document.getElementById("downloadMp4Btn");
-            if (_mp4Btn) _mp4Btn.addEventListener("click", function () { doDownload("mp4", _mp4Btn); });
+            if (_mp4Btn) _mp4Btn.addEventListener("click", function () { openExportModal("mp4"); });
 
             // ── banner ──
             document.getElementById("viewBannerClose").addEventListener("click", function () {

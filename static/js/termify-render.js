@@ -473,6 +473,9 @@
           }
         } catch (e) { reject(e); return; }
         if (onProgress) onProgress(i, sources.length);
+        // 取消检查：调用方（如 /v/ 页换风格）请求放弃时提前退出，
+        // 避免多个渲染循环并行抢主线程——切换卡顿的根源之一。
+        if (opts.shouldCancel && opts.shouldCancel()) { resolve(null); return; }
         if (i < sources.length) { setTimeout(step, 0); return; }
         resolve(frames);
       }
