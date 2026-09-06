@@ -915,18 +915,21 @@ def text_convert():
                 cjk_height = int(data.get("height"))
             except (TypeError, ValueError):
                 cjk_height = _textart_mod.CJK_DEFAULT_HEIGHT
-            cjk_height = max(10, min(40, cjk_height))
+            cjk_height = max(10, min(64, cjk_height))
             art = _textart_mod.render_cjk_ttf(
                 data.get("text"), data.get("font"), cjk_height)
         except _textart_mod.TextArtError as exc:
             return jsonify({"error": str(exc)}), 400
         cols, rows = _textart_mod.art_dims(art)
+        clean_len = len(_textart_mod.filter_cjk_text(data.get("text")))
+        effective_h = min(cjk_height, 160 // (2 * clean_len)) if clean_len else cjk_height
         avail = {f["slug"] for f in _textart_mod.cjk_available_fonts()
                  if f["available"]}
         font = data.get("font") if data.get("font") in avail \
             else _textart_mod.CJK_DEFAULT_FONT
         return jsonify({"ok": True, "mode": "cjk", "art": art,
                         "cols": cols, "rows": rows, "font": font,
+                        "height": effective_h,
                         "text": _textart_mod.filter_cjk_text(
                             data.get("text"))})
     try:
@@ -1215,6 +1218,33 @@ def _tmp_save(img, ext: str) -> str:
     with os.fdopen(fd, "wb") as fh:
         img.save(fh, format="PNG")
     return path
+
+
+@app.route("/api/text/terminal-command", methods=["POST"])
+def text_terminal_command():
+    """字符画 → python -c 单行命令（base64 免疫转义差异）。
+
+    {art, theme} → {cmd}。theme 给定时无色 art 按主题着色；原色 art
+    已含 TrueColor 转义则原样嵌入，终端直接显原色。
+    """
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "text-convert", per_minute=120)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    try:
+        # keep_ansi：原色 art 自带 SGR 转义，不能剥
+        art = _textart_mod.validate_stored_art(data.get("art"), keep_ansi=True)
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    theme = data.get("theme")
+    if theme is not None and (not isinstance(theme, str)
+                              or theme not in _textart_mod.ART_THEMES):
+        theme = _textart_mod.DEFAULT_THEME
+    return jsonify({"ok": True,
+                    "cmd": _textart_mod.render_terminal_command(art, theme)})
 
 
 @app.route("/api/gallery/upload-text", methods=["POST"])

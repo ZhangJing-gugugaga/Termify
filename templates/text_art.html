@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>字符艺术 · Termify</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906g">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260906g">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906h">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260906h">
 </head>
 <body class="page-text-art">
     <!-- ═══════════ NAVIGATION ═══════════ -->
@@ -63,11 +63,11 @@
                         <div>
                             <label class="ta-label" for="taCjkHeight">字符高度</label>
                             <input type="number" class="ta-select" id="taCjkHeight"
-                                   min="10" max="40" value="16">
+                                   min="10" max="64" value="16">
                         </div>
                         <div>
                             <span class="ta-label">字符宽度</span>
-                            <p class="ta-hint" style="margin-top:10px">自动（= 高度 × 2，终端 1:2 比例）</p>
+                            <p class="ta-hint" style="margin-top:10px">自动（= 高度 × 2，终端 1:2 比例）。10–64：过高时按文本长度自动收缩，过高可能导致导出模糊、体验不佳</p>
                         </div>
                     </div>
 
@@ -222,6 +222,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260906g" defer></script>
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260906h" defer></script>
 </body>
 </html>

@@ -249,8 +249,10 @@
     if (taResultMeta) taResultMeta.hidden = true;
     skeleton();
     var body = { text: text, font: taFont ? taFont.value : "" };
-    // 中文点阵：行高随输入（10-40 行），英文 FIGlet 尺寸由字体决定
+    // 中文点阵：行高随输入（10-64 行），英文 FIGlet 尺寸由字体决定
+    var requestedH = 0;
     if (fontSource === "cjk" && cjkHeightInput && cjkHeightInput.value) {
+      requestedH = parseInt(cjkHeightInput.value, 10) || 0;
       body.height = cjkHeightInput.value;
     }
     fetch("/api/text/convert", {
@@ -264,6 +266,12 @@
       showArt(d);
       if (d.mode === "cjk") {
         hideFontWall();  // 中文路径无字体墙
+        // 高度被按文本长度自动收缩时给出提示（上限 64，过高会超宽度红线）
+        if (requestedH >= 10 && d.height &&
+            requestedH - d.height >= 2) {
+          toast("字符高度过高，已按文本长度自动收缩到 " + d.height +
+                " 行（过高可能超出宽度限制、体验不佳）");
+        }
       } else {
         loadFontWall(text);  // FIGlet 成功 → 字体墙点亮，点卡片即换
       }
@@ -343,18 +351,22 @@
     }).catch(function () { toast("网络异常，请重试"); });
   });
 
-  /* 终端命令复制（python -c，base64 免疫引号/换行，跨平台一致） */
+  /* 终端命令复制（python -c，base64 免疫引号/换行；后端按主题着色） */
   var termBtn = byId("taTermBtn");
   if (termBtn) termBtn.addEventListener("click", function () {
     if (!TA.art) { toast("请先生成 / Generate first"); return; }
-    var b64 = btoa(unescape(encodeURIComponent(TA.art)));
-    var cmd = 'python -c "import sys,base64;sys.stdout.write(' +
-      "base64.b64decode('" + b64 + "').decode('utf-8'))\"";
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(cmd).then(
-        function () { toast("命令已复制，粘贴到任何终端运行"); },
-        function () { toast("复制失败 / Copy failed"); });
-    }
+    fetch("/api/text/terminal-command", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ art: TA.art, theme: TA.theme || currentTheme })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.error) { toast(d.error); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(d.cmd).then(
+          function () { toast("命令已复制（含配色），粘贴到任何终端运行"); },
+          function () { toast("复制失败 / Copy failed"); });
+      }
+    }).catch(function () { toast("网络异常，请重试"); });
   });
 
   /* PNG 下载（走后端渲染，配色随主题） */

@@ -163,6 +163,7 @@ def art_dims(art: str) -> tuple[int, int]:
 CJK_MAX_CHARS = 8           # 单次渲染汉字上限（1:2 比例 × 160 列红线推出，
                             # 与 render_cjk_ttf 的行高收缩公式一致）
 CJK_DEFAULT_HEIGHT = 16     # 单字占的字符画行数（列数自动 = 2×行数，见下）
+CJK_MAX_HEIGHT = 64         # 字符高度上限（过高时按文本长度自动收缩）
 # (key, 展示名, 字体候选)。候选按序探测，首个存在者生效（Win/Linux/macOS）。
 CJK_FONTS: list[tuple[str, str, tuple[str, ...]]] = [
     ("songti", "宋体", (
@@ -288,7 +289,7 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
         h = int(height)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         h = CJK_DEFAULT_HEIGHT
-    h = max(10, min(40, h))
+    h = max(10, min(CJK_MAX_HEIGHT, h))
     # 终端字符宽高比 ≈ 1:2 → 每字列数 = 2×行数，字形在终端里才是
     # 正常比例（此前 cell_w = h/2 是把像素比误当字符比，纵向拉长糊掉）
     # 宽度红线：1:2 比例下 12 字 × 默认行高 = 384 列 > MAX_ART_COLS(200)，
@@ -443,14 +444,21 @@ def render_ansi_art(art: str, theme: object = DEFAULT_THEME) -> str:
     return "\n".join(on + ln + off for ln in art.split("\n"))
 
 
-def render_terminal_command(art: str) -> str:
+def render_terminal_command(art: str, theme: object = None) -> str:
     """Art → python -c 单行命令：粘贴到任意终端（含 Windows cmd）即显示。
 
     base64 编码完全免疫引号/换行/反斜杠/控制字符的 shell 转义差异，
     任意平台（cmd / PowerShell / POSIX sh）行为一致。
+
+    theme 给定时按主题着色（无色 art）；原色 art 已含转义则原样嵌入。
+    theme 缺省保持旧行为（原样）。
     """
     import base64 as _b64
-    b64 = _b64.b64encode(art.encode("utf-8")).decode("ascii")
+    payload = art
+    if theme is not None and "" not in art:
+        # 无色 art 按主题整行着色；已含 TrueColor 转义（原色作品）则原样嵌入
+        payload = render_ansi_art(art, theme)
+    b64 = _b64.b64encode(payload.encode("utf-8")).decode("ascii")
     return ('python -c "import sys,base64;'
             f'sys.stdout.write(base64.b64decode(\'{b64}\').decode(\'utf-8\'))"')
 

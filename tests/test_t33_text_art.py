@@ -265,3 +265,75 @@ def test_upload_text_validation_and_rate(client):
     big = "\n".join("x" * 150 for _ in range(130))
     resp = client.post("/api/gallery/upload-text", json={"art": big})
     assert resp.status_code == 400
+
+
+# ── 终端命令导出：主题着色 + 原色直通 ─────────────────────────
+# 回归：终端命令曾直接 base64 原始 art（无 ANSI）——粘贴到终端全白。
+
+def _cmd_payload(cmd: str) -> str:
+    import base64
+    inner = cmd.split("b64decode('")[1].split("')")[0]
+    return base64.b64decode(inner).decode("utf-8")
+
+
+def test_render_terminal_command_theme_colors():
+    from termify import textart
+
+    cmd = textart.render_terminal_command("HI\nYO", "amber")
+    payload = _cmd_payload(cmd)
+    assert "38;2;255;176;0" in payload  # amber 主题 RGB
+
+
+def test_render_terminal_command_source_art_passthrough():
+    from termify import textart
+
+    src = "\x1b[38;2;9;8;7mX\x1b[0m"
+    payload = _cmd_payload(textart.render_terminal_command(src, "green"))
+    assert payload == src  # 原色 art 原样嵌入，不被主题覆写
+
+
+def test_render_terminal_command_no_theme_plain():
+    from termify import textart
+
+    assert _cmd_payload(textart.render_terminal_command("HI\nYO")) == "HI\nYO"
+
+
+def test_terminal_command_endpoint(client):
+    resp = client.post("/api/text/terminal-command",
+                       json={"art": "HI\nWORLD", "theme": "cyan"})
+    assert resp.status_code == 200, resp.data
+    cmd = json.loads(resp.data)["cmd"]
+    assert cmd.startswith("python -c")
+    assert "38;2;0;212;255" in _cmd_payload(cmd)  # cyan 主题 RGB
+
+
+def test_terminal_command_endpoint_source_art(client):
+    art = "\x1b[38;2;9;8;7mX\x1b[0m"
+    resp = client.post("/api/text/terminal-command",
+                       json={"art": art, "theme": "green"})
+    assert resp.status_code == 200
+    assert _cmd_payload(json.loads(resp.data)["cmd"]) == art
+
+
+# ── 字符高度：上限 64 + 超限自动收缩提示依据 ────────────────────
+
+def test_convert_cjk_height_upper_limit(client):
+    resp = client.post("/api/text/convert",
+                       json={"text": "龙", "height": 64})
+    d = json.loads(resp.data)
+    assert d["ok"] and d["height"] == 64
+    assert 56 <= d["rows"] <= 64
+
+
+def test_convert_cjk_height_over_limit_clamped(client):
+    resp = client.post("/api/text/convert",
+                       json={"text": "龙", "height": 100})
+    d = json.loads(resp.data)
+    assert d["height"] == 64
+
+
+def test_convert_cjk_height_auto_shrink_for_long_text(client):
+    resp = client.post("/api/text/convert",
+                       json={"text": "你好世界万物更新", "height": 64})
+    d = json.loads(resp.data)
+    assert d["height"] == 10  # 8 字 × 2 列/行 → 收缩到宽度红线内
