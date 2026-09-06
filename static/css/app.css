@@ -2449,3 +2449,20 @@
         text-transform: uppercase;
 }
 
+
+        /* ── /v/ 彩色帧 canvas 播放（替代上万 span 的 innerHTML 路径） ── */
+        .frame-canvas {
+            display: block;
+            height: 100%;
+            image-rendering: pixelated;
+            width: 100%;
+        }
+
+        /* ── /v/ 配色面板提示行（palette-row/palette-btn 复用主页样式） ── */
+        .palette-hint {
+            color: var(--text-dim, #8b949e);
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.5px;
+            margin-top: var(--space-2);
+        }

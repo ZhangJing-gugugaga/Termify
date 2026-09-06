@@ -6,7 +6,7 @@
     <title>{{ work.title }} · Termify</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906f">
 </head>
 <body>
 <div id="toast"></div>
@@ -71,6 +71,16 @@
 @@##%%**##@@
 @@@####@@@@</div>
                     <div class="style-info"><div class="style-name">经典ASCII灰度</div><div class="style-desc">最复古，任何终端可显示</div></div>
+                </div>
+                <div class="style-card" data-style="ascii-lite">
+                    <div class="style-preview ascii">.#####++++..
+##++    ++##
+#+-      -+#
+#+-      -+#
+#+--    --+#
+.##+    ++#.
+..###++++...</div>
+                    <div class="style-info"><div class="style-name">简约ASCII</div><div class="style-desc">大颗粒海报感，字符更粗</div></div>
                 </div>
                 <div class="style-card" data-style="blocks">
                     <div class="style-preview blocks">████████████
@@ -168,12 +178,16 @@
                     </div>
                 </div>
                 <div class="output-panel" id="outputPanel">
-                    <div class="output-card" id="animExports">
-                        <div class="output-card-title">输出格式</div>
-                        <div class="format-options view-format-options">
-                            <div class="format-option selected" data-format="python"><div class="format-radio"></div><div class="format-label"><div class="format-label-name">Python 脚本</div><div class="format-label-desc">python play.py 直接运行</div></div><div class="format-icon">.py</div></div>
-                            <div class="format-option" data-format="html"><div class="format-radio"></div><div class="format-label"><div class="format-label-name">HTML 页面</div><div class="format-label-desc">浏览器打开即播放</div></div><div class="format-icon">.html</div></div>
+                    <div class="output-card" id="animPaletteCard">
+                        <div class="output-card-title">配色 / COLOR SCHEME</div>
+                        <div class="palette-row" id="viewPaletteRow">
+                            <button class="palette-btn active" data-vtheme="saved" id="savedPaletteBtn" title="作品保存的配色 / Saved colors">原作</button>
+                            <button class="palette-btn" data-vtheme="white" title="白字黑底 / White on black">黑白</button>
+                            <button class="palette-btn" data-vtheme="green" title="磷光绿 / Phosphor green">磷光绿</button>
+                            <button class="palette-btn" data-vtheme="amber" title="琥珀橘 / Amber orange">琥珀橘</button>
+                            <button class="palette-btn" data-vtheme="cyan" title="冰蓝 / Ice blue">冰蓝</button>
                         </div>
+                        <div class="palette-hint">配色实时作用于预览与导出 / Colors apply to preview &amp; exports</div>
                     </div>
                     <div id="textTools" hidden>
                         <div class="output-card">
@@ -189,20 +203,10 @@
                             ⬇ 下载 .txt
                         </button>
                     </div>
-                    <div id="animDownloads">
-                        <button class="download-btn" id="downloadPyBtn">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            ⬇ 下载 .py
-                        </button>
-                        <button class="download-btn" id="downloadHtmlBtn" style="margin-top:8px;">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            ⬇ 下载 .html
-                        </button>
-                        <button class="download-btn" id="downloadMp4Btn" style="margin-top:8px;">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            ⬇ 下载 .mp4 视频
-                        </button>
-                    </div>
+                    <button class="download-btn" id="exportAnimBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        ⬇ 导出动画 / Export animation
+                    </button>
                 </div>
             </div>
         </div>
@@ -244,16 +248,6 @@
                     <span class="export-label"><b>MP4 视频</b><i>微信/手机直接播放 / Plays anywhere, share-ready</i></span>
                 </button>
             </div>
-            <div class="export-theme-row" id="exportThemeRow">
-                <span class="export-theme-label">配色 / Colors</span>
-                <button class="export-theme-dot selected" data-theme="saved" id="savedThemeDot" type="button" title="原作配色 / Original"></button>
-                <button class="export-theme-dot" data-theme="green" type="button" title="磷光绿" style="background:#33ff33"></button>
-                <button class="export-theme-dot" data-theme="cyan" type="button" title="冰蓝" style="background:#00d4ff"></button>
-                <button class="export-theme-dot" data-theme="amber" type="button" title="琥珀" style="background:#ffb000"></button>
-                <button class="export-theme-dot" data-theme="magenta" type="button" title="品红" style="background:#ff4fd8"></button>
-                <button class="export-theme-dot" data-theme="red" type="button" title="红" style="background:#ff3b30"></button>
-                <button class="export-theme-dot" data-theme="white" type="button" title="白" style="background:#e0e6ed"></button>
-            </div>
             <div class="export-modal-actions">
                 <button class="export-cancel" id="exportCancelBtn" type="button">取消 / Cancel</button>
                 <button class="export-confirm" id="exportConfirmBtn" type="button">开始导出 / Start export</button>
@@ -280,7 +274,7 @@
         <div class="tweak-group"><div class="tweak-label">主题色</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button><button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button><button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button></div></div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260906a"></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260906b"></script>
     <script>
         // ═══════════ Embedded work data ═══════════
         // tojson：JS 字符串上下文的安全转义（反斜杠/引号/HTML 结束标签全覆盖）。
@@ -306,7 +300,6 @@
             var curCharset = params.charset || "blocks";
             var curWidth = params.width || 80;
             var curHeight = params.height || 24;
-            var curFormat = "python";
 
             if (IS_TEXT) {
                 var _stylesSection = document.getElementById("styles");
@@ -315,16 +308,16 @@
                     var el = document.getElementById(id);
                     if (el) el.style.display = "none";
                 });
-                var _exports = document.getElementById("animExports");
+                var _paletteCard = document.getElementById("animPaletteCard");
+                if (_paletteCard) _paletteCard.style.display = "none";
+                var _exports = document.getElementById("exportAnimBtn");
                 if (_exports) _exports.style.display = "none";
-                var _downloads = document.getElementById("animDownloads");
-                if (_downloads) _downloads.style.display = "none";
                 var _tools = document.getElementById("textTools");
                 if (_tools) _tools.hidden = false;
                 var _meta = document.getElementById("textWorkMeta");
                 if (_meta) {
                     _meta.textContent = (params.font ? params.font + " · " : "") +
-                        curWidth + "×" + curHeight + " · 静态文字作品";
+                        curWidth + "×" + curHeight + " · 静态字符作品";
                 }
             }
             function textArtString() {
@@ -354,12 +347,18 @@
             }
             function viewerRenderOpts() {
                 var o = { fg: null, bg: null };
-                if (params.color === "source" || params.color === "source256") {
-                    o.colorMode = "source";
-                } else {
-                    if (isRgbArr(params.fg)) o.fg = params.fg;
-                    if (isRgbArr(params.bg)) o.bg = params.bg;
+                var savedSource = params.color === "source" || params.color === "source256";
+                if (curTheme === "saved") {
+                    if (savedSource) {
+                        o.colorMode = "source";
+                    } else {
+                        if (isRgbArr(params.fg)) o.fg = params.fg;
+                        if (isRgbArr(params.bg)) o.bg = params.bg;
+                    }
+                    return o;
                 }
+                var t = THEME_COLORS[curTheme];
+                if (t) { o.fg = t.fg; o.bg = t.bg; }
                 return o;
             }
             function viewerQueryColors() {
@@ -370,7 +369,7 @@
                 return q;
             }
 
-            var frames = [], htmlFrames = [], interval = 0.1, totalFrames = 0;
+            var frames = [], interval = 0.1, totalFrames = 0;
             var currentFrame = 0, playing = false, rafId = null, lastFrameTime = 0;
             var preview = document.getElementById("animPreview");
             var progressFill = document.getElementById("progressFill");
@@ -402,52 +401,91 @@
             }
             // 存储型 XSS 防线：用户可控字符串（tags 等）插进 innerHTML 前转义。
             // 含引号转义，属性/文本上下文都不可逃逸；横幅区 title/description/author
-            // 走 Jinja 自动转义，ANSI 帧走 ansiToHtml 内部转义，此处兜底全页面。
+            // 走 Jinja 自动转义，ANSI 帧走 canvas 绘制（paintAnsiFrame），此处兜底全页面。
             function escapeHtml(t) {
                 return String(t == null ? "" : t)
                     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
                     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
             }
-            function ansiToHtml(text) {
-                var fg = null, bg = null, out = "";
-                var toks = text.split(/(\x1b\[[0-9;]*m)/);
-                var buf = "";
-                function flush() {
-                    if (!buf) return;
-                    var esc = escapeHtml(buf);
-                    if (fg || bg) {
-                        var st = [];
-                        if (fg) st.push("color:" + fg);
-                        if (bg) st.push("background-color:" + bg);
-                        out += '<span style="' + st.join(";") + '">' + esc + "</span>";
-                    } else { out += esc; }
-                    buf = "";
+            // ── 彩色帧 canvas 播放：ANSI 帧不再拼上万 span 的 innerHTML
+            //    （每帧重排是 blocks 原色播放时滑动/点击卡顿的根源），
+            //    改为在 <canvas> 上按格画矩形/字形，单帧绘制仅几毫秒。 ──
+            var frameCanvas = null;
+            var CELL_W = 8, CELL_H = 16;  // 画布格子分辨率，CSS 拉伸到终端窗
+            function ensureFrameCanvas() {
+                if (!frameCanvas) {
+                    frameCanvas = document.createElement("canvas");
+                    frameCanvas.className = "frame-canvas";
                 }
-                for (var i = 0; i < toks.length; i++) {
-                    var t = toks[i]; if (!t) continue;
-                    if (/^\x1b\[[0-9;]*m$/.test(t)) {
-                        var inner = t.slice(2, -1);
-                        if (inner === "0") { fg = null; bg = null; }
-                        else if (inner === "39") { fg = "#c9d1d9"; }
-                        else if (inner === "49") { bg = "#0a0e14"; }
-                        else if (inner.indexOf("38;2;") === 0) { var p = inner.split(";"); fg = "rgb(" + p[2] + "," + p[3] + "," + p[4] + ")"; }
-                        else if (inner.indexOf("48;2;") === 0) { var p = inner.split(";"); bg = "rgb(" + p[2] + "," + p[3] + "," + p[4] + ")"; }
-                        else if (inner.indexOf("38;5;") === 0) { var p = inner.split(";"); var cf = xterm256Rgb(parseInt(p[2], 10)); fg = "rgb(" + cf[0] + "," + cf[1] + "," + cf[2] + ")"; }
-                        else if (inner.indexOf("48;5;") === 0) { var p = inner.split(";"); var cb = xterm256Rgb(parseInt(p[2], 10)); bg = "rgb(" + cb[0] + "," + cb[1] + "," + cb[2] + ")"; }
-                    } else { buf += t; flush(); }
+                if (frameCanvas.width !== curWidth * CELL_W ||
+                    frameCanvas.height !== curHeight * CELL_H) {
+                    frameCanvas.width = curWidth * CELL_W;
+                    frameCanvas.height = curHeight * CELL_H;
                 }
-                flush();
-                return out;
+                if (frameCanvas.parentNode !== preview) {
+                    preview.textContent = "";
+                    preview.appendChild(frameCanvas);
+                }
+                return frameCanvas;
+            }
+            function paintAnsiFrame(lines) {
+                var cv = ensureFrameCanvas();
+                var ctx = cv.getContext("2d");
+                ctx.clearRect(0, 0, cv.width, cv.height);
+                ctx.font = Math.floor(CELL_H * 0.82) + 'px "JetBrains Mono", Consolas, monospace';
+                ctx.textBaseline = "top";
+                var defFg = textFgColor() || "#c9d1d9";
+                for (var y = 0; y < lines.length && y < curHeight; y++) {
+                    var fg = null, bg = null, x = 0;
+                    var toks = lines[y].split(/(\x1b\[[0-9;]*m)/);
+                    for (var t = 0; t < toks.length; t++) {
+                        var tok = toks[t];
+                        if (!tok) continue;
+                        if (/^\x1b\[[0-9;]*m$/.test(tok)) {
+                            var inner = tok.slice(2, -1);
+                            if (inner === "0") { fg = null; bg = null; }
+                            else if (inner === "39") { fg = null; }
+                            else if (inner === "49") { bg = null; }
+                            else if (inner.indexOf("38;2;") === 0) { var p = inner.split(";"); fg = "rgb(" + p[2] + "," + p[3] + "," + p[4] + ")"; }
+                            else if (inner.indexOf("48;2;") === 0) { var pb = inner.split(";"); bg = "rgb(" + pb[2] + "," + pb[3] + "," + pb[4] + ")"; }
+                            else if (inner.indexOf("38;5;") === 0) { var pf = inner.split(";"); var cf = xterm256Rgb(parseInt(pf[2], 10)); fg = "rgb(" + cf[0] + "," + cf[1] + "," + cf[2] + ")"; }
+                            else if (inner.indexOf("48;5;") === 0) { var pk = inner.split(";"); var ck = xterm256Rgb(parseInt(pk[2], 10)); bg = "rgb(" + ck[0] + "," + ck[1] + "," + ck[2] + ")"; }
+                            continue;
+                        }
+                        for (var k = 0; k < tok.length && x < curWidth; k++) {
+                            var chr = tok[k];
+                            if (bg) {
+                                ctx.fillStyle = bg;
+                                ctx.fillRect(x * CELL_W, y * CELL_H, CELL_W, CELL_H);
+                            }
+                            if (chr !== " ") {
+                                if (chr === "▀") {
+                                    if (fg) { ctx.fillStyle = fg; ctx.fillRect(x * CELL_W, y * CELL_H, CELL_W, CELL_H / 2); }
+                                } else if (chr === "▄") {
+                                    if (fg) { ctx.fillStyle = fg; ctx.fillRect(x * CELL_W, y * CELL_H + CELL_H / 2, CELL_W, CELL_H / 2); }
+                                } else if (chr === "█") {
+                                    if (fg) { ctx.fillStyle = fg; ctx.fillRect(x * CELL_W, y * CELL_H, CELL_W, CELL_H); }
+                                } else {
+                                    ctx.fillStyle = fg || defFg;
+                                    ctx.fillText(chr, x * CELL_W, y * CELL_H + 2);
+                                }
+                            }
+                            x++;
+                        }
+                        if (x >= curWidth) break;
+                    }
+                }
             }
             function renderFrame(idx) {
                 if (!frames.length) return;
                 var lines = frames[idx];
                 var joined = lines.join("\n");
                 if (joined.indexOf("\x1b") !== -1) {
-                    // 包进单块容器：flex 列会把一行内的多个着色 span 拆成独立 item（各占一行），
-                    // 彩色帧会被撕碎成纵向碎片列；frame-block 恢复单一文本流。
-                    if (!htmlFrames[idx]) htmlFrames[idx] = '<div class="frame-block">' + lines.map(ansiToHtml).join("\n") + "</div>";
-                    preview.innerHTML = htmlFrames[idx];
+                    paintAnsiFrame(lines);
+                } else if (frameCanvas && frameCanvas.parentNode === preview) {
+                    // 从彩色帧切回纯文本帧：清掉 canvas，恢复文本流
+                    frameCanvas.remove();
+                    preview.textContent = joined;
                 } else {
                     preview.textContent = joined;
                 }
@@ -602,10 +640,9 @@
                 if (!art) { preview.textContent = "作品内容缺失 / Missing art content"; return; }
                 frames = [art.split("\n")];
                 interval = 0;
-                htmlFrames = [];
                 totalFrames = 1;
                 preview.style.color = textFgColor() || "";
-                if (previewTitle) previewTitle.textContent = "text art · " +
+                if (previewTitle) previewTitle.textContent = "char art · " +
                     (params.font || (params.color === "source" ? "source" : "custom")) +
                     " " + curWidth + "×" + curHeight;
                 var _meta2 = document.getElementById("textWorkMeta");
@@ -649,8 +686,7 @@
                             preview.style.opacity = "1";
                             frames = lf;
                             interval = srcFrames.interval;
-                            htmlFrames = [];
-                            totalFrames = lf.length;
+                                        totalFrames = lf.length;
                             if (previewTitle) previewTitle.textContent = "animation preview · " + curCharset + " " + curWidth + "x" + curHeight;
                             fitViewFontSize();
                             renderFrame(0);
@@ -666,8 +702,7 @@
                     if (d.error) { preview.textContent = "错误: " + d.error; return; }
                     frames = d.frames || [];
                     interval = d.interval || 0.1;
-                    htmlFrames = [];
-                    totalFrames = frames.length;
+                        totalFrames = frames.length;
                     if (previewTitle) previewTitle.textContent = "animation preview · " + curCharset + " " + curWidth + "x" + curHeight;
                     fitViewFontSize();
                     renderFrame(0);
@@ -725,46 +760,37 @@
                 slider.value = String(curWidth);
                 syncMeta(curWidth);
             })();
-            // ── format options ──
-            document.querySelectorAll(".view-format-options .format-option").forEach(function (opt) {
-                opt.addEventListener("click", function () {
-                    document.querySelectorAll(".view-format-options .format-option").forEach(function (o) { o.classList.remove("selected"); });
-                    opt.classList.add("selected");
-                    curFormat = opt.getAttribute("data-format");
-                });
-            });
-            // ── play / pause ──
-            if (playBtn) playBtn.addEventListener("click", startPlayer);
-            if (pauseBtn) pauseBtn.addEventListener("click", pausePlayer);
-
-            // ── downloads：两步导出弹窗 + 配色选择（对齐主页导出体验） ──
-            var THEME_FG = {
-                green: [51, 255, 51], cyan: [0, 212, 255], amber: [255, 176, 0],
-                magenta: [255, 79, 216], red: [255, 59, 48], white: [224, 230, 237]
+            // ── 配色面板（与主页一致）+ 导出弹窗 ──
+            var THEME_COLORS = {
+                white: { fg: [255, 255, 255], bg: [10, 14, 20] },
+                green: { fg: [51, 255, 51],   bg: [10, 14, 20] },
+                amber: { fg: [255, 176, 0],   bg: [20, 13, 2] },
+                cyan:  { fg: [0, 212, 255],   bg: [4, 18, 31] }
             };
             var curTheme = "saved";
             var pendingFmt = "python";
+            function markPaletteBtn(key) {
+                document.querySelectorAll("#viewPaletteRow .palette-btn").forEach(function (b) {
+                    b.classList.toggle("active", b.getAttribute("data-vtheme") === key);
+                });
+            }
+            document.querySelectorAll("#viewPaletteRow .palette-btn").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    curTheme = btn.getAttribute("data-vtheme") || "saved";
+                    markPaletteBtn(curTheme);
+                    if (!IS_TEXT) loadPreview();  // 配色实时重渲预览（亮度缓存命中，温切换很快）
+                });
+            });
             function markExportFormat(fmt) {
                 document.querySelectorAll("#exportBackdrop .export-option").forEach(function (o) {
                     o.classList.toggle("selected", o.getAttribute("data-format") === fmt);
                 });
             }
-            function markThemeDot(key) {
-                document.querySelectorAll("#exportThemeRow .export-theme-dot").forEach(function (d) {
-                    d.classList.toggle("selected", d.getAttribute("data-theme") === key);
-                });
-            }
-            // 原作配色点用作品的实际前景色填充（无 fg 时回退默认绿）
-            (function initSavedDot() {
-                var dot = document.getElementById("savedThemeDot");
-                if (!dot) return;
-                var c = isRgbArr(params.fg) ? params.fg : [51, 255, 51];
-                dot.style.background = "rgb(" + c.join(",") + ")";
-            })();
             function exportColorsQuery() {
-                // 选中主题 → 覆盖 fg（mono）；未选（saved）→ 沿用作品保存配色
-                if (curTheme !== "saved" && THEME_FG[curTheme]) {
-                    return "&fg=rgb(" + THEME_FG[curTheme].join(",") + ")";
+                // 主题色 → 覆盖 fg/bg（mono）；「原作」→ 沿用作品保存配色（含原色模式）
+                if (curTheme !== "saved" && THEME_COLORS[curTheme]) {
+                    var t = THEME_COLORS[curTheme];
+                    return "&fg=rgb(" + t.fg.join(",") + ")&bg=rgb(" + t.bg.join(",") + ")";
                 }
                 return viewerQueryColors();
             }
@@ -779,12 +805,6 @@
                 btn.addEventListener("click", function () {
                     pendingFmt = btn.getAttribute("data-format");
                     markExportFormat(pendingFmt);
-                });
-            });
-            document.querySelectorAll("#exportThemeRow .export-theme-dot").forEach(function (dot) {
-                dot.addEventListener("click", function () {
-                    curTheme = dot.getAttribute("data-theme") || "saved";
-                    markThemeDot(curTheme);
                 });
             });
             var exportCancelBtn = document.getElementById("exportCancelBtn");
@@ -803,7 +823,7 @@
 
             function doDownloadNow(fmt) {
                 var url = "/api/gallery/download/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight + "&format=" + fmt + exportColorsQuery();
-                var btn = fmt === "mp4" ? document.getElementById("downloadMp4Btn") : null;
+                var btn = fmt === "mp4" ? document.getElementById("exportAnimBtn") : null;
                 if (fmt === "mp4" && btn) {
                     // 视频编码耗时较长：按钮进入等待态 + 预计时间
                     var est = Math.max(5, Math.round((frames.length || 1) * curWidth * curHeight / 100000) + 3);
@@ -829,10 +849,12 @@
                 }
                 window.location.href = url;
             }
-            document.getElementById("downloadPyBtn").addEventListener("click", function () { openExportModal("python"); });
-            document.getElementById("downloadHtmlBtn").addEventListener("click", function () { openExportModal("html"); });
-            var _mp4Btn = document.getElementById("downloadMp4Btn");
-            if (_mp4Btn) _mp4Btn.addEventListener("click", function () { openExportModal("mp4"); });
+            var _exportBtn = document.getElementById("exportAnimBtn");
+            if (_exportBtn) _exportBtn.addEventListener("click", function () { openExportModal(null); });
+
+            // ── play / pause ──
+            if (playBtn) playBtn.addEventListener("click", startPlayer);
+            if (pauseBtn) pauseBtn.addEventListener("click", pausePlayer);
 
             // ── banner ──
             document.getElementById("viewBannerClose").addEventListener("click", function () {
