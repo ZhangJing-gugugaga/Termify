@@ -261,10 +261,14 @@ def encode_mp4(seq: FrameSequence, out_path: str, font_size: int = 14,
     if not ffmpeg_available():
         raise VideoEncodeError("ffmpeg is not available on this host")
 
+    # 网格尺寸跟随渲染结果（此前钳在 200×60——200 列以上的预览导出
+    # 会被砍半重采样，内容错位、分辨率与预览不符）
+    width = max(1, min(400, seq.width))
+    height = max(1, min(240, seq.height))
+    # 大网格自动降字号，避免导出分辨率爆炸（400 列 × 14pt ≈ 3200px 宽）
+    font_size = font_size if width <= 260 else min(font_size, 10)
     font = pick_font(font_size)
     char_w, char_h = _measure_cell(font)
-    width = max(1, min(200, seq.width))
-    height = max(1, min(60, seq.height))
     # yuv420p needs even dimensions
     out_w = max(2, (width * char_w) // 2 * 2)
     out_h = max(2, (height * char_h) // 2 * 2)
@@ -278,6 +282,7 @@ def encode_mp4(seq: FrameSequence, out_path: str, font_size: int = 14,
         "-s", f"{out_w}x{out_h}", "-pix_fmt", "rgb24",
         "-r", str(fps), "-i", "-",
         "-an", "-c:v", "libx264", "-preset", "veryfast",
+        "-profile:v", "main",
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         out_path,
     ]

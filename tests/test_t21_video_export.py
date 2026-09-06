@@ -6,13 +6,14 @@
 from __future__ import annotations
 
 import io
+import os
 import json
 import shutil
 
 import pytest
 from PIL import Image
 
-from termify.engine import convert
+from termify.engine import FrameSequence, convert
 from termify.output.video import (
     DEFAULT_BG,
     DEFAULT_FG,
@@ -171,6 +172,31 @@ def _upload_gif(client):
                        content_type="multipart/form-data")
     assert resp.status_code == 200
     return json.loads(resp.data)["task_id"]
+
+
+# --- 导出网格钳位回归 ------------------------------------------------------------
+# 回归：encode_mp4 曾把网格钳到 200×60——200 列以上的预览导出被砍半重采样，
+# 内容错位、分辨率与预览不符（2026-09-06 用户手机端报障）。
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg 未安装")
+def test_encode_mp4_preserves_large_grid(tmp_path):
+    """400×266 网格导出：列数必须原样保留（不钳 200），行数 ≤240 上限。"""
+    lines = ["█" * 400 for _ in range(266)]
+    seq = FrameSequence(lines_per_frame=[lines, lines], interval=0.1,
+                        width=400, height=266, charset="blocks")
+    out = encode_mp4(seq, str(tmp_path / "big.mp4"))
+    assert os.path.isfile(out) and os.path.getsize(out) > 1000
+    # 导出宽度必须覆盖全部 400 列（>200 列钳位时代只有 ~1600px）
+    from termify.output.video import _measure_cell, pick_font
+    cw, _ch = _measure_cell(pick_font(10))
+    assert os.path.getsize(out) > 0
+    # 用 ffprobe 校验宽度 ≥ 400 × 最小字符宽
+    import subprocess
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "stream=width",
+         "-of", "csv=p=0", out], capture_output=True, text=True)
+    w = int(probe.stdout.strip().split(",")[0])
+    assert w >= 400 * min(6, cw), f"export width {w} too small — grid clamped"
 
 
 @pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg 未安装")
