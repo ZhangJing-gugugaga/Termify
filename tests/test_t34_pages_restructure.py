@@ -1,4 +1,4 @@
-"""T34 — 页面重构：动画工坊归一 / 文字艺术独立页 / 画廊自定义标签。
+"""T34 — 页面重构：动画工坊归一 / 字符艺术独立页 / 画廊自定义标签。
 
 覆盖：
 - 页面 1：三段归一为「动画工坊」（studio-section），导航三项化，文字卡片移除
@@ -93,19 +93,19 @@ def test_index_merges_into_studio(client):
     for anchor in ('id="upload"', 'id="styles"', 'id="preview"'):
         assert anchor in body
     # 导航三项化
-    assert 'href="/text-art"' in body and "文字艺术" in body
+    assert 'href="/text-art"' in body and "字符艺术" in body
     assert 'href="#upload"' not in body and 'href="#styles"' not in body
     # 文字艺术卡片已移除，入口横幅也已移除（2026-09-06 用户要求去掉
-    # "想用文字生成…"提示条）；文字艺术仍从导航进入
+    # "想用文字生成…"提示条）；字符艺术仍从导航进入
     assert 'id="textArtInput"' not in body
-    assert "前往文字艺术" not in body and "text-art-cta" not in body
+    assert "前往字符艺术" not in body and "text-art-cta" not in body
 
 
 def test_text_art_page_renders(client):
     page = client.get("/text-art")
     assert page.status_code == 200
     body = page.get_data(as_text=True)
-    assert "文字艺术" in body and "text_art.js" in body
+    assert "字符艺术" in body and "text_art.js" in body
     # 导航三项齐全
     assert 'href="/"' in body and 'href="/gallery"' in body
     # 工作台骨架

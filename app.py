@@ -271,7 +271,7 @@ _COLOR_MODES = ("mono", "source", "source256")
 
 # /v/ 回放页 params 白名单：允许进入页面源码的渲染参数（frames_dir 等服务器
 # 内部字段绝不外发；audio_file 是构造音频直链所需的文件名，非路径）。
-# font/frames 仅文字作品（kind=text）携带：frames 是艺术字文本本身，
+# font/frames 仅字符作品（kind=text）携带：frames 是艺术字文本本身，
 # 经 tojson 转义进页面，与其他用户内容同责渲染端转义。
 _VIEW_PARAM_KEYS = ("charset", "width", "height", "color", "kind", "interval",
                     "fg", "bg", "audio_file", "font", "frames")
@@ -369,7 +369,7 @@ def index():
 
 @app.route("/text-art")
 def text_art_page():
-    """文字艺术字独立页（FIGlet 直转 + LLM 双模式）。"""
+    """字符艺术独立页（FIGlet 直转 + 中文 TTF 点阵）。"""
     return render_template("text_art.html")
 
 
@@ -854,34 +854,13 @@ def fetch_url():
     })
 
 
-# ═══════════════ T33 文字艺术字：FIGlet 直转 + LLM 双模式 ═══════════════
-# 静态文字艺术字作为第三种素材来源（与上传/链接抓取并列）：
+# ═══════════════ T33 字符艺术：FIGlet 直转 + 中文 TTF 点阵 ═══════════════
+# 静态字符艺术作为第三种素材来源（与上传/链接抓取并列）：
 #   1) 直转    —— 对齐 lddgo：输入英数 → pyfiglet → ASCII 艺术字；
-#   2) AI 参数化 —— LLM 把意图解析成 {text, font}，本地 FIGlet 渲染（稳）；
-#   3) AI 直接创作 —— LLM 直接产出字符画（可表达中文/图形概念），服务端只归一化。
-# 文字作品入库 = art 渲染成终端风 PNG 作 source，复用缩略图/OG 管线；
+#   2) 中文点阵 —— 含 CJK 输入走系统 TTF 光栅化（render_cjk_ttf，纯本地）。
+# 字符作品入库 = art 渲染成终端风 PNG 作 source，复用缩略图/OG 管线；
 # 艺术字文本存 params_json.frames，/v/ 页零渲染改动直接回放。
-from termify import llm as _llm_mod
 from termify import textart as _textart_mod
-from termify import cjk_glyph as _cjk_glyph_mod
-from termify import cjk_render as _cjk_render_mod
-
-
-def _llm_cfg() -> dict:
-    return _llm_mod.load_config(GALLERY_DATA_DIR)
-
-
-def _llm_config_write_authorized(data: dict) -> bool:
-    """LLM 端点是全局共享配置：设置了 TERMIFY_ADMIN_PWD 时，写入需要管理员
-    （X-Termify-Admin 头或 body.admin_pwd）；未设口令（本地单机）则开放。"""
-    pwd = _admin_pwd()
-    if not pwd:
-        return True
-    supplied = request.headers.get("X-Termify-Admin", "")
-    if not _secret_equal(supplied, pwd):
-        body_pwd = data.get("admin_pwd") if isinstance(data, dict) else None
-        return _secret_equal(body_pwd if isinstance(body_pwd, str) else "", pwd)
-    return True
 
 
 @app.route("/api/text/fonts", methods=["GET"])
@@ -949,181 +928,6 @@ def text_fontwall():
     except _textart_mod.TextArtError as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify({"ok": True, "fonts": previews})
-
-
-@app.route("/api/text/ai", methods=["POST"])
-def text_ai():
-    """AI 双模式：{prompt, mode: "params"|"direct"} → 艺术字。"""
-    data = request.get_json(silent=True) or {}
-    ip = _client_ip()
-    ok, reason = _rate_check(ip, "text-ai", per_minute=6)
-    if not ok:
-        return jsonify({"error": reason}), 429
-    prompt = data.get("prompt")
-    if not isinstance(prompt, str) or not prompt.strip():
-        return jsonify({"error": "请输入描述 / Prompt required"}), 400
-    if len(prompt) > 500:
-        return jsonify({"error": "描述过长，最多 500 字 / Prompt too long "
-                                 "(max 500)"}), 400
-    mode = data.get("mode")
-    if mode not in ("params", "direct"):
-        return jsonify({"error": "mode 必须是 params 或 direct / mode must "
-                                 "be params or direct"}), 400
-
-    cfg = _llm_cfg()
-    if not _llm_mod.is_configured(cfg):
-        # 未配置：不挡路——先让用户看到 AI 能画什么（示例墙），
-        # 配置入口在示例墙下方。
-        return jsonify({"error": "AI 生成由你自部署的 LLM 驱动，点左下"
-                                 "「自部署 AI」查看三步指引 / AI runs on "
-                                 "your self-hosted LLM — open the "
-                                 "self-host AI guide at bottom-left",
-                        "need_config": True,
-                        "showcase": _textart_mod.AI_SHOWCASE}), 400
-
-    if mode == "params":
-        messages = [{"role": "system", "content": _textart_mod.PARAM_SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt}]
-        try:
-            reply = _llm_mod.chat(messages, cfg)
-            obj = _llm_mod.parse_json_object(reply)
-            art = _textart_mod.render_figlet(obj.get("text"), obj.get("font"))
-        except _llm_mod.LLMError as exc:
-            return jsonify({"error": str(exc)}), 400
-        except _textart_mod.TextArtError as exc:
-            app.logger.warning("text-ai params unrenderable: %s", exc)
-            return jsonify({"error": "AI 解析结果无法渲染，请换个说法重试"
-                                     " / AI produced an unrenderable result, "
-                                     "try rephrasing"}), 400
-        font = obj.get("font") if _textart_mod.known_font(obj.get("font")) \
-            else _textart_mod.DEFAULT_FONT
-        text = _textart_mod.filter_figlet_text(obj.get("text"))
-        cols, rows = _textart_mod.art_dims(art)
-        return jsonify({"ok": True, "mode": "params", "art": art,
-                        "cols": cols, "rows": rows, "font": font,
-                        "text": text[:80]})
-
-    cols_cap = _textart_mod.AI_DIRECT_MAX_COLS
-    rows_cap = _textart_mod.AI_DIRECT_MAX_ROWS
-    # 多候选（ascii-skills variants 模式）：一次产 2 版供挑选
-    messages = [{"role": "system",
-                 "content": _textart_mod.DIRECT_MULTI_SYSTEM_PROMPT_TEMPLATE.format(
-                     cols=cols_cap, rows=rows_cap)},
-                {"role": "user", "content": prompt}]
-    try:
-        reply = _llm_mod.chat(messages, cfg, temperature=0.8)
-        variants = _textart_mod.split_variants(reply)
-        if not variants:
-            raise _textart_mod.TextArtError(
-                "AI 没有返回有效内容，请重试 / AI returned nothing useful")
-        # compact fallback：超尺寸自动降级而非拒绝（ascii-skills）
-        fitted_any = False
-        out_variants = []
-        for v in variants:
-            v2, fitted = _textart_mod.auto_fit_art(v)
-            fitted_any = fitted_any or fitted
-            cols, rows = _textart_mod.art_dims(v2)
-            out_variants.append({"art": v2, "cols": cols, "rows": rows})
-    except _llm_mod.LLMError as exc:
-        return jsonify({"error": str(exc)}), 400
-    except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
-    return jsonify({"ok": True, "mode": "direct", "variants": out_variants,
-                    "auto_fitted": fitted_any,
-                    "art": out_variants[0]["art"],
-                    "cols": out_variants[0]["cols"],
-                    "rows": out_variants[0]["rows"]})
-
-
-@app.route("/api/text/iterate", methods=["POST"])
-def text_iterate():
-    """AI 迭代回路：{current_art, instruction} → 修改后的作品。
-
-    结构化输入（ascii-skills）：当前作品 + 明确修改意见，而非重新盲盒。
-    """
-    data = request.get_json(silent=True) or {}
-    if not isinstance(data, dict):
-        return jsonify({"error": "Invalid JSON body"}), 400
-    ip = _client_ip()
-    ok, reason = _rate_check(ip, "text-ai", per_minute=6)
-    if not ok:
-        return jsonify({"error": reason}), 429
-    current = data.get("current_art")
-    instruction = data.get("instruction")
-    if not isinstance(current, str) or not current.strip():
-        return jsonify({"error": "缺少当前作品 / Missing current artwork"}), 400
-    if not isinstance(instruction, str) or not instruction.strip():
-        return jsonify({"error": "缺少修改意见 / Missing instruction"}), 400
-    if len(instruction) > 500:
-        return jsonify({"error": "修改意见过长（最多 500 字）/ Instruction "
-                                 "too long (max 500)"}), 400
-    try:
-        current = _textart_mod.validate_stored_art(current)
-    except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
-
-    cfg = _llm_cfg()
-    if not _llm_mod.is_configured(cfg):
-        return jsonify({"error": "请先配置 LLM / Configure the LLM first",
-                        "need_config": True}), 400
-
-    cols_cap = _textart_mod.AI_DIRECT_MAX_COLS
-    rows_cap = _textart_mod.AI_DIRECT_MAX_ROWS
-    messages = [
-        {"role": "system",
-         "content": _textart_mod.ITERATE_SYSTEM_PROMPT_TEMPLATE.format(
-             cols=cols_cap, rows=rows_cap)},
-        {"role": "user",
-         "content": f"CURRENT ARTWORK:\n{current}\n\nMODIFICATION: "
-                    f"{instruction}"},
-    ]
-    try:
-        reply = _llm_mod.chat(messages, cfg, temperature=0.6)
-        art = _textart_mod.normalize_direct_art(reply)
-        art, fitted = _textart_mod.auto_fit_art(art)
-    except _llm_mod.LLMError as exc:
-        return jsonify({"error": str(exc)}), 400
-    except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
-    cols, rows = _textart_mod.art_dims(art)
-    return jsonify({"ok": True, "mode": "iterate", "art": art,
-                    "cols": cols, "rows": rows, "auto_fitted": fitted})
-
-
-@app.route("/api/llm/config", methods=["GET", "POST"])
-def llm_config():
-    """LLM 服务配置。GET 永不返回 key；POST 在设置了管理口令时需管理员。"""
-    if request.method == "GET":
-        summary = _llm_mod.config_summary(_llm_cfg())
-        summary["ok"] = True
-        summary["requires_admin"] = bool(_admin_pwd())
-        return jsonify(summary)
-    data = request.get_json(silent=True) or {}
-    if not _llm_config_write_authorized(data):
-        return jsonify({"error": "需要管理员权限 / Admin authorization "
-                                 "required"}), 403
-    ok, reason = _rate_check(_client_ip(), "llm-config", per_minute=10)
-    if not ok:
-        return jsonify({"error": reason}), 429
-    api_key = data["api_key"] if isinstance(data, dict) \
-        and "api_key" in data else None
-    if api_key is not None and not isinstance(api_key, str):
-        return jsonify({"error": "api_key 必须是字符串 / api_key must be a "
-                                 "string"}), 400
-    try:
-        stored = _llm_mod.save_config(
-            GALLERY_DATA_DIR,
-            base_url=data.get("base_url") if isinstance(data, dict) else "",
-            model=data.get("model") if isinstance(data, dict) else "",
-            api_key=api_key)
-    except _llm_mod.LLMError as exc:
-        return jsonify({"error": str(exc)}), 400
-    app.logger.info("LLM config updated (base_url=%s model=%s has_key=%s)",
-                    stored.get("base_url"), stored.get("model"),
-                    bool(stored.get("api_key")))
-    summary = _llm_mod.config_summary(stored)
-    summary["ok"] = True
-    return jsonify(summary)
 
 
 @app.route("/api/text/export-png", methods=["POST"])
@@ -1204,53 +1008,7 @@ def text_export_html():
     return resp
 
 
-# --- T36 汉字活字引擎（中文艺术字）------------------------------------------
-# 逐字字形 = LLM 生成 + SQLite 缓存（data/cjk_glyphs.db），渲染在本地完成。
-# 与 AI 直接创作共用「自部署 LLM」配置；未配置时 400 + 配置指引（同范式）。
-
-@app.route("/api/cjk/styles", methods=["GET"])
-def cjk_styles():
-    """可用的中文字形风格列表（slug/name/height/width）。"""
-    return jsonify({"ok": True, "styles": [
-        {"slug": s["slug"], "name": s["name"],
-         "height": s["height"], "width": s["width"]}
-        for s in _cjk_glyph_mod.GLYPH_STYLES]})
-
-
-@app.route("/api/cjk/render", methods=["POST"])
-def cjk_render():
-    """中文艺术字：{text, style} → 混排字符画。1-12 个汉字。"""
-    data = request.get_json(silent=True) or {}
-    if not isinstance(data, dict):
-        return jsonify({"error": "Invalid JSON body"}), 400
-    ip = _client_ip()
-    ok, reason = _rate_check(ip, "cjk-render", per_minute=6)
-    if not ok:
-        return jsonify({"error": reason}), 429
-    style = data.get("style")
-    if _cjk_glyph_mod.style_by_slug(style) is None:
-        return jsonify({"error": "未知字形风格 / Unknown glyph style"}), 400
-    cfg = _llm_cfg()
-    if not _llm_mod.is_configured(cfg):
-        return jsonify({"error": "中文艺术字由你自部署的 LLM 驱动，点左下"
-                                 "「自部署 AI」查看三步指引 / CJK art runs "
-                                 "on your self-hosted LLM — open the "
-                                 "self-host AI guide at bottom-left",
-                        "need_config": True}), 400
-    try:
-        result = _cjk_render_mod.render_cjk_text(
-            data.get("text"), style, cfg, _llm_mod)
-    except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
-    except _llm_mod.LLMError as exc:
-        # generate_glyph 内部已吞异常；此处只兜底极端情况
-        return jsonify({"error": str(exc)}), 502
-    return jsonify({"ok": True, "art": result["art"],
-                    "missing": result["missing"], "style": result["style"],
-                    "cols": result["cols"], "rows": result["rows"]})
-
-
-# --- T37 中文 TTF 点阵（无 LLM）----------------------------------------------
+# --- T37 中文 TTF 点阵 ----------------------------------------------
 # 中文输入走系统 TTF 光栅化（PIL），零外部依赖、零 token 成本。
 # /api/text/convert 服务端自动分流：含 CJK → TTF 路径，否则 FIGlet。
 
@@ -1262,7 +1020,7 @@ def cjk_ttf_fonts():
 
 @app.route("/api/cjk/ttf/render", methods=["POST"])
 def cjk_ttf_render():
-    """中文点阵：{text, font?, height?} → 字符画。无 LLM。"""
+    """中文点阵：{text, font?, height?} → 字符画。纯本地。"""
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON body"}), 400
@@ -1312,9 +1070,9 @@ def _imgascii_flip(img, flip: object):
 
 @app.route("/api/text/imgascii", methods=["POST"])
 def text_imgascii():
-    """图片艺术化：multipart 图片 + 参数 → {art}。同步、无 LLM。
+    """图片艺术化：multipart 图片 + 参数 → {art}。同步、纯本地。
 
-    参数（配色/字符集复用动画工坊与文字艺术页的既有方案）：
+    参数（配色/字符集复用动画工坊与字符艺术页的既有方案）：
     - palette: green|cyan|amber|magenta|red|white（单色主题，映射 fg）
                | source（原色：逐字符取源像素 TrueColor）
     - width / height: 字符画目标列数/行数
@@ -1420,7 +1178,7 @@ def _tmp_save(img, ext: str) -> str:
 
 @app.route("/api/gallery/upload-text", methods=["POST"])
 def gallery_upload_text():
-    """文字艺术字作品入库：art → 终端风 PNG source → 缩略图/OG → DB。
+    """字符艺术作品入库：art → 终端风 PNG source → 缩略图/OG → DB。
 
     艺术字文本存 params_json.frames（单帧），/v/ 页直接回放。
     """
@@ -1454,7 +1212,7 @@ def gallery_upload_text():
         fg = _rgb_or_none(data.get("fg")) or _textart_mod.ART_FG_DEFAULT
 
     title = _gallery_mod.sanitize(data.get("title"), _gallery_mod._TITLE_MAX) \
-        or "文字艺术字"
+        or "字符艺术"
     description = _gallery_mod.sanitize(data.get("description"),
                                         _gallery_mod._DESC_MAX)
     author = _gallery_mod.sanitize(data.get("author"),

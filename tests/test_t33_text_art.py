@@ -1,19 +1,16 @@
-"""T33 — 文字艺术字（FIGlet 直转 + LLM 双模式 + 文字作品入库）。
+"""T33 — 字符艺术（FIGlet 直转 + 中文点阵 + 字符作品入库）。
 
 覆盖：
-- textart 单元：精选字体/FIGlet 渲染/非 ASCII 过滤（lddgo 语义）/直接创作归一化
-- API：/api/text/fonts、/api/text/convert、/api/llm/config（key 不回传/管理员门禁）
-- /api/text/ai：未配置 400 need_config；mock OpenAI 兼容上游跑通 params/direct 双模式
+- textart 单元：精选字体/FIGlet 渲染/非 ASCII 过滤（lddgo 语义）/入库校验
+- API：/api/text/fonts、/api/text/convert（含 CJK 自动分流）
 - /api/gallery/upload-text：文字作品入库 → /v/ 页回放（frames 白名单）→ 私有直链鉴权
 """
 
 from __future__ import annotations
 
-import http.server
 import importlib.util
 import json
 import os
-import threading
 
 import pytest
 
@@ -46,12 +43,6 @@ def _isolate_env(monkeypatch, tmp_path):
     db = gallery_mod.GalleryDB(str(gdata / "termify.db"))
     db.init_db()
     monkeypatch.setattr(app_mod, "GALLERY_DB", db)
-
-    # LLM 配置同样隔离（save_config 写 data_dir/llm_config.json）
-    from termify import llm as llm_mod
-
-    if os.path.exists(llm_mod.config_path(str(gdata))):
-        os.remove(llm_mod.config_path(str(gdata)))
 
     app_mod._RL_LOG.clear()
     yield
@@ -111,28 +102,6 @@ def test_render_figlet_too_long():
         textart.render_figlet("a" * 100, "standard")
 
 
-def test_normalize_direct_art_fence_and_dedent():
-    from termify import textart
-
-    raw = "Here you go:\n```\n    @..@\n  (----)\n ( >__< )\n   ^^~~^^\n```"
-    art = textart.normalize_direct_art(raw)
-    assert "```" not in art and "Here" not in art
-    # 公共缩进（1 格）被等量去除，字符间相对对齐保持不变
-    lines = art.splitlines()
-    assert lines[0].lstrip().startswith("@..@")
-    assert lines[1][0] == " "  # (----) 原本缩进 2 格，去掉公共 1 格后仍比最浅行深 1 格
-
-
-def test_normalize_direct_art_strips_control_and_caps():
-    from termify import textart
-
-    art = textart.normalize_direct_art("ab\x07cd\tef")
-    assert art == "abcd    ef"
-    # P2 起 direct 归一化不再因超尺寸拒绝 —— auto_fit_art 负责降级
-    wide = textart.normalize_direct_art("x" * 250)
-    assert len(wide) == 250
-
-
 def test_validate_stored_art():
     from termify import textart
 
@@ -176,7 +145,7 @@ def test_convert_endpoint(client):
 
 
 def test_convert_endpoint_errors(client):
-    # T37 起中文输入不再报错——自动分流到 TTF 点阵路径（无 LLM 依赖）
+    # T37 起中文输入不再报错——自动分流到 TTF 点阵路径（纯本地）
     resp = client.post("/api/text/convert", json={"text": "你好世界"})
     assert resp.status_code == 200
     data = json.loads(resp.data)
@@ -187,158 +156,6 @@ def test_convert_endpoint_errors(client):
     resp = client.post("/api/text/convert", json={"text": "hi", "font": "ghost"})
     assert resp.status_code == 200
     assert json.loads(resp.data)["font"] == "ghost"
-
-
-# ── API：llm config ──────────────────────────────────────────
-
-def test_llm_config_key_never_returned(client):
-    # 设置 TERMIFY_ADMIN_PWD 的环境（autouse fixture）→ 保存需管理员
-    resp = client.post("/api/llm/config", json={
-        "base_url": "http://127.0.0.1:1/v1", "model": "mock",
-        "api_key": "sk-super-secret-1", "admin_pwd": "t33-admin"})
-    assert resp.status_code == 200, resp.data
-    summary = json.loads(resp.data)
-    assert summary["has_key"] is True and summary["configured"] is True
-    assert "sk-super-secret-1" not in resp.get_data(as_text=True)
-
-    got = client.get("/api/llm/config")
-    body = got.get_data(as_text=True)
-    assert got.status_code == 200
-    assert "sk-super-secret-1" not in body
-    assert json.loads(body)["requires_admin"] is True
-
-
-def test_llm_config_requires_admin_when_pwd_set(client):
-    resp = client.post("/api/llm/config", json={
-        "base_url": "http://127.0.0.1:1/v1", "model": "m"})
-    assert resp.status_code == 403
-    ok = client.post("/api/llm/config", json={
-        "base_url": "http://127.0.0.1:1/v1", "model": "m",
-        "admin_pwd": "t33-admin"})
-    assert ok.status_code == 200
-
-
-def test_llm_config_validation_and_key_keep(client):
-    resp = client.post("/api/llm/config", json={
-        "base_url": "http://127.0.0.1:1/v1", "model": "m1",
-        "api_key": "sk-keep-1", "admin_pwd": "t33-admin"})
-    assert resp.status_code == 200
-    # 不带 api_key 字段 → 保留旧 key（用 headers 走管理员门禁）
-    resp2 = client.post("/api/llm/config",
-                        headers={"X-Termify-Admin": "t33-admin"},
-                        json={"base_url": "http://127.0.0.1:2/v1", "model": "m2"})
-    assert resp2.status_code == 200
-    assert json.loads(resp2.data)["has_key"] is True
-    # 显式空串 → 清除
-    resp3 = client.post("/api/llm/config",
-                        headers={"X-Termify-Admin": "t33-admin"},
-                        json={"base_url": "http://127.0.0.1:2/v1",
-                              "model": "m2", "api_key": ""})
-    assert resp3.status_code == 200
-    assert json.loads(resp3.data)["has_key"] is False
-    # 非法 URL
-    bad = client.post("/api/llm/config", headers={"X-Termify-Admin": "t33-admin"},
-                      json={"base_url": "ftp://x", "model": "m"})
-    assert bad.status_code == 400
-
-
-# ── mock OpenAI 兼容上游 ─────────────────────────────────────
-
-class _MockState:
-    reply = ""
-    auth = "Bearer sk-t33-1"
-
-
-class _MockOpenAIHandler(http.server.BaseHTTPRequestHandler):
-    def do_POST(self):  # noqa: N802
-        length = int(self.headers.get("Content-Length", 0))
-        self.rfile.read(length)
-        if self.headers.get("Authorization") != _MockState.auth:
-            self.send_response(401)
-            self.end_headers()
-            return
-        body = json.dumps({
-            "choices": [{"message": {"content": _MockState.reply}}]
-        }).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def log_message(self, *args):  # noqa: D102
-        pass
-
-
-@pytest.fixture
-def mock_llm(monkeypatch, client):
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0),
-                                             _MockOpenAIHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    base = f"http://127.0.0.1:{server.server_address[1]}"
-    resp = client.post("/api/llm/config", json={
-        "base_url": base, "model": "mock-1",
-        "api_key": "sk-t33-1", "admin_pwd": "t33-admin"})
-    assert resp.status_code == 200, resp.data
-    yield server
-    server.shutdown()
-    server.server_close()
-
-
-def test_text_ai_need_config(client):
-    resp = client.post("/api/text/ai", json={"prompt": "火焰 HELLO", "mode": "params"})
-    assert resp.status_code == 400
-    data = json.loads(resp.data)
-    assert data.get("need_config") is True
-    # 示例墙：至少 15 幅、字段齐全、宽度克制（卡片缩放后可完整展示）
-    showcase = data.get("showcase") or []
-    assert len(showcase) >= 15
-    for piece in showcase:
-        assert {"title", "prompt", "art"} <= set(piece.keys())
-        lines = piece["art"].split("\n")
-        assert max(len(ln) for ln in lines) <= 44
-        assert len(lines) <= 12
-    # 批次零重复：标题唯一（初始 + 5 次刷新恰好展示全部）
-    titles = [p["title"] for p in showcase]
-    assert len(titles) == len(set(titles))
-
-
-def test_text_ai_params_mode(client, mock_llm):
-    _MockState.reply = json.dumps({"text": "HELLO", "font": "fire_font-s"})
-    resp = client.post("/api/text/ai", json={"prompt": "火焰感的 HELLO", "mode": "params"})
-    assert resp.status_code == 200, resp.data
-    data = json.loads(resp.data)
-    assert data["mode"] == "params" and data["font"] == "fire_font-s"
-    assert data["text"] == "HELLO"
-    assert data["rows"] >= 4 and len(data["art"]) > 20
-
-
-def test_text_ai_params_mode_bad_json(client, mock_llm):
-    _MockState.reply = "抱歉，我不会。"
-    resp = client.post("/api/text/ai", json={"prompt": "x", "mode": "params"})
-    assert resp.status_code == 400
-    assert "error" in json.loads(resp.data)
-
-
-def test_text_ai_direct_mode(client, mock_llm):
-    _MockState.reply = "```\n   /\\_/\\\n  ( o.o )\n   > ^ <\n```"
-    resp = client.post("/api/text/ai", json={"prompt": "画一只猫", "mode": "direct"})
-    assert resp.status_code == 200, resp.data
-    data = json.loads(resp.data)
-    assert data["mode"] == "direct"
-    assert "/\\_/\\" in data["art"]
-    assert "```" not in data["art"]
-
-
-def test_text_ai_upstream_401(client, mock_llm):
-    _MockState.auth = "Bearer wrong"
-    try:
-        resp = client.post("/api/text/ai", json={"prompt": "x", "mode": "direct"})
-        assert resp.status_code == 400
-        assert "API key" in json.loads(resp.data)["error"]
-    finally:
-        _MockState.auth = "Bearer sk-t33-1"
 
 
 # ── 文字作品入库 + /v/ 回放 ──────────────────────────────────

@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Termify CLI — 图片 / GIF / 视频 → 终端动画（.py / .html）+ 文字艺术。
 
-纯本地处理，全程不联网（AI 生成除外，走自部署 LLM）。
+纯本地处理，全程不联网。
 
 Usage:
     python demo.py <file> [--charset NAME|all] [--width N] [--height N] [--out DIR]
                    [--preview] [--quiet]
     python demo.py text <text> [--font NAME] [--out FILE] [--preview] [--ansi]
-    python demo.py llm [--status] [--base-url URL] [--model NAME] [--api-key KEY]
 
 支持输入: .gif / .png / .jpg / .mp4 / .webm / .mov / .avi / .mkv
 视频不限时长（长视频自动降采样）；--charset all 按核数并行渲染。
@@ -182,65 +181,11 @@ def _cmd_text(args) -> None:
         print(art)
     print(f"字体={args.font if textart.known_font(args.font) else textart.DEFAULT_FONT}"
           f" · 尺寸={textart.art_dims(art)[0]}x{textart.art_dims(art)[1]}")
-    print("提示: 字体列表 python demo.py text --font list；AI 创作见 python demo.py llm")
-
-
-def _cmd_llm(args) -> None:
-    """LLM 配置：状态查看 / 保存（写入 data/llm_config.json，与 Web 端共用）。"""
-    from termify import llm
-
-    data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-
-    if not any([args.status, args.base_url, args.model, args.api_key]):
-        args.status = True  # 裸 `llm` 命令 = 查看状态
-
-    if args.status:
-        cfg = llm.load_config(data_dir)
-        if llm.is_configured(cfg):
-            print(f"✓ LLM 已配置：{cfg['model']} @ {cfg['base_url']}"
-                  f"（key {'已保存' if cfg.get('api_key') else '未设（本地端点无需）'}）")
-            print("  Web 端「文字艺术 → AI 生成」与 CLI AI 创作均可直接使用。")
-        else:
-            print("✗ LLM 未配置。AI 生成功能需要自部署 LLM，三步开通：")
-        if not llm.is_configured(cfg):
-            _print_llm_guide()
-        return
-
-    # 保存配置
-    if not (args.base_url and args.model):
-        print("保存配置需要同时指定 --base-url 与 --model（--api-key 视端点可选）",
-              file=sys.stderr)
-        _print_llm_guide()
-        sys.exit(2)
-    try:
-        stored = llm.save_config(data_dir, base_url=args.base_url,
-                                 model=args.model, api_key=args.api_key)
-    except llm.LLMError as exc:
-        print(f"保存失败: {exc}", file=sys.stderr)
-        sys.exit(2)
-    print(f"✓ 已保存：{stored['model']} @ {stored['base_url']}"
-          f"（key {'已保存' if stored.get('api_key') else '未设'}）")
-    print("  Web 端与 CLI 的 AI 功能现在都可用。")
-
-
-def _print_llm_guide() -> None:
-    print("""
-自部署 LLM 三步开通（OpenAI 兼容端点）:
-  1. 起一个服务:
-       Ollama（本地）: 安装后执行 ollama serve，端点 http://localhost:11434/v1
-       云端: 注册智谱 https://open.bigmodel.cn 或 DeepSeek https://platform.deepseek.com 拿 API Key
-  2. 保存配置（示例）:
-       Ollama:  python demo.py llm --base-url http://localhost:11434/v1 --model qwen2.5:7b
-       智谱:    python demo.py llm --base-url https://open.bigmodel.cn/api/paas/v4 --model glm-4-flash --api-key <你的key>
-       DeepSeek: python demo.py llm --base-url https://api.deepseek.com/v1 --model deepseek-chat --api-key <你的key>
-  3. 验证:
-       python demo.py llm --status
-       Web 端: 文字艺术页 → 输入描述 → AI 生成
-  配置存于 data/llm_config.json（服务端本地，不会上传）。""")
+    print("提示: 字体列表 python demo.py text --font list")
 
 
 def main() -> None:
-    # 子命令路由：text（文字艺术）/ llm（LLM 配置）优先于图片/视频模式
+    # 子命令路由：text（文字艺术）优先于图片/视频模式
     if len(sys.argv) > 1 and sys.argv[1] == "text":
         ap = argparse.ArgumentParser(
             prog="demo.py text",
@@ -261,20 +206,6 @@ def main() -> None:
                 print(f"  {f['slug']:<24} {f['name']}")
             return
         _cmd_text(args)
-        return
-
-    if len(sys.argv) > 1 and sys.argv[1] == "llm":
-        ap = argparse.ArgumentParser(
-            prog="demo.py llm",
-            description="Termify LLM 配置 — AI 生成的自部署 LLM 设置（与 Web 端共用）")
-        ap.add_argument("--status", action="store_true", help="查看当前配置状态")
-        ap.add_argument("--base-url", default=None,
-                        help="OpenAI 兼容端点，如 http://localhost:11434/v1")
-        ap.add_argument("--model", default=None, help="模型名，如 qwen2.5:7b")
-        ap.add_argument("--api-key", default=None,
-                        help="API Key（Ollama 等本地端点无需）")
-        args = ap.parse_args(sys.argv[2:])
-        _cmd_llm(args)
         return
 
     ap = argparse.ArgumentParser(
