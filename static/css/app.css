@@ -1489,6 +1489,11 @@
                 grid-template-columns: 1fr;
             }
             .nav-links {
+                display: flex;
+                gap: var(--space-4);
+                font-size: 12px;
+            }
+            .nav-github {
                 display: none;
             }
         }

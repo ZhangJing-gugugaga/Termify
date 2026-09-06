@@ -1,3 +1,21 @@
+/* ── 自托管字体（可变字重）：原先走 Google Fonts CDN，国内手机端
+   加载失败回退系统字体——系统等宽字体缺块字符/盲文/几何字形，
+   每字符宽度不一，重 Unicode 风格整行漂移。OFL 许可证见 static/fonts/web/。 ── */
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('../fonts/web/JetBrainsMono-VF.ttf') format('truetype');
+    font-weight: 100 800;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Space Grotesk';
+    src: url('../fonts/web/SpaceGrotesk-VF.woff2') format('woff2');
+    font-weight: 300 700;
+    font-style: normal;
+    font-display: swap;
+}
+
 :root {
   --bg-deep: #060a10;
               --bg-base: #0a0e14;
