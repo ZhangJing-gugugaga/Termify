@@ -37,7 +37,7 @@ ExecStart=/opt/termify/venv/bin/gunicorn \
     --bind 127.0.0.1:5000 \
     --access-logfile /opt/termify/logs/access.log \
     --error-logfile  /opt/termify/logs/error.log \
-    --timeout 300 \
+    --timeout 900 \
     app:app
 
 # Fallback（无 gunicorn 时使用，注释掉上一行启用本行）：

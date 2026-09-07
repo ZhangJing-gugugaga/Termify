@@ -2475,7 +2475,6 @@ def gallery_preview(work_id):
     })
 
 
-@app.route("/api/gallery/download/<work_id>", methods=["GET"])
 def _export_budget_reject(width: int, height: int, frames: int):
     """格×帧预算护栏：超限返回 400 响应（含建议列数），通过返回 None。
 
@@ -2496,6 +2495,7 @@ def _export_budget_reject(width: int, height: int, frames: int):
     }), 400
 
 
+@app.route("/api/gallery/download/<work_id>", methods=["GET"])
 def gallery_download(work_id):
     """Generate + serve a .py, .html or .mp4 download for a gallery work.
 
