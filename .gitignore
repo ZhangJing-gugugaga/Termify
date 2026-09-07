@@ -70,6 +70,9 @@ _*.py
 !images/screenshots/
 !images/screenshots/*.png
 
+# Allow shipped favicon raster (logo fallback for clients without SVG/ICO support)
+!static/img/favicon-32.png
+
 # Tool config and session data (personal, not part of the product)
 .mimocode/
 .workbuddy/

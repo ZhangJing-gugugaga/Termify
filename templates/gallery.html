@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>在线画廊 · Termify</title>
         <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906g">
@@ -14,7 +17,7 @@
     <nav>
         <div class="container">
             <a href="/" class="logo">
-                <div class="logo-icon">T</div>
+                <div class="logo-icon"><svg aria-hidden="true" focusable="false" width="24" height="20" viewBox="0 40 513 420" xmlns="http://www.w3.org/2000/svg"><g fill="var(--green-dim, #00cc33)" shape-rendering="crispEdges"><rect x="114" y="60" width="57" height="20"/><rect x="399" y="80" width="38" height="20"/><rect x="399" y="140" width="38" height="20"/><rect x="133" y="160" width="76" height="20"/><rect x="304" y="160" width="133" height="20"/><rect x="304" y="180" width="19" height="20"/><rect x="304" y="200" width="19" height="20"/><rect x="304" y="220" width="19" height="20"/><rect x="304" y="240" width="19" height="20"/><rect x="304" y="260" width="19" height="20"/><rect x="304" y="300" width="57" height="20"/><rect x="304" y="320" width="19" height="20"/><rect x="304" y="340" width="19" height="20"/><rect x="247" y="360" width="76" height="20"/><rect x="304" y="380" width="19" height="20"/><rect x="304" y="400" width="19" height="20"/><rect x="304" y="420" width="19" height="20"/><rect x="228" y="440" width="95" height="20"/></g><g fill="var(--green, #00ff41)" shape-rendering="crispEdges"><rect x="76" y="40" width="57" height="20"/><rect x="76" y="60" width="38" height="20"/><rect x="171" y="60" width="228" height="20"/><rect x="76" y="80" width="57" height="20"/><rect x="152" y="80" width="247" height="20"/><rect x="152" y="100" width="209" height="20"/><rect x="95" y="120" width="342" height="20"/><rect x="95" y="140" width="304" height="20"/><rect x="209" y="160" width="95" height="20"/><rect x="209" y="180" width="95" height="20"/><rect x="209" y="200" width="95" height="20"/><rect x="209" y="220" width="95" height="20"/><rect x="247" y="240" width="57" height="20"/><rect x="209" y="260" width="95" height="20"/><rect x="209" y="280" width="133" height="20"/><rect x="209" y="300" width="95" height="20"/><rect x="209" y="320" width="95" height="20"/><rect x="209" y="340" width="95" height="20"/><rect x="209" y="360" width="38" height="20"/><rect x="209" y="380" width="95" height="20"/><rect x="209" y="400" width="95" height="20"/><rect x="209" y="420" width="95" height="20"/></g></svg></div>
                 <div class="logo-text">Termi<span>fy</span></div>
             </a>
             <ul class="nav-links">

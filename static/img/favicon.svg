@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 513 540" role="img" aria-labelledby="termify-logo-title">
+  <title id="termify-logo-title">Termify logo</title>
+  <rect id="bg" width="513" height="540" fill="#1a0202"/>
+  <g id="logo-accent" fill="#ef2f6e" shape-rendering="crispEdges">
+    <rect x="114" y="80" width="57" height="20"/>
+    <rect x="399" y="100" width="38" height="20"/>
+    <rect x="399" y="160" width="38" height="20"/>
+    <rect x="133" y="180" width="76" height="20"/>
+    <rect x="304" y="180" width="133" height="20"/>
+    <rect x="304" y="200" width="19" height="20"/>
+    <rect x="304" y="220" width="19" height="20"/>
+    <rect x="304" y="240" width="19" height="20"/>
+    <rect x="304" y="260" width="19" height="20"/>
+    <rect x="304" y="280" width="19" height="20"/>
+    <rect x="304" y="320" width="57" height="20"/>
+    <rect x="304" y="340" width="19" height="20"/>
+    <rect x="304" y="360" width="19" height="20"/>
+    <rect x="247" y="380" width="76" height="20"/>
+    <rect x="304" y="400" width="19" height="20"/>
+    <rect x="304" y="420" width="19" height="20"/>
+    <rect x="304" y="440" width="19" height="20"/>
+    <rect x="228" y="460" width="95" height="20"/>
+  </g>
+  <g id="logo-main" fill="#08d6e4" shape-rendering="crispEdges">
+    <rect x="76" y="60" width="57" height="20"/>
+    <rect x="76" y="80" width="38" height="20"/>
+    <rect x="171" y="80" width="228" height="20"/>
+    <rect x="76" y="100" width="57" height="20"/>
+    <rect x="152" y="100" width="247" height="20"/>
+    <rect x="152" y="120" width="209" height="20"/>
+    <rect x="95" y="140" width="342" height="20"/>
+    <rect x="95" y="160" width="304" height="20"/>
+    <rect x="209" y="180" width="95" height="20"/>
+    <rect x="209" y="200" width="95" height="20"/>
+    <rect x="209" y="220" width="95" height="20"/>
+    <rect x="209" y="240" width="95" height="20"/>
+    <rect x="247" y="260" width="57" height="20"/>
+    <rect x="209" y="280" width="95" height="20"/>
+    <rect x="209" y="300" width="133" height="20"/>
+    <rect x="209" y="320" width="95" height="20"/>
+    <rect x="209" y="340" width="95" height="20"/>
+    <rect x="209" y="360" width="95" height="20"/>
+    <rect x="209" y="380" width="38" height="20"/>
+    <rect x="209" y="400" width="95" height="20"/>
+    <rect x="209" y="420" width="95" height="20"/>
+    <rect x="209" y="440" width="95" height="20"/>
+  </g>
+</svg>
