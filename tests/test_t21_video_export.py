@@ -198,7 +198,7 @@ def test_encode_mp4_preserves_large_grid(tmp_path):
 
 def test_encode_mp4_budget_constant_exists():
     from termify.output import video
-    assert video.EXPORT_CELL_BUDGET == 3_000_000
+    assert video.EXPORT_CELL_BUDGET == 30_000_000
     assert video.MAX_VIDEO_FRAMES == 600
 
 
@@ -284,4 +284,4 @@ def test_export_budget_reject_math(client):
     err2 = (resp2.get_json() or {}).get("error", "")
     assert "渲染量过大" not in err2, f"suggested {sugg} still rejected: {err2}"
     from termify.output.video import EXPORT_CELL_BUDGET
-    assert EXPORT_CELL_BUDGET == 3_000_000
+    assert EXPORT_CELL_BUDGET == 30_000_000

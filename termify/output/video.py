@@ -53,9 +53,9 @@ _CELLS_PER_SECOND = 120_000
 MAX_VIDEO_FRAMES = 600
 
 # 单次导出的"格×帧"预算：超过直接拒绝并建议降列数——
-# 400×240×514 帧 ≈ 5e7 在小规格 ECS 上 >900s 且内存抖动，会拖死整机
+# 400×240×514 帧 ≈ 4.9e7 在小规格 ECS 上 >900s 且内存抖动，会拖死整机
 # （2026-09-07 事故）。3e7 ≈ ECS 实测 600s 内可完成的上限。
-EXPORT_CELL_BUDGET = 3_000_000  # hard guard for the public demo
+EXPORT_CELL_BUDGET = 30_000_000  # hard guard for the public demo
 
 
 def ffmpeg_available() -> bool:
