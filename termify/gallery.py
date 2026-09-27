@@ -37,7 +37,11 @@ VALID_TAGS = ["动画", "几何", "人像", "场景", "抽象", "像素艺术", 
 TEXT_VALID_TAGS = ["字体艺术", "横幅", "LOGO", "贺卡", "梗图"]
 VALID_REPORT_REASONS = ["nsfw", "copyright", "spam", "other"]
 
-THUMB_W, THUMB_H = 200, 150
+THUMB_W, THUMB_H = 400, 300   # 2× 卡片展示宽度（卡片约 268px 宽）。字符画
+# 是硬边像素图：200×150 出图被浏览器双线性放大 1.34× 就是一团糊，与主页
+# 的实时文本预览（任意 DPR 都清晰）观感对不上。GIF 调色板压缩，终端画
+# 颜色数少，体积增幅有限。旧作品仍是 200×150，由 CSS image-rendering:
+# pixelated 就近放大，同样锐利——不需要迁移。
 THUMB_FRAMES = 4  # 3-5 loop-forever GIF
 
 OG_W, OG_H = 1200, 630

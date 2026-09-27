@@ -30,7 +30,7 @@ class FrameSequence:
 
 def convert(path: str, charset: str, width: int = 80, height: int = 24,
             fg_color=None, bg_color=None, charset_ramp=None,
-            color_mode="mono") -> FrameSequence:
+            color_mode="mono", max_frames: int | None = None) -> FrameSequence:
     """Convert an image/GIF to a FrameSequence in the given charset.
 
     Pipeline (PRD §5.3):
@@ -42,6 +42,8 @@ def convert(path: str, charset: str, width: int = 80, height: int = 24,
     render_frame so non-block charsets can wrap each cell in TrueColor ANSI.
     charset_ramp is the user-supplied ramp for the "custom" charset.
     color_mode: "mono" / "source" / "source256" (see charset.render_frame).
+    max_frames: 抽稀上限，在**缩放渲染前**对帧取等距子集（保留首尾），
+    用来给大网格预览封顶内存（见 video.sequence_from_frames_dir 的说明）。
     """
     if charset not in CHARSETS:
         raise ValueError(
@@ -55,6 +57,10 @@ def convert(path: str, charset: str, width: int = 80, height: int = 24,
         scale_w, scale_h = width * 2, height * 4
     else:
         scale_w, scale_h = width, height
+    if max_frames and len(frames) > max_frames and max_frames >= 2:
+        last = len(frames) - 1
+        step = max_frames - 1
+        frames = [frames[int(round(i * last / step))] for i in range(max_frames)]
     scaled = [scale_frame(f, scale_w, scale_h) for f, _ in frames]
     lines_per_frame = [
         render_frame(s, charset, scale_w, scale_h,

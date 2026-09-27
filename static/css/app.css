@@ -1726,6 +1726,30 @@
             grid-template-columns: repeat(4, 1fr);
             gap: var(--space-6);
         }
+        /* 列表加载骨架：首屏 fetch 往返期间网格是空的，卡片整片"啪"地弹出来
+           会把布局整体顶下去（用户说的"布局不一致"里最刺眼的一种） */
+        .gallery-skeleton {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+        }
+        .gallery-skeleton-img {
+            animation: gallery-skeleton-shimmer 1.4s ease-in-out infinite;
+            aspect-ratio: 4/3; background: var(--bg-hover);
+        }
+        .gallery-skeleton-line {
+            animation: gallery-skeleton-shimmer 1.4s ease-in-out infinite;
+            background: var(--bg-hover); border-radius: var(--radius-sm);
+            height: 12px; margin: var(--space-3) var(--space-4);
+        }
+        .gallery-skeleton-line.short { width: 45%; }
+        @keyframes gallery-skeleton-shimmer {
+            0%, 100% { opacity: 0.5; } 50% { opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .gallery-skeleton-img, .gallery-skeleton-line { animation: none; }
+        }
         .gallery-card {
             background: var(--bg-surface); border: 1px solid var(--border-dim);
             border-radius: var(--radius-md); overflow: hidden;
@@ -1745,6 +1769,9 @@
         }
         .gallery-card-img img {
             width: 100%; height: 100%; object-fit: cover;
+            /* 缩略图是硬边字符画：就近放大保持锐利。双线性插值在 1.34×
+               缩放下把整幅糊成马赛克，与主页实时文本预览差一个档。 */
+            image-rendering: pixelated;
             display: block; transition: transform 0.5s ease;
         }
         .gallery-card:hover .gallery-card-img img { transform: scale(1.05); }
@@ -2428,6 +2455,49 @@
             z-index: 6;
         }
         .render-chip[hidden] { display: none; }
+
+        /* ── /v/ 预览兜底态：服务端预览取不到时展示作品缩略图 + 下一步提示 ── */
+        .view-fallback {
+            align-items: center; color: var(--text-secondary);
+            display: flex; flex-direction: column; gap: var(--space-3);
+            height: 100%; justify-content: center;
+            min-height: 260px; padding: var(--space-5);
+            text-align: center; white-space: normal;
+        }
+        .view-fallback img {
+            border: 1px solid var(--border-dim); border-radius: var(--radius-md);
+            image-rendering: pixelated;
+            max-height: 46vh; max-width: 100%; object-fit: contain;
+        }
+        .view-fallback p { color: var(--red); font-size: 0.85rem; margin: 0; }
+        .view-fallback-hint { color: var(--text-dim) !important; font-size: 0.78rem; }
+
+        /* ── /v/ 自定义字符梯输入行（选中「自定义字符」风格卡时出现） ── */
+        .view-ramp-row {
+            align-items: center; display: flex; flex-wrap: wrap;
+            gap: var(--space-2); margin-top: var(--space-3);
+        }
+        .view-ramp-row[hidden] { display: none; }
+        .view-ramp-label {
+            color: var(--text-secondary); font-family: var(--font-mono);
+            font-size: 0.78rem;
+        }
+        .view-ramp-input {
+            background: var(--bg-surface); border: 1px solid var(--border-dim);
+            border-radius: var(--radius-sm); color: var(--text-primary);
+            flex: 1 1 220px; font-family: var(--font-mono); font-size: 0.82rem;
+            min-width: 0; padding: 7px 10px;
+        }
+        .view-ramp-input:focus {
+            border-color: var(--green); outline: none;
+        }
+        .view-ramp-apply {
+            background: var(--bg-hover); border: 1px solid var(--border-active);
+            border-radius: var(--radius-sm); color: var(--green);
+            cursor: pointer; font-family: var(--font-mono); font-size: 0.78rem;
+            padding: 7px 14px; transition: all var(--transition-fast);
+        }
+        .view-ramp-apply:hover { border-color: var(--green); }
 
         /* ── 动画工坊区块（主页与字符艺术页共用，原在 text_art.css 导致主页缺失间距） ── */
 .studio-section { padding: var(--space-12) 0 var(--space-16); }

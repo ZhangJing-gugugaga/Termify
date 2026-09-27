@@ -202,13 +202,23 @@ def _otsu_threshold(stretched):
             threshold = t
     n_below = sum(hist[:threshold + 1])  # +1: Otsu loop includes hist[t] in w_bg
     n_above = total - n_below
+    # 阈值中点化（回归修复 2026-09-28）：上面的循环找到的 threshold 是
+    # 「背景侧的最大灰度级」，拿它直接做比较在极端对比图上会退化——最优解落在
+    # 端点 bin 时 threshold=0，于是 braille/binary 的 `lum < threshold` 恒假
+    # （整幅空白），反向的 `lum >= threshold` 恒真（整幅全亮）。
+    # 取 threshold 与其后第一个非空灰度级的中点：两 bin 之间没有像素，
+    # 归属完全不变，但两侧比较都留出了余量，常规图像输出逐字节一致。
+    hi = threshold
+    while hi < 255 and hist[hi + 1] == 0:
+        hi += 1
+    cut = (threshold + hi) // 2
     # 均匀图（全黑/全白）边界处理：没有真正的"少数侧"，回退到旧行为
     # "暗=█/点"，保证均匀色图的语义不反转（test_binary_black_maps_to_block 等
     # 测试依赖此行为）。
     if n_below == 0 or n_above == 0:
-        return threshold, False
+        return cut, False
     minority_is_bright = n_above < n_below
-    return threshold, minority_is_bright
+    return cut, minority_is_bright
 
 
 def _minority_is_bright_for_img(img) -> bool:

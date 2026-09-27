@@ -171,7 +171,7 @@ def _task_get_or_404(task_id: str):
 
 # --- T1.6 Gallery wiring ----------------------------------------------------
 from termify import gallery as _gallery_mod
-from termify.charset import CHARSETS
+from termify.charset import CHARSETS, sanitize_ramp as _sanitize_ramp
 
 # 单一画廊开关（docs/DECISION-LOCAL-FIRST-2026-09-22.md §1）：桌面包 launcher
 # 注入 TERMIFY_ENABLE_GALLERY=0 → 启动时根本不注册画廊路由与页面，与云端 0
@@ -1644,25 +1644,68 @@ def _request_charset_ramp() -> str | None:
     return chars
 
 
+# 预览 JSON 的体积预算。超过即抽稀（均匀降采样），不再整份拒掉——
+# 整份 413 的后果是作品页对大网格 / blocks 风格**永远**预览不出来
+#（blocks 每格 ~21B，514 帧 × 80 列 × 48 行就已经 41MB > 预算），
+# 而主页走本地渲染能看，同一个作品两页表现不一致。
+PREVIEW_PAYLOAD_BUDGET = 30 * 1024 * 1024
+# 渲染前的「格 × 帧」封顶：与体积预算是两道独立的闸——体积估算对 blocks
+# 偏保守（实测真实载荷只有估算的 1/6），单靠它会放过 400 列 × 数百帧
+# 这种能把渲染进程 OOM 掉的组合。这道闸卡的是**渲染量**，8e6 格 ≈ 最坏
+# 数秒，与页面「渲染中…」的等待预期相符。
+PREVIEW_CELL_BUDGET = 8_000_000
+
+
+def _source_frame_count(path: str) -> int:
+    """素材帧数（只读文件头，不解码像素）。"""
+    from PIL import Image
+
+    with Image.open(path) as im:
+        return int(getattr(im, "n_frames", 1) or 1)
+
+
+def _preview_per_char(charset: str, color_mode: str) -> int:
+    """每字符的 ANSI 字节成本（实测值，见 _preview_payload_too_large）。"""
+    if charset == "blocks":
+        return 21          # 每格 fg+bg SGR
+    return 8 if color_mode != "mono" else 4
+
+
+def _preview_max_frames(width: int, height: int, charset: str,
+                        color_mode: str = "mono",
+                        budget: int = PREVIEW_PAYLOAD_BUDGET) -> int:
+    """预算内最多能装多少帧（至少 1 帧；width/height 已钳制 1-400，
+    单帧最大 400×800×21B ≈ 6.7MB < 预算，所以实际最小值远大于 1）。"""
+    rows = height * 2 if charset == "blocks" else height
+    per_frame = max(1, width * rows * _preview_per_char(charset, color_mode))
+    return max(1, budget // per_frame)
+
+
 def _preview_payload_too_large(frame_count: int, width: int, height: int,
                                charset: str, color_mode: str = "mono") -> bool:
-    """Guard against multi-hundred-MB preview JSONs on legacy clients.
-
-    Measured per-character ANSI cost: ~21B for blocks (fg+bg SGR per cell),
-    ~4B for ramp styles (color mostly per line), ~8B for source-color ramp
-    styles (run-length merged per-cell SGR). Threshold 30MB — the
-    client-side renderer is the intended path for heavy workloads.
-    """
+    """单份全帧 JSON 是否超预算（抽稀后仍装不下时才会命中）。"""
     if frame_count <= 0 or width <= 0 or height <= 0:
         return False
-    rows = height * 2 if charset == "blocks" else height
-    if charset == "blocks":
-        per_char = 21
-    elif color_mode != "mono":
-        per_char = 8
-    else:
-        per_char = 4
-    return frame_count * width * rows * per_char > 30 * 1024 * 1024
+    return frame_count > _preview_max_frames(width, height, charset, color_mode)
+
+
+def _subsample_frames(seq, charset: str, color_mode: str = "mono"):
+    """把 seq 均匀抽稀到预算内 → (frames, total_frames)。
+
+    均匀取样（等距下标）而非截断头部：动画的起止姿态都保留，循环观感
+    与原片一致。原 interval 不变——预览宁可放快，也不该变成 50 秒的慢放。
+    """
+    total = len(seq.lines_per_frame)
+    maxf = _preview_max_frames(seq.width, seq.height, charset, color_mode)
+    if total <= maxf:
+        return seq.lines_per_frame, total
+    if maxf <= 1:
+        return [seq.lines_per_frame[0]], total
+    # 端点必须落在首尾帧上：循环播放时最后一步跳回起点，少了尾帧就是
+    # "动画到 98% 突然闪回开头"的接缝
+    last = total - 1
+    idx = [int(round(i * last / (maxf - 1))) for i in range(maxf)]
+    return [seq.lines_per_frame[i] for i in idx], total
 
 
 @app.route("/api/preview/<task_id>")
@@ -1714,15 +1757,19 @@ def preview(task_id):
 
     # No `frame` requested -> return ALL frames so the player can loop them.
     if frame is None:
-        if _preview_payload_too_large(frame_count, seq.width, seq.height,
-                                      charset, color_mode):
+        frames, total_frames = _subsample_frames(seq, charset, color_mode)
+        if len(frames) < total_frames and _preview_payload_too_large(
+                1, seq.width, seq.height, charset, color_mode):
             return jsonify({
-                "error": "预览数据过大，请刷新页面使用新版播放器（本地渲染）",
+                "error": "单帧数据过大，请调小列数 / Single frame too large, "
+                         "try fewer columns",
                 "too_large": True,
             }), 413
         return jsonify({
-            "frames": seq.lines_per_frame,
-            "frame_count": frame_count,
+            "frames": frames,
+            "frame_count": len(frames),
+            "total_frames": total_frames,
+            "subsampled": len(frames) < total_frames,
             "interval": seq.interval,
             "charset": charset,
             "width": seq.width,
@@ -2602,8 +2649,19 @@ def gallery_preview(work_id):
         return jsonify({"error": "Work not found"}), 404
     original = json.loads(work["params_json"]) if work["params_json"] else {}
     charset = request.args.get("charset", original.get("charset", "blocks")).strip().lower()
-    if charset not in CHARSETS or charset == "custom":
-        # custom is per-request (needs its ramp) and is never stored on works.
+    charset_ramp = None
+    if charset == "custom":
+        # 自定义字符梯是每请求参数（不入库）：作品页与主页风格卡对齐的关键一环
+        raw_ramp = request.args.get("chars", "")
+        if not isinstance(raw_ramp, str) or not raw_ramp.strip():
+            return jsonify({"error": "custom charset requires a 'chars' ramp",
+                            "too_large": False}), 400
+        try:
+            charset_ramp = _sanitize_ramp(raw_ramp)
+        except ValueError:
+            return jsonify({"error": "custom charset ramp is empty after "
+                                     "cleaning / 自定义字符为空"}), 400
+    elif charset not in CHARSETS:
         return jsonify({"error": f"Invalid charset: {charset}"}), 400
     try:
         width = int(request.args.get("width", original.get("width", 80)))
@@ -2621,42 +2679,73 @@ def gallery_preview(work_id):
     bg_color = _rgb_or_none(request.args.get("bg", original.get("bg")))
 
     from termify import convert
+    # 渲染**前**算帧数并限帧：体积守卫是渲染之后才跑的，事后 413 已经太晚
+    # （400 列 × 数百帧能直接把渲染进程 OOM 掉，本地开发服务实测被杀、
+    # 页面全线 Failed to fetch）。这里先按「格 × 帧」封顶，渲染量因此有界。
+    rows = height * 2 if charset == "blocks" else height
+    if charset == "braille":
+        rows = height * 4
+    cell_budget = max(1, PREVIEW_CELL_BUDGET // max(1, width * rows))
+    frame_cap = _preview_max_frames(width, height, charset, color_mode)
+
+    def _cap(total):
+        return max(1, min(cell_budget, frame_cap, total))
+
+    src_total = 0
+
     if original.get("kind") == "video":
-        from termify.video import sequence_from_frames_dir
+        from termify.video import frames_dir_to_images, sequence_from_frames_dir
         fd = original.get("frames_dir") or ""
         if not fd or not os.path.isdir(fd):
             return jsonify({"error": "Video frames missing"}), 410
         try:
+            src_total = len(frames_dir_to_images(fd))
+        except Exception:  # noqa: BLE001 — 目录读不了就让渲染自己报错
+            src_total = 0
+        try:
             seq = sequence_from_frames_dir(fd, charset, width, height,
                                            interval=original.get("interval") or 0.1,
                                            color_mode=color_mode,
-                                           fg_color=fg_color, bg_color=bg_color)
+                                           fg_color=fg_color, bg_color=bg_color,
+                                           charset_ramp=charset_ramp,
+                                           max_frames=_cap(src_total or frame_cap))
         except Exception as exc:  # noqa: BLE001
             app.logger.warning("gallery conversion failed: %s", exc)
             return jsonify({"error": "转换失败 / Conversion failed"}), 400
     else:
         try:
+            src_total = _source_frame_count(work["source_path"])
+        except Exception:  # noqa: BLE001
+            src_total = 0
+        try:
             seq = convert(work["source_path"], charset, width, height,
                           fg_color=fg_color, bg_color=bg_color,
-                          color_mode=color_mode)
+                          color_mode=color_mode, charset_ramp=charset_ramp,
+                          max_frames=_cap(src_total or frame_cap))
         except Exception as exc:  # noqa: BLE001
             app.logger.warning("gallery conversion failed: %s", exc)
             return jsonify({"error": "转换失败 / Conversion failed"}), 400
 
-    if _preview_payload_too_large(len(seq.lines_per_frame), seq.width,
-                                  seq.height, charset, color_mode):
+    frames, _rendered_total = _subsample_frames(seq, charset, color_mode)
+    # total_frames 报**素材**帧数（渲染前限帧已经砍过一轮），否则前端
+    # 拿不到"原 120 帧 → 预览 62 帧"的提示
+    total_frames = src_total or _rendered_total
+    if len(frames) < total_frames and _preview_payload_too_large(
+            1, seq.width, seq.height, charset, color_mode):
         return jsonify({
-            "error": "预览数据过大，请刷新页面使用新版播放器（本地渲染）",
+            "error": "单帧数据过大，请调小列数 / Single frame too large, "
+                     "try fewer columns",
             "too_large": True,
         }), 413
-
     return jsonify({
-        "frames": seq.lines_per_frame,
+        "frames": frames,
+        "frame_count": len(frames),
+        "total_frames": total_frames,
+        "subsampled": len(frames) < total_frames,
         "interval": seq.interval,
         "width": seq.width,
         "height": seq.height,
         "charset": charset,
-        "frame_count": len(seq.lines_per_frame),
     })
 
 
@@ -2698,8 +2787,18 @@ def gallery_download(work_id):
         return jsonify({"error": f"Invalid format: {fmt!r} (expected python or html)"}), 400
     original = json.loads(work["params_json"]) if work["params_json"] else {}
     charset = request.args.get("charset", original.get("charset", "blocks")).strip().lower()
-    if charset not in CHARSETS or charset == "custom":
-        # custom is per-request (needs its ramp) and is never stored on works.
+    charset_ramp = None
+    if charset == "custom":
+        # 与预览端点同策略：自定义字符梯是每请求参数（不入库）
+        raw_ramp = request.args.get("chars", "")
+        if not isinstance(raw_ramp, str) or not raw_ramp.strip():
+            return jsonify({"error": "custom charset requires a 'chars' ramp"}), 400
+        try:
+            charset_ramp = _sanitize_ramp(raw_ramp)
+        except ValueError:
+            return jsonify({"error": "custom charset ramp is empty after "
+                                     "cleaning / 自定义字符为空"}), 400
+    elif charset not in CHARSETS:
         return jsonify({"error": f"Invalid charset: {charset}"}), 400
     try:
         width = int(request.args.get("width", original.get("width", 80)))
@@ -2732,11 +2831,12 @@ def gallery_download(work_id):
         seq = sequence_from_frames_dir(fd, charset, width, height,
                                        interval=original.get("interval") or 0.1,
                                        color_mode=color_mode,
-                                       fg_color=fg_color, bg_color=bg_color)
+                                       fg_color=fg_color, bg_color=bg_color,
+                                       charset_ramp=charset_ramp)
     else:
         seq = convert(work["source_path"], charset, width, height,
                       fg_color=fg_color, bg_color=bg_color,
-                      color_mode=color_mode)
+                      color_mode=color_mode, charset_ramp=charset_ramp)
     tmp_dir = paths.tmp_dir()
     os.makedirs(tmp_dir, exist_ok=True)
 

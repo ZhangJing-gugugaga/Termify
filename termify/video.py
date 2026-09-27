@@ -325,22 +325,36 @@ def _scale_dims(charset: str, width: int, height: int) -> tuple[int, int]:
     return width, height
 
 
+def _stride_pick(items, max_frames: int | None):
+    """均匀抽稀到 max_frames（保留首尾）；不足则原样返回。"""
+    if not max_frames or len(items) <= max_frames or max_frames < 2:
+        return items
+    last = len(items) - 1
+    step = max_frames - 1
+    return [items[int(round(i * last / step))] for i in range(max_frames)]
+
+
 def sequence_from_frames_dir(frames_dir: str, charset: str, width: int, height: int,
                              interval: float, charset_ramp=None,
-                             color_mode="mono", fg_color=None, bg_color=None):
+                             color_mode="mono", fg_color=None, bg_color=None,
+                             max_frames: int | None = None):
     """Rebuild a FrameSequence from a persisted per-task frames directory.
 
     Used for video tasks: no ffmpeg re-extraction, just PIL re-rendering, so
     switching charset / size after upload stays fast. fg/bg_color feed the
     same single-colour override path as convert() so exported video-task
     products match the preview palette.
+    max_frames: 渲染**前**对源帧均匀抽稀。画廊作品页的大网格预览靠它把
+    「格 × 帧」摁在预算内——体积守卫是渲染之后才跑的，400 列 × 514 帧
+    在 1~2 vCPU 的机器上能直接把进程 OOM 掉（2026-09-28 实测本地开发
+    服务就是这样被系统杀掉、页面全线 Failed to fetch）。
     """
     from termify.engine import FrameSequence, render_frame, scale_frame
     from PIL import Image
 
     sw, sh = _scale_dims(charset, width, height)
     lines_per_frame = []
-    for fpath in frames_dir_to_images(frames_dir):
+    for fpath in _stride_pick(frames_dir_to_images(frames_dir), max_frames):
         img = Image.open(fpath).convert("RGB")
         scaled = scale_frame(img, sw, sh)
         lines_per_frame.append(render_frame(scaled, charset, sw, sh,

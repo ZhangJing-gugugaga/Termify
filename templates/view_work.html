@@ -7,8 +7,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>{{ work.title }} · Termify</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906g">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260928a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260928a">
 </head>
 <body>
 <div id="toast"></div>
@@ -140,6 +140,24 @@
 ██████████████</div>
                     <div class="style-info"><div class="style-name">明暗渐变块</div><div class="style-desc">块状明暗，平滑质感</div></div>
                 </div>
+                <!-- 自定义字符：与主页风格卡对齐（此前作品页只有 7 款，
+                     用户在主页能试的自定义字符梯在这里试不到） -->
+                <div class="style-card" data-style="custom">
+                    <div class="style-preview ascii">@%#*+=-:.
+@%#*+=-:.
+@%#*+=-:.
+@%#*+=-:.
+@%#*+=-:.
+@%#*+=-:.
+@%#*+=-:.</div>
+                    <div class="style-info"><div class="style-name">自定义字符</div><div class="style-desc">用你自己的字符梯</div></div>
+                </div>
+            </div>
+            <div class="view-ramp-row" id="viewRampRow" hidden>
+                <label class="view-ramp-label" for="viewRampInput">字符梯（密 → 疏）</label>
+                <input type="text" class="view-ramp-input" id="viewRampInput" maxlength="128"
+                       placeholder="如: @%#*+=-:.  或  █▓▒░ ">
+                <button type="button" class="view-ramp-apply" id="viewRampApply">应用</button>
             </div>
         </div>
     </section>
@@ -303,6 +321,23 @@
             var curCharset = params.charset || "blocks";
             var curWidth = params.width || 80;
             var curHeight = params.height || 24;
+            // 自定义字符梯（每请求参数，不入库）：默认 ascii 梯，空格→空字符
+            var viewRamp = params.ramp || "@%#*+=-:. ";
+            var rampRow = document.getElementById("viewRampRow");
+            var rampInput = document.getElementById("viewRampInput");
+            function syncRampRow() {
+                if (rampRow) rampRow.hidden = curCharset !== "custom";
+            }
+            if (rampInput) {
+                rampInput.value = viewRamp;
+                document.getElementById("viewRampApply").addEventListener("click", function () {
+                    var v = rampInput.value || "";
+                    if (!v.trim()) { toast("字符梯不能为空 / Ramp required"); return; }
+                    viewRamp = v;
+                    toast("字符梯已应用");
+                    loadPreview();
+                });
+            }
 
             if (IS_TEXT) {
                 var _stylesSection = document.getElementById("styles");
@@ -350,6 +385,7 @@
             }
             function viewerRenderOpts() {
                 var o = { fg: null, bg: null };
+                if (curCharset === "custom") o.ramp = viewRamp;
                 var savedSource = params.color === "source" || params.color === "source256";
                 if (curTheme === "saved") {
                     if (savedSource) {
@@ -369,6 +405,7 @@
                 if (params.color) q += "&color=" + encodeURIComponent(String(params.color));
                 if (isRgbArr(params.fg)) q += "&fg=rgb(" + params.fg.map(function (x) { return x | 0; }).join(",") + ")";
                 if (isRgbArr(params.bg)) q += "&bg=rgb(" + params.bg.map(function (x) { return x | 0; }).join(",") + ")";
+                if (curCharset === "custom") q += "&chars=" + encodeURIComponent(viewRamp);
                 return q;
             }
 
@@ -561,11 +598,52 @@
             // 方案B：视频作品一次性取回源帧（base64 JPEG），此后全部切换本地渲染
             var IS_VIDEO = params.kind === "video";
             var srcFrames = null, srcLoading = false, srcLoadFailed = false;
+            /* 带字节进度的 JSON 读取：源帧动辄 12MB+，慢链路上几十秒，
+               期间只有一个"加载中…"转圈，用户无从判断是加载还是卡死。
+               不支持流式读取的浏览器直接退化为 r.json()。 */
+            function fetchJsonWithProgress(url, onProgress) {
+                return fetch(url).then(function (r) {
+                    var total = parseInt(r.headers.get("Content-Length") || "0", 10);
+                    if (!r.body || !r.body.getReader || !total) return r.json();
+                    var reader = r.body.getReader();
+                    var chunks = [], got = 0;
+                    return new Promise(function (resolve, reject) {
+                        function pump() {
+                            reader.read().then(function (res) {
+                                if (res.done) {
+                                    new Blob(chunks).text().then(function (txt) {
+                                        try { resolve(JSON.parse(txt)); }
+                                        catch (e) { reject(e); }
+                                    }, reject);
+                                    return;
+                                }
+                                chunks.push(res.value);
+                                got += res.value.length;
+                                if (onProgress) {
+                                    onProgress(Math.min(99, Math.round(got / total * 100)));
+                                }
+                                pump();
+                            }, reject);
+                        }
+                        pump();
+                    });
+                });
+            }
+
             function ensureSourceFrames() {
                 if (srcFrames || srcLoading || !IS_VIDEO) return;
                 srcLoading = true;
-                fetch("/api/gallery/source-frames/" + WORK_ID).then(function (r) { return r.json(); }).then(function (d) {
-                    if (!d.ok) { srcLoading = false; srcLoadFailed = true; loadPreview(); return; }
+                fetchJsonWithProgress("/api/gallery/source-frames/" + WORK_ID,
+                    function (pct) { setRenderChip("加载源帧 " + pct + "%"); })
+                .then(function (d) {
+                    if (!d || !d.ok) { srcLoading = false; srcLoadFailed = true; loadPreview(); return; }
+                    // 解码 514 张 base64 JPEG 也要几秒，按真实完成数给进度
+                    var decoded = 0, total = d.frames.length;
+                    function bump() {
+                        decoded++;
+                        setRenderChip("解码源帧 " + Math.min(99, Math.round(
+                            decoded / Math.max(1, total) * 100)) + "%");
+                    }
                     var jobs = d.frames.map(function (b64) {
                         return new Promise(function (res) {
                             var img = new Image();
@@ -573,9 +651,10 @@
                                 var c = document.createElement("canvas");
                                 c.width = d.w; c.height = d.h;
                                 c.getContext("2d").drawImage(img, 0, 0);
+                                bump();
                                 res(c);
                             };
-                            img.onerror = function () { res(null); };
+                            img.onerror = function () { bump(); res(null); };
                             img.src = "data:image/jpeg;base64," + b64;
                         });
                     });
@@ -702,11 +781,16 @@
                     if (myId !== latestReq) return;
                     setRenderChip(null);
                     preview.style.opacity = "1";
-                    if (d.error) { preview.textContent = "错误: " + d.error; return; }
+                    if (d.error) { showPreviewFallback(d.error); return; }
                     frames = d.frames || [];
                     interval = d.interval || 0.1;
                         totalFrames = frames.length;
-                    if (previewTitle) previewTitle.textContent = "animation preview · " + curCharset + " " + curWidth + "x" + curHeight;
+                    if (previewTitle) {
+                        // 抽稀提示：帧数超体积预算时服务端均匀降采样，标题写明
+                        // 「原 N 帧 → 预览 M 帧」，否则用户会以为作品被改短了
+                        previewTitle.textContent = "animation preview · " + curCharset + " " + curWidth + "x" + curHeight +
+                            (d.subsampled ? "（预览抽稀 " + d.total_frames + "→" + frames.length + " 帧）" : "");
+                    }
                     fitViewFontSize();
                     renderFrame(0);
                     if (frames.length >= 2) startPlayer();
@@ -714,8 +798,27 @@
                     if (myId !== latestReq) return;
                     setRenderChip(null);
                     preview.style.opacity = "1";
-                    preview.textContent = "加载失败";
+                    showPreviewFallback("加载失败 / Failed to load");
                 });
+            }
+
+            /* 预览兜底：服务端预览取不到时退回作品缩略图 + 可执行的下一步。
+               旧实现是一句死胡同提示（"请刷新页面使用新版播放器"）——刷新后
+               同样失败，用户只能看着转圈或一行红字。 */
+            function showPreviewFallback(msg) {
+                frames = [];
+                totalFrames = 0;
+                if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+                playing = false;
+                preview.innerHTML = '<div class="view-fallback">' +
+                    '<img src="/gallery/file/' + WORK_ID + '/thumb" alt="作品缩略图" loading="lazy">' +
+                    '<p>' + String(msg).replace(/[<>&]/g, function (c) {
+                        return { "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c];
+                    }) + '</p>' +
+                    '<p class="view-fallback-hint">拖动右侧「终端尺寸」调小列数即可重试，' +
+                    '或直接导出 MP4 看完整效果 / Drag the size slider down, or export MP4</p>' +
+                    '</div>';
+                if (previewTitle) previewTitle.textContent = "animation preview · " + curCharset + " " + curWidth + "x" + curHeight;
             }
 
             // ── style cards ──
@@ -724,9 +827,11 @@
                     document.querySelectorAll("#styles .style-card").forEach(function (c) { c.classList.remove("selected"); });
                     card.classList.add("selected");
                     curCharset = card.getAttribute("data-style");
+                    syncRampRow();
                     loadPreview();
                 });
             });
+            syncRampRow();
             // ── size slider：列数 20-400，行高按素材比例自动（与主页一致）──
             // 比例来源：作品保存的 width/height 网格（上传时已按源比例生成）。
             // rows = cols × (2 × savedH / savedW) / 2 = cols × savedH / savedW。
@@ -791,9 +896,12 @@
             }
             function exportColorsQuery() {
                 // 主题色 → 覆盖 fg/bg（mono）；「原作」→ 沿用作品保存配色（含原色模式）
+                // 自定义字符梯是独立于配色的参数，两条分支都要带上
+                var rampQ = (curCharset === "custom")
+                    ? "&chars=" + encodeURIComponent(viewRamp) : "";
                 if (curTheme !== "saved" && THEME_COLORS[curTheme]) {
                     var t = THEME_COLORS[curTheme];
-                    return "&fg=rgb(" + t.fg.join(",") + ")&bg=rgb(" + t.bg.join(",") + ")";
+                    return "&fg=rgb(" + t.fg.join(",") + ")&bg=rgb(" + t.bg.join(",") + ")" + rampQ;
                 }
                 return viewerQueryColors();
             }

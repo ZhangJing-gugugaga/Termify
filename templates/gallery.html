@@ -7,8 +7,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>在线画廊 · Termify</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906g">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260928a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260928a">
 </head>
 <body>
 <div id="toast"></div>
@@ -144,9 +144,28 @@
                 .replace(/'/g, "&#39;");
         }
 
+        function showSkeleton(on) {
+            // 首屏/翻页期间先摆 8 个骨架卡：网格高度稳定，卡片到达时
+            // 不再"啪"地顶一下整页（布局跳动的最大来源）
+            var grid = document.getElementById("galleryGrid");
+            if (!grid) return;
+            if (!on) {
+                if (grid.querySelector(".gallery-skeleton")) grid.innerHTML = "";
+                return;
+            }
+            var html = "";
+            for (var i = 0; i < 8; i++) {
+                html += '<div class="gallery-skeleton"><div class="gallery-skeleton-img"></div>' +
+                    '<div class="gallery-skeleton-line"></div>' +
+                    '<div class="gallery-skeleton-line short"></div></div>';
+            }
+            grid.innerHTML = html;
+        }
+
         function fetchGallery() {
             var params = new URLSearchParams({ sort: G.sort, page: G.page, limit: G.limit });
             if (G.tags.length) params.set("tags", G.tags.join(","));
+            showSkeleton(true);
             fetch("/api/gallery/list?" + params.toString())
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
@@ -155,7 +174,7 @@
                     renderCards(d.items);
                     renderPagination(d);
                 })
-                .catch(function () { toast("加载失败"); });
+                .catch(function () { showSkeleton(false); toast("加载失败"); });
         }
 
         function renderCards(items) {
