@@ -915,35 +915,13 @@
       });
   }
 
-  function probeVideoDuration(file, cb) {
-    // 本地解码视频元数据拿时长（不产生上传流量），用于诚实估算转换耗时
-    try {
-      var v = document.createElement("video");
-      v.preload = "metadata";
-      v.onloadedmetadata = function () {
-        var d = v.duration;
-        URL.revokeObjectURL(v.src);
-        cb(isFinite(d) ? d : null);
-      };
-      v.onerror = function () { URL.revokeObjectURL(v.src); cb(null); };
-      v.src = URL.createObjectURL(file);
-    } catch (e) { cb(null); }
-  }
-
   function uploadVideo(file) {
-    probeVideoDuration(file, function (d) {
-      file.__durationSec = d;
-      startVideoUpload(file);
-    });
-  }
-
-  function startVideoUpload(file) {
     var fd = new FormData();
     fd.append("file", file);
     if (uploadZone) uploadZone.classList.add("uploading");
     var startedAt = Date.now();
     showModal("上传视频 " + file.name,
-      "0% · 计算预计时间…", false, true);
+      "0% · 正在上传…", false, true);
     setModalProgress(0);
     var xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/upload-video");
@@ -960,14 +938,11 @@
         (e.total / 1024 / 1024).toFixed(1) + "MB · 预计剩余 " + eta + " 秒";
     });
     xhr.upload.addEventListener("load", function () {
-      // 上传完成 → 服务器抽帧+渲染。实测 50s/720p ≈ 6s（抽帧已缩放+单遍渲染），
-      // 转换耗时主要由视频时长决定，按 0.12s/秒视频 估。
-      var dur = file.__durationSec;
-      var est = dur ? Math.max(3, Math.round(dur * 0.12))
-                    : Math.max(5, Math.round(file.size / 1024 / 1024 * 0.5) + 3);
+      // 上传完成 → 服务器抽帧 + 渲染。服务器算力型耗时预估不可信（决策
+      // v3.1 §2：慢机器上静态公式严重低估），改假进度 + 耐心等待文案。
       modalTitle.textContent = "正在转换视频";
-      modalText.textContent = "抽帧 + 渲染中，预计约 " + est + " 秒（视频越长越久，请耐心等待）…";
-      setModalProgress(100);
+      modalText.textContent = "抽帧 + 渲染中，完成后自动进入下一步，请耐心等待…";
+      startFakeProgress();
     });
     xhr.addEventListener("load", function () {
       if (uploadZone) uploadZone.classList.remove("uploading");
@@ -1177,9 +1152,10 @@
         if (S.bg) body.bg = "rgb(" + S.bg[0] + "," + S.bg[1] + "," + S.bg[2] + ")";
       }
       if (fmt === "mp4") {
-        // 实测 ~100k 字符格/秒（字节合成 + x264），加 3s 编码固定开销
-        var est = Math.max(8, Math.round((S.totalFrames || 1) * S.width * S.height / 700000) + 12);
-        showModal("正在导出 MP4 视频", "预计约 " + est + " 秒，完成后自动下载…");
+        // 无耗时预估（决策 v3.1 §2）：假进度封顶 90%，完成后自动下载
+        showModal("正在导出 MP4 视频",
+          "正在导出 MP4，完成后自动下载，请耐心等待…", false, true);
+        startFakeProgress();
         fetch("/api/generate", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body)
@@ -1238,6 +1214,7 @@
   var modalProgressWrap = byId("termifyModalProgressWrap");
   var modalProgress = byId("termifyModalProgress");
   function showModal(title, text, isError, withProgress) {
+    stopFakeProgress();  // 任何新弹窗都先停掉上一个假进度（含错误态）
     if (!modal) return;
     modal.hidden = false;
     modal.classList.toggle("error", !!isError);
@@ -1249,7 +1226,29 @@
   function setModalProgress(pct) {
     if (modalProgress) modalProgress.style.width = Math.max(0, Math.min(100, pct)) + "%";
   }
+  /* 假进度（决策 v3.1 §2）：服务器算力型耗时预估不可信，ETA 公式一律砍掉，
+     改用缓慢爬升的进度条 + "请耐心等待"文案。90% 封顶——不假装完成，
+     真实完成时由 hideModal / 新弹窗收尾。 */
+  var fakeProgressTimer = null;
+  function startFakeProgress() {
+    stopFakeProgress();
+    setModalProgress(0);
+    var pct = 0;
+    fakeProgressTimer = setInterval(function () {
+      // 越接近 90% 爬得越慢（渐近），长时间等待也不会卡死在满格
+      pct += Math.max(0.4, (90 - pct) * 0.04);
+      if (pct > 90) pct = 90;
+      setModalProgress(pct);
+    }, 400);
+  }
+  function stopFakeProgress() {
+    if (fakeProgressTimer) {
+      clearInterval(fakeProgressTimer);
+      fakeProgressTimer = null;
+    }
+  }
   function hideModal() {
+    stopFakeProgress();
     if (modal) modal.hidden = true;
   }
   var modalClose = byId("termifyModalClose");
@@ -1440,7 +1439,7 @@
       urlInput.value = "";
     }
     function doFetchVideoUrl(url) {
-      showModal("解析视频链接", "正在从平台获取视频（预计 15-60 秒，取决于视频大小）…");
+      showModal("解析视频链接", "正在从平台获取视频，请耐心等待…");
       fetch("/api/fetch-video-url", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url })

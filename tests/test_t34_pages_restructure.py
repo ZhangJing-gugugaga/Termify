@@ -9,17 +9,23 @@
 
 from __future__ import annotations
 
-import importlib.util
 import io
 import json
 
 import pytest
+from tests.gallery_marks import requires_gallery
 from PIL import Image
 
-pytestmark = pytest.mark.skipif(
-    not importlib.util.find_spec("flask"),
-    reason="flask 未安装",
-)
+# 直接 import 探测（而非 importlib.util.find_spec）：全量长跑时 find_spec
+# 会受进程内 import 状态污染而误报 flask 缺失，导致整个文件被静默跳过
+# （2026-09-22 评估 §1.2 记录的测试基建瑕疵）。
+try:
+    import flask  # noqa: F401
+    _HAVE_FLASK = True
+except ImportError:  # pragma: no cover — 无 flask 的裸环境
+    _HAVE_FLASK = False
+
+pytestmark = pytest.mark.skipif(not _HAVE_FLASK, reason="flask 未安装")
 
 
 @pytest.fixture(autouse=True)
@@ -106,8 +112,13 @@ def test_text_art_page_renders(client):
     assert page.status_code == 200
     body = page.get_data(as_text=True)
     assert "字符艺术" in body and "text_art.js" in body
-    # 导航三项齐全
-    assert 'href="/"' in body and 'href="/gallery"' in body
+    # 导航：动画工坊恒在；画廊入口随开关（关闭形态不渲染，避免点了报 404）
+    assert 'href="/"' in body
+    import app as app_mod
+    if app_mod.GALLERY_ENABLED:
+        assert 'href="/gallery"' in body
+    else:
+        assert 'href="/gallery"' not in body
     # 工作台骨架
     assert 'id="taInput"' in body and 'id="taOutput"' in body
     # T37 单 Tab 无 LLM：只有「生成」按钮，AI 按钮/设置面板全部移除
@@ -117,10 +128,14 @@ def test_text_art_page_renders(client):
     assert 'id="taSettings"' not in body
     assert 'id="taCjkBtn"' not in body
     assert 'taSettingsBtn' not in body  # HTML 内任何形式都不留
-    # 共享发布弹窗（含自定义标签输入）
-    assert 'id="galleryCustomTags"' in body and 'id="customTagsCount"' in body
+    # 共享发布弹窗（含自定义标签输入）随画廊开关
+    if app_mod.GALLERY_ENABLED:
+        assert 'id="galleryCustomTags"' in body and 'id="customTagsCount"' in body
+    else:
+        assert 'id="galleryCustomTags"' not in body
 
 
+@requires_gallery
 def test_gallery_nav_three_items(client):
     page = client.get("/gallery")
     assert page.status_code == 200
@@ -145,6 +160,7 @@ def test_sanitize_custom_tags_rules():
     assert g.sanitize_custom_tags(None) == []
 
 
+@requires_gallery
 def test_image_upload_with_custom_tags(client):
     resp = _upload_image(client, tags=["动画", "几何"],
                          custom=["赛博朋克", "我的猫"])
@@ -162,6 +178,7 @@ def test_image_upload_with_custom_tags(client):
     assert tags2 == ["动画", "几何", "人像", "a", "b", "c"]
 
 
+@requires_gallery
 def test_text_upload_with_custom_tags(client):
     resp = client.post("/api/gallery/upload-text", json={
         "art": "HELLO\nWORLD", "font": "ghost", "title": "T34 文字",
@@ -175,6 +192,7 @@ def test_text_upload_with_custom_tags(client):
 
 # ── 自定义标签：计数 + 筛选 ─────────────────────────────────
 
+@requires_gallery
 def test_custom_tags_counts_and_filter(client):
     w1 = json.loads(_upload_image(client, title="w1",
                                   custom=["赛博朋克", "独角"]).data)["id"]
@@ -202,6 +220,7 @@ def test_custom_tags_counts_and_filter(client):
     assert none["items"] == []
 
 
+@requires_gallery
 def test_private_works_excluded_from_counts(client):
     json.loads(_upload_image(client, title="pub",
                              custom=["公开标签"]).data)["id"]
@@ -213,6 +232,7 @@ def test_private_works_excluded_from_counts(client):
     assert "隐私标签" not in names  # custom_tag_counts 只扫公开作品
 
 
+@requires_gallery
 def test_custom_tag_xss_neutralized_in_view_page(client):
     evil = '来源<script>alert(1)</script>'
     body = json.loads(_upload_image(client, title="xss",

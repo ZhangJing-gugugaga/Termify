@@ -9,7 +9,7 @@
     <title>字符艺术 · Termify</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260906j">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260906j">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260927a">
 </head>
 <body class="page-text-art">
     <!-- ═══════════ NAVIGATION ═══════════ -->
@@ -22,7 +22,7 @@
             <ul class="nav-links">
                 <li><a href="/">动画工坊</a></li>
                 <li><a href="/text-art" class="nav-active">字符艺术</a></li>
-                <li><a href="/gallery">画廊</a></li>
+                {% if gallery_enabled %}<li><a href="/gallery">画廊</a></li>{% endif %}
             </ul>
             <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
@@ -70,7 +70,7 @@
                         </div>
                         <div>
                             <span class="ta-label">字符宽度</span>
-                            <p class="ta-hint" style="margin-top:10px">自动（= 高度 × 2，终端 1:2 比例）。10–64：过高时按文本长度自动收缩，过高可能导致导出模糊、体验不佳</p>
+                            <p class="ta-hint" style="margin-top:10px">自动（= 高度 × 2，终端 1:2 比例）。10–64 行：1~4 字都能拉满，字数越多按总宽自动收缩</p>
                         </div>
                     </div>
 
@@ -87,19 +87,6 @@
                             <input type="file" id="taImgFile" accept=".png,.jpg,.jpeg,.bmp,.webp" hidden>
                             <button type="button" class="ta-btn" id="taImgPickBtn">选择图片</button>
                             <span class="ta-hint" id="taImgName">png / jpg / bmp / webp，动图请移步动画工坊</span>
-                        </div>
-                    </div>
-
-                    <div class="ta-group">
-                        <span class="ta-label">配色</span>
-                        <div class="ta-theme-row ta-img-palette" id="taImgPalette">
-                            <button type="button" class="ta-theme-dot active" data-palette="green"  style="--c:#00ff41" title="终端绿"></button>
-                            <button type="button" class="ta-theme-dot" data-palette="cyan"   style="--c:#00d4ff" title="青"></button>
-                            <button type="button" class="ta-theme-dot" data-palette="amber"  style="--c:#ffb000" title="琥珀"></button>
-                            <button type="button" class="ta-theme-dot" data-palette="magenta" style="--c:#ff4fd8" title="品红"></button>
-                            <button type="button" class="ta-theme-dot" data-palette="red"    style="--c:#ff3b30" title="红"></button>
-                            <button type="button" class="ta-theme-dot" data-palette="white"  style="--c:#e0e6ed" title="白"></button>
-                            <button type="button" class="ta-theme-dot ta-dot-source" data-palette="source" title="原色（逐字符取源像素真彩色）"></button>
                         </div>
                     </div>
 
@@ -166,16 +153,19 @@
                     </div>
 
                     <div class="ta-result-meta" id="taResultMeta" hidden>
+                        <div class="ta-meta-row">
                         <span class="ta-meta-text" id="taMetaText"></span>
                         <span class="ta-result-actions">
-                            <button type="button" class="ta-btn ta-btn-sm" id="taCopyBtn">复制文本</button>
-                            <button type="button" class="ta-btn ta-btn-sm" id="taAnsiBtn" title="带 ANSI 颜色，粘贴到终端即显色">复制 ANSI</button>
-                            <button type="button" class="ta-btn ta-btn-sm" id="taTermBtn" title="python -c 命令，粘贴到任何终端运行即显示">终端命令</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taCopyBtn" title="纯文本（不含颜色转义），与预览字符完全一致">复制文本</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taAnsiBtn" title="带 24 位色转义。粘到终端窗口即显色；粘到 PowerShell/cmd 提示符会报错（转义不是合法命令），那种情况请用「下载 .py」">复制 ANSI</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taPyBtn" title="下载可执行 .py：python xxx.py 就在终端出图，不受命令行长度限制">下载 .py</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taTermBtn" title="python -c 单行命令（已 zlib 压缩），粘贴到任何终端运行即显示">终端命令</button>
                             <button type="button" class="ta-btn ta-btn-sm" id="taPngBtn">下载 PNG</button>
                             <button type="button" class="ta-btn ta-btn-sm" id="taHtmlBtn">下载 HTML</button>
                             <button type="button" class="ta-btn ta-btn-sm" id="taDownloadBtn">.txt</button>
-                            <button type="button" class="ta-btn ta-btn-sm ta-btn-primary" id="taShareBtn">分享到画廊</button>
+                            {% if gallery_enabled %}<button type="button" class="ta-btn ta-btn-sm ta-btn-primary" id="taShareBtn">分享到画廊</button>{% endif %}
                         </span>
+                        </div>
                         <span class="ta-theme-row" id="taThemeRow" hidden>
                             <span class="ta-theme-label">配色</span>
                             <button type="button" class="ta-theme-dot active" data-theme="green"  style="--c:#00ff41" title="终端绿"></button>
@@ -184,12 +174,14 @@
                             <button type="button" class="ta-theme-dot" data-theme="magenta" style="--c:#ff4fd8" title="品红"></button>
                             <button type="button" class="ta-theme-dot" data-theme="red"    style="--c:#ff3b30" title="红"></button>
                             <button type="button" class="ta-theme-dot" data-theme="white"  style="--c:#e0e6ed" title="白"></button>
+                            <button type="button" class="ta-theme-dot ta-dot-source" data-theme="source" title="原色（逐字符取源像素真彩色，仅图片艺术化）" hidden></button>
                         </span>
                     </div>
 
-                    <!-- 字体墙：全部精选字体预览，点击即换 -->
+                    <!-- 字体墙：三种模式共用（英文字体 / 中文字体 / 图片字符集），
+                         点卡片即换即看 -->
                     <div class="ta-fontwall" id="taFontwall" hidden>
-                        <p class="ta-fw-title">字体墙 · 点击切换</p>
+                        <p class="ta-fw-title" id="taFwTitle">字体墙 · 点击切换</p>
                         <div class="ta-fw-grid" id="taFontwallGrid"></div>
                     </div>
                 </div>
@@ -206,7 +198,7 @@
     </footer>
 
     <!-- ═══════════ GALLERY SHARE MODAL（共享 include）═══════════ -->
-    {% include '_gallery_modal.html' %}
+    {% if gallery_enabled %}{% include '_gallery_modal.html' %}{% endif %}
 
     <div id="toast"></div>
 
@@ -225,6 +217,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260906j" defer></script>
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260927a" defer></script>
 </body>
 </html>

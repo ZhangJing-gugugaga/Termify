@@ -18,6 +18,7 @@ import json
 import os
 
 import pytest
+from tests.gallery_marks import requires_gallery
 from PIL import Image
 
 
@@ -128,6 +129,7 @@ def test_corrupt_image_upload_4xx_without_path_leak(client):
     assert "转换失败" in msg and "Conversion failed" in msg
 
 
+@requires_gallery
 def test_corrupt_image_gallery_upload_4xx_without_path_leak(client, monkeypatch, tmp_path):
     """画廊通道同样 4xx + 不泄露路径（历史上 400 但带 'D:\\...jpg' 详情）。"""
     from termify.gallery import GalleryDB

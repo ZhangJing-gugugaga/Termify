@@ -20,6 +20,7 @@ import os
 import re
 
 import pytest
+from tests.gallery_marks import requires_gallery
 from PIL import Image
 
 
@@ -110,6 +111,7 @@ def _make_gallery_db(monkeypatch, tmp_path, work_id="wt28like0001"):
 # ═══ 1. gallery_like cookie 守卫 ═════════════════════════════════════════════
 
 
+@requires_gallery
 def test_like_valid_string_cookie_still_200_and_sets_cookie(client, monkeypatch,
                                                             tmp_path):
     """合法字符串 cookie：200 + liked/count + set-cookie（原语义回归）。"""
@@ -123,6 +125,7 @@ def test_like_valid_string_cookie_still_200_and_sets_cookie(client, monkeypatch,
     assert "termify_like_wt28like0001" in resp.headers.get("Set-Cookie", "")
 
 
+@requires_gallery
 def test_like_overlong_cookie_400_bilingual(client, monkeypatch, tmp_path):
     """>200 字符 cookie → 400 双语，不落库不 500。"""
     _make_gallery_db(monkeypatch, tmp_path)
@@ -133,6 +136,7 @@ def test_like_overlong_cookie_400_bilingual(client, monkeypatch, tmp_path):
     _assert_bilingual(json.loads(resp.data)["error"])
 
 
+@requires_gallery
 def test_like_browser_cookie_priority_kept(client, monkeypatch, tmp_path):
     """浏览器 cookie 与 JSON cookie 并存时仍以浏览器 cookie 优先（原语义）。"""
     db = _make_gallery_db(monkeypatch, tmp_path)

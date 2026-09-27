@@ -828,11 +828,10 @@
                 var url = "/api/gallery/download/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight + "&format=" + fmt + exportColorsQuery();
                 var btn = fmt === "mp4" ? document.getElementById("exportAnimBtn") : null;
                 if (fmt === "mp4" && btn) {
-                    // 视频编码耗时较长：按钮进入等待态 + 预计时间
-                    var est = Math.max(8, Math.round((frames.length || 1) * curWidth * curHeight / 700000) + 12);
+                    // 视频编码耗时较长：按钮进入等待态；无耗时预估（决策 v3.1 §2）
                     var oldText = btn.innerHTML;
                     btn.disabled = true;
-                    btn.innerHTML = "⏳ 生成中…预计约 " + est + " 秒";
+                    btn.innerHTML = "⏳ 生成中…请耐心等待";
                     fetch(url).then(function (r) {
                         if (!r.ok) { return r.json().then(function (d) { throw new Error(d.error || "HTTP " + r.status); }); }
                         return r.blob();

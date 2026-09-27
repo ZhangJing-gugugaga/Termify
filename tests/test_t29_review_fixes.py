@@ -23,6 +23,7 @@ import os
 import re
 
 import pytest
+from tests.gallery_marks import requires_gallery
 from PIL import Image
 
 
@@ -103,6 +104,7 @@ XSS_PAYLOAD = {"inj": "</script><img src=x onerror=alert(1)>"}
 # ═══ [blocker-1/2] /v/ 页数据脚本块完整性 ═══════════════════════════════════
 
 
+@requires_gallery
 def test_view_page_renders_200_for_normal_work(client):
     """[blocker-1] 正常作品 GET /v/<id> 必须 200（修复前全站 500）。"""
     wid = _upload_work(client, title="t29-normal",
@@ -115,6 +117,7 @@ def test_view_page_renders_200_for_normal_work(client):
     assert "t29-normal" in body
 
 
+@requires_gallery
 def test_view_page_data_script_block_intact(client):
     """[blocker-2] 数据脚本块完整：赋值在第一个内联 script 内，全文恰 3 个闭合。
 
@@ -150,6 +153,7 @@ def test_view_page_data_script_block_intact(client):
 # ═══ [major-3] params_json / tags_json tojson + JSON.parse 防线 ════════════
 
 
+@requires_gallery
 def test_view_page_params_json_injection_neutralized(client):
     """[major-3] 恶意 params 入库后 /v/ 页不逃逸脚本上下文，且可无损还原。"""
     wid = _upload_work(
@@ -176,6 +180,7 @@ def test_view_page_params_json_injection_neutralized(client):
     assert params["charset"] == "ascii"
 
 
+@requires_gallery
 def test_view_page_tags_tojson_and_whitelist(client):
     """[major-3] tags 走 tojson+JSON.parse：白名单外条目被丢弃，合法标签还原。"""
     wid = _upload_work(client, title="t29-tags",

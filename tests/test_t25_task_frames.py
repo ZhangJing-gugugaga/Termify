@@ -12,17 +12,22 @@
 from __future__ import annotations
 
 import base64
-import importlib.util
 import io
 import json
 
 import pytest
 from PIL import Image
 
-pytestmark = pytest.mark.skipif(
-    not importlib.util.find_spec("flask"),
-    reason="flask 未安装",
-)
+# 直接 import 探测（而非 importlib.util.find_spec）：全量长跑时 find_spec
+# 会受进程内 import 状态污染而误报 flask 缺失，导致整个文件被静默跳过
+# （2026-09-22 评估 §1.2 记录的测试基建瑕疵）。
+try:
+    import flask  # noqa: F401
+    _HAVE_FLASK = True
+except ImportError:  # pragma: no cover — 无 flask 的裸环境
+    _HAVE_FLASK = False
+
+pytestmark = pytest.mark.skipif(not _HAVE_FLASK, reason="flask 未安装")
 
 
 @pytest.fixture(autouse=True)

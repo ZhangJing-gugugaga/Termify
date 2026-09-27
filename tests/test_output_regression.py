@@ -15,6 +15,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 import pytest
@@ -43,8 +44,16 @@ def _make_seq(charset: str, n: int = 3) -> FrameSequence:
 # ── 1. 生成的 .py 实跑：优雅退出 + 告别语 ─────────────────────
 
 
-def _run_and_interrupt(script_path, delay=1.0, limit=15.0):
-    """启动播放器，delay 秒后发 Ctrl+C（新进程组下亦可），返回 (rc, out, err)。"""
+def _run_and_interrupt(script_path, limit=30.0, ready_timeout=25.0):
+    """启动播放器，等它真正开始输出后再发 Ctrl+C，返回 (rc, out, err)。
+
+    旧实现是"固定 sleep 1s 后立刻中断"，存在竞态：播放器进程的 Python 启动
+    + import 在负载高的机器上（全量长跑、并发子进程）可能超过 1s，此时
+    CTRL_C_EVENT 会命中尚未安装 KeyboardInterrupt 处理器的进程——进程直接
+    被终止，拿不到告别语、退出码也非 0。这正是 2026-09-22 评估里记录的
+    偶发 flaky 根因。改为等待首个 stdout 输出（渲染循环已启动 ⇒ 处理器
+    已就绪）再中断，把时序竞态换成确定性信号。
+    """
     kwargs = {}
     if os.name == "nt":
         # 新进程组：让 CTRL_C_EVENT 只命中子进程，不波及测试进程本身
@@ -54,21 +63,47 @@ def _run_and_interrupt(script_path, delay=1.0, limit=15.0):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         stdin=subprocess.DEVNULL,
-        encoding="utf-8",
-        errors="replace",
         **kwargs,
     )
-    time.sleep(delay)
-    if os.name == "nt":
-        os.kill(proc.pid, signal.CTRL_C_EVENT)
-    else:
-        proc.send_signal(signal.SIGINT)
+
+    chunks: list[bytes] = []
+
+    def _drain_stdout() -> None:
+        # 必须按字节读：播放器用 ANSI 光标定位逐帧刷新，整帧不含换行
+        # （'\\x1b[{{n}};1H{{line}}'），按行迭代会一直阻塞到进程退出。
+        try:
+            fd = proc.stdout.fileno()  # type: ignore[union-attr]
+            while True:
+                data = os.read(fd, 4096)
+                if not data:
+                    break
+                chunks.append(data)
+        except (ValueError, OSError):  # pragma: no cover — 进程被杀时的收尾
+            pass
+
+    reader = threading.Thread(target=_drain_stdout, daemon=True)
+    reader.start()
+
+    # 就绪信号：播放器每帧后都 flush stdout，见到输出即说明已在渲染循环里
+    deadline = time.monotonic() + ready_timeout
+    while not chunks and proc.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+    if proc.poll() is None:
+        if os.name == "nt":
+            os.kill(proc.pid, signal.CTRL_C_EVENT)
+        else:
+            proc.send_signal(signal.SIGINT)
     try:
-        out, err = proc.communicate(timeout=limit)
+        proc.wait(timeout=limit)
     except subprocess.TimeoutExpired:
         proc.kill()
-        out, err = proc.communicate()
+        proc.wait()
+        reader.join(timeout=2)
         pytest.fail("播放器未在时限内优雅退出（Ctrl+C 未生效）")
+    reader.join(timeout=5)
+    out = b"".join(chunks).decode("utf-8", errors="replace")
+    err = proc.stderr.read().decode("utf-8", errors="replace") if proc.stderr else ""
     return proc.returncode, out, err
 
 

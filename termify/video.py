@@ -8,10 +8,14 @@ termify.convert() pipeline for charset rendering.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import uuid
+
+from termify.paths import ffmpeg_path as _ffmpeg_path
+from termify.paths import ffprobe_path as _ffprobe_path
 
 # Size cap is configurable so self-hosters can raise it; the public demo
 # keeps a disk-guard. There is NO duration cap: long videos are accepted and
@@ -32,8 +36,41 @@ class VideoError(Exception):
     """Raised when video processing fails."""
 
 
-def _ffmpeg_path() -> str | None:
-    return shutil.which("ffmpeg")
+def _probe_stderr(video_path: str) -> str:
+    """ffprobe 缺失时的容器信息回退：读 ``ffmpeg -i`` 的 stderr。
+
+    不指定输出文件时 ffmpeg 会以 rc=1 退出并把容器元数据（Duration /
+    Stream 行）打到 stderr——只解析这段文本，不做任何转码。桌面包只捆绑
+    ffmpeg.exe（不捆绑 ffprobe.exe，省 ~100MB），时长探测与音轨探测因此
+    需要这条回退路径，否则无 ffprobe 的机器上抽帧固定 10fps、音轨静默丢失。
+    """
+    ffmpeg = _ffmpeg_path()
+    if not ffmpeg:
+        return ""
+    try:
+        result = subprocess.run(
+            [ffmpeg, "-hide_banner", "-i", video_path],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stderr or ""
+
+
+_DURATION_RE = re.compile(r"Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)")
+_AUDIO_STREAM_RE = re.compile(r"Stream #\d+:\d+.*?: Audio:")
+
+
+def _parse_duration(text: str) -> float | None:
+    """Parse the ffmpeg ``Duration: HH:MM:SS.ss`` field, or None."""
+    match = _DURATION_RE.search(text)
+    if not match:
+        return None
+    try:
+        return (int(match.group(1)) * 3600 + int(match.group(2)) * 60
+                + float(match.group(3)))
+    except ValueError:
+        return None
 
 
 def adaptive_fps(duration_sec: float | None) -> float:
@@ -49,9 +86,9 @@ def adaptive_fps(duration_sec: float | None) -> float:
 
 def probe_duration(video_path: str) -> float | None:
     """Return video duration in seconds via ffprobe, or None if unknown."""
-    ffprobe = shutil.which("ffprobe")
+    ffprobe = _ffprobe_path()
     if not ffprobe:
-        return None
+        return _parse_duration(_probe_stderr(video_path))
     try:
         result = subprocess.run(
             [ffprobe, "-v", "error", "-show_entries", "format=duration",
@@ -67,9 +104,9 @@ def probe_duration(video_path: str) -> float | None:
 
 def has_audio_stream(video_path: str) -> bool:
     """True iff the container has at least one audio stream (ffprobe)."""
-    ffprobe = shutil.which("ffprobe")
+    ffprobe = _ffprobe_path()
     if not ffprobe:
-        return False
+        return bool(_AUDIO_STREAM_RE.search(_probe_stderr(video_path)))
     try:
         result = subprocess.run(
             [ffprobe, "-v", "error", "-select_streams", "a",

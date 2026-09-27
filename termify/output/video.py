@@ -6,13 +6,13 @@ no terminal chrome (grid/scanlines deliberately excluded per product decision).
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
 from termify.engine import FrameSequence
+from termify.paths import ffmpeg_path
 
 
 class VideoEncodeError(Exception):
@@ -46,10 +46,6 @@ _FONT_CANDIDATES = [
 DEFAULT_FG = (235, 235, 235)
 DEFAULT_BG = (10, 12, 16)
 
-# Rough throughput constant for the sync-export time estimate:
-# rasterize + x264 encode of ~120k character cells per second.
-_CELLS_PER_SECOND = 120_000
-
 MAX_VIDEO_FRAMES = 600
 
 # 单次导出的"格×帧"预算：超过直接拒绝并建议降列数——
@@ -59,13 +55,7 @@ EXPORT_CELL_BUDGET = 30_000_000  # hard guard for the public demo
 
 
 def ffmpeg_available() -> bool:
-    return shutil.which("ffmpeg") is not None
-
-
-def estimate_seconds(frame_count: int, width: int, height: int) -> int:
-    """Heuristic sync-export duration estimate, clamped to 2..600 s."""
-    cells = max(1, frame_count) * max(1, width) * max(1, height)
-    return int(min(600, max(2, round(cells / _CELLS_PER_SECOND))))
+    return ffmpeg_path() is not None
 
 
 def pick_font(size: int = 14) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -353,6 +343,9 @@ def encode_mp4(seq: FrameSequence, out_path: str, font_size: int = 14,
     if not ffmpeg_available():
         raise VideoEncodeError("ffmpeg is not available on this host")
 
+    # 捆绑的 ffmpeg 优先（桌面包无需用户预装）；此处必然非 None（上方已探活）
+    ffmpeg_bin = ffmpeg_path() or "ffmpeg"
+
     # 网格尺寸跟随渲染结果（此前钳在 200×60——200 列以上的预览导出
     # 会被砍半重采样，内容错位、分辨率与预览不符）
     width = max(1, min(400, seq.width))
@@ -376,7 +369,7 @@ def encode_mp4(seq: FrameSequence, out_path: str, font_size: int = 14,
     lines_per_frame = seq.lines_per_frame[:MAX_VIDEO_FRAMES]
 
     cmd = [
-        "ffmpeg", "-y", "-loglevel", "error",
+        ffmpeg_bin, "-y", "-loglevel", "error",
         "-f", "rawvideo", "-vcodec", "rawvideo",
         "-s", f"{out_w}x{out_h}", "-pix_fmt", "rgb24",
         "-r", str(fps), "-i", "-",

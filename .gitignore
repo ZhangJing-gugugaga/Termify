@@ -80,6 +80,10 @@ _*.py
 # Test artifacts (temporary, regenerable)
 test_*.json
 test_*.py
+# ...但 tests/ 下的正式用例必须入库：上面的 test_*.py 本意是仓库根/临时目录
+# 里的调试脚本，却会连带忽略 tests/ 下的新用例（已跟踪的旧文件不受影响，
+# 所以只在新增测试时才暴露——提交时极易漏掉）。
+!tests/test_*.py
 static/geometric_preview.html
 data/
 
@@ -112,7 +116,13 @@ demo-article.md
 Termify-*.md
 docs/RELEASE-REVIEW-*.md
 docs/DEPLOY-MY-ECS.md
+docs/DECISION-*.md
+docs/PROJECT-ASSESSMENT-*.md
 security-audit-report.md
+
+# Browser-use CLI 缓存 + GitHub Release 资产（本地产物，发布走 Release 页）
+.playwright-cli/
+Termify-*.zip
 
 # Tool config / session data
 .mimosa/

@@ -1,6 +1,8 @@
-"""T21 — MP4 视频导出：SGR 解析、帧栅格化、时间预估、API 分支。
+"""T21 — MP4 视频导出：SGR 解析、帧栅格化、API 分支。
 
 编码端到端测试在 ffmpeg 存在时才运行（与 test_t13 视频接入同约定）。
+耗时预估（estimate_seconds）已按 Local-First v3.1 决策整体移除——服务器
+算力型 ETA 公式不可信，改为假进度 + "请耐心等待"文案。
 """
 
 from __future__ import annotations
@@ -20,7 +22,6 @@ from termify.output.video import (
     DEFAULT_FG,
     MAX_VIDEO_FRAMES,
     encode_mp4,
-    estimate_seconds,
     frame_to_image,
     parse_ansi_line,
     pick_font,
@@ -135,12 +136,7 @@ def test_frame_to_image_full_block_composite():
         assert img.getpixel((2 * cw, yy)) == (1, 2, 3)
 
 
-# --- 预估 / 上限 -------------------------------------------------------------------
-
-def test_estimate_seconds_clamped():
-    assert estimate_seconds(1, 10, 10) >= 2
-    assert estimate_seconds(10**9, 200, 60) <= 600
-
+# --- 上限 -------------------------------------------------------------------------
 
 def test_max_frames_constant_sane():
     assert 60 <= MAX_VIDEO_FRAMES <= 5000

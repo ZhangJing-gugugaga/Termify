@@ -34,6 +34,7 @@ import os
 import re
 
 import pytest
+from tests.gallery_marks import requires_gallery
 from PIL import Image
 
 from termify.taskstore import (
@@ -309,7 +310,9 @@ def test_upload_rate_limit_message_bilingual_format(client):
 @pytest.mark.parametrize("endpoint,content_type", [
     ("/api/upload", "application/octet-stream"),
     ("/api/upload-batch", "application/octet-stream"),
-    ("/api/gallery/upload", "application/octet-stream"),
+    # 画廊端点仅在开关开启形态下存在（关闭时不注册 → 无 413 语义）
+    pytest.param("/api/gallery/upload", "application/octet-stream",
+                 marks=requires_gallery),
     ("/api/generate", "application/json"),
     ("/api/fetch-url", "application/json"),
 ])
@@ -327,6 +330,7 @@ def test_413_bilingual_json_on_all_heavy_endpoints(client, endpoint, content_typ
 # ═══ 5. gallery_like ═════════════════════════════════════════════════════════
 
 
+@requires_gallery
 def test_gallery_like_array_body_no_500(client, monkeypatch, tmp_path):
     """Content-Type application/json + 体 [1,2]（数组）→ 不 500，正常点赞。"""
     _make_gallery_db(monkeypatch, tmp_path, work_id="wt27like0001")
@@ -338,6 +342,7 @@ def test_gallery_like_array_body_no_500(client, monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("evil_cookie", ['[1,2]', '{"nested": true}'])
+@requires_gallery
 def test_gallery_like_dict_nonstring_cookie_no_500(client, monkeypatch,
                                                    tmp_path, evil_cookie):
     """dict 体 + 非字符串 cookie 不应 500（修复后 400 双语拒绝，
@@ -443,6 +448,7 @@ def test_sweep_store_isolation(tmp_path):
 # ═══ 9. admin 鉴权（compare_digest 行为面）═══════════════════════════════════
 
 
+@requires_gallery
 def test_admin_api_wrong_pwd_403_correct_200(client, monkeypatch):
     """/api/gallery/admin：无头/错密码 403，正确密码 200。"""
     monkeypatch.setenv("TERMIFY_ADMIN_PWD", "s3cret-t27")
@@ -457,6 +463,7 @@ def test_admin_api_wrong_pwd_403_correct_200(client, monkeypatch):
     assert "works" in body and "reports" in body
 
 
+@requires_gallery
 def test_admin_empty_pwd_never_matches(client, monkeypatch):
     """TERMIFY_ADMIN_PWD 未设置/为空时，空 header 也必须 403（空串不互认）。"""
     monkeypatch.delenv("TERMIFY_ADMIN_PWD", raising=False)
@@ -468,6 +475,7 @@ def test_admin_empty_pwd_never_matches(client, monkeypatch):
                       headers={"X-Termify-Admin-Pwd": ""}).status_code == 403
 
 
+@requires_gallery
 def test_gallery_delete_wrong_work_token_403_right_token_200(client,
                                                              monkeypatch,
                                                              tmp_path):

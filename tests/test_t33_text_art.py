@@ -8,16 +8,22 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 
 import pytest
+from tests.gallery_marks import requires_gallery
 
-pytestmark = pytest.mark.skipif(
-    not importlib.util.find_spec("flask"),
-    reason="flask 未安装",
-)
+# 直接 import 探测（而非 importlib.util.find_spec）：全量长跑时 find_spec
+# 会受进程内 import 状态污染而误报 flask 缺失，导致整个文件被静默跳过
+# （2026-09-22 评估 §1.2 记录的测试基建瑕疵）。
+try:
+    import flask  # noqa: F401
+    _HAVE_FLASK = True
+except ImportError:  # pragma: no cover — 无 flask 的裸环境
+    _HAVE_FLASK = False
+
+pytestmark = pytest.mark.skipif(not _HAVE_FLASK, reason="flask 未安装")
 
 
 @pytest.fixture(autouse=True)
@@ -220,6 +226,7 @@ def _publish_text(client, *, art="HELLO\nWORLD", font="ghost", private="0"):
         "fg": [51, 255, 51]})
 
 
+@requires_gallery
 def test_upload_text_and_view_page(client):
     resp = _publish_text(client)
     assert resp.status_code == 200, resp.data
@@ -247,6 +254,7 @@ def test_upload_text_and_view_page(client):
     assert src.data[:8] == b"\x89PNG\r\n\x1a\n"
 
 
+@requires_gallery
 def test_upload_text_private_auth(client):
     resp = _publish_text(client, private="1")
     assert resp.status_code == 200
@@ -256,6 +264,7 @@ def test_upload_text_private_auth(client):
     assert client.get(f"/gallery/file/{work_id}/source").status_code == 200
 
 
+@requires_gallery
 def test_upload_text_validation_and_rate(client):
     resp = client.post("/api/gallery/upload-text", json={"art": ""})
     assert resp.status_code == 400
@@ -272,8 +281,9 @@ def test_upload_text_validation_and_rate(client):
 
 def _cmd_payload(cmd: str) -> str:
     import base64
+    import zlib
     inner = cmd.split("b64decode('")[1].split("')")[0]
-    return base64.b64decode(inner).decode("utf-8")
+    return zlib.decompress(base64.b64decode(inner)).decode("utf-8")
 
 
 def test_render_terminal_command_theme_colors():
@@ -302,9 +312,12 @@ def test_terminal_command_endpoint(client):
     resp = client.post("/api/text/terminal-command",
                        json={"art": "HI\nWORLD", "theme": "cyan"})
     assert resp.status_code == 200, resp.data
-    cmd = json.loads(resp.data)["cmd"]
+    d = json.loads(resp.data)
+    cmd = d["cmd"]
     assert cmd.startswith("python -c")
     assert "38;2;0;212;255" in _cmd_payload(cmd)  # cyan 主题 RGB
+    assert d["cmd_len"] == len(cmd)
+    assert d["too_long"] is False
 
 
 def test_terminal_command_endpoint_source_art(client):
@@ -313,6 +326,76 @@ def test_terminal_command_endpoint_source_art(client):
                        json={"art": art, "theme": "green"})
     assert resp.status_code == 200
     assert _cmd_payload(json.loads(resp.data)["cmd"]) == art
+
+
+def test_terminal_command_fits_under_cmd_limit():
+    """真彩作品（run-length SGR，真实形态）要压进 cmd.exe 8191 命令行。"""
+    from termify import textart
+
+    rows = []
+    for y in range(60):
+        parts, last = [], None
+        for x in range(200):
+            c = ((x // 4) * 7 + (y // 3) * 3) % 256
+            if c != last:
+                parts.append("\x1b[38;2;%d;%d;%dm" % (c, 255 - c, c // 2))
+                last = c
+            parts.append("#" if c > 128 else " ")
+        rows.append("".join(parts) + "\x1b[0m")
+    art = "\n".join(rows)
+    cmd = textart.render_terminal_command(art, "green")
+    assert len(cmd) < textart.TERMINAL_CMD_MAX, len(cmd)
+    assert _cmd_payload(cmd) == art
+
+
+def test_terminal_command_endpoint_flags_too_long(client):
+    """压不进命令行的（极端不可压缩负载）→ too_long，前端改推 .py。"""
+    import random
+
+    rnd = random.Random(7)
+    art = "\n".join("".join(chr(33 + rnd.randrange(90)) for _ in range(400))
+                    for _ in range(110))
+    resp = client.post("/api/text/terminal-command",
+                       json={"art": art, "theme": "green"})
+    assert resp.status_code == 200, resp.data
+    d = json.loads(resp.data)
+    assert d["too_long"] is True
+    assert len(d["cmd"]) > 7000
+    # .py 导出对同样的负载照常可用（唯一的可靠路径）
+    r2 = client.post("/api/text/export-py", json={"art": art, "theme": "green"})
+    assert r2.status_code == 200 and b"PAYLOAD" in r2.data
+
+
+# ── .py 导出：终端命令太大时的正解 ─────────────────────────────
+
+def test_render_python_script_roundtrip():
+    from termify import textart
+
+    art = "HI\n\x1b[38;2;1;2;3mYO\x1b[0m"
+    script = textart.render_python_script(art, "green", "作品 01")
+    assert "PAYLOAD" in script and "zlib" in script
+    # 脚本必须是可编译、可运行的（用 subprocess 真跑一遍）
+    import subprocess
+    import sys
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "art.py")
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(script)
+        out = subprocess.run([sys.executable, p], capture_output=True,
+                             text=True, check=True).stdout
+    assert out == art + "\n"
+
+
+def test_export_py_endpoint(client):
+    resp = client.post("/api/text/export-py",
+                       json={"art": "HI\nWORLD", "theme": "amber",
+                             "name": "我的作品"})
+    assert resp.status_code == 200
+    body = resp.data.decode("utf-8")
+    assert "PAYLOAD" in body
+    assert "text/x-python" in resp.headers["Content-Type"]
+    assert "filename*=UTF-8''" in resp.headers["Content-Disposition"]
 
 
 # ── 字符高度：上限 64 + 超限自动收缩提示依据 ────────────────────
@@ -336,7 +419,86 @@ def test_convert_cjk_height_auto_shrink_for_long_text(client):
     resp = client.post("/api/text/convert",
                        json={"text": "你好世界万物更新", "height": 64})
     d = json.loads(resp.data)
-    assert d["height"] == 10  # 8 字 × 2 列/行 → 收缩到宽度红线内
+    # 8 字 × 2 列/行 → 400 列宽度预算下收缩到 25 行
+    assert d["height"] == 25
+    assert d["cols"] <= 440
+
+
+def test_convert_cjk_50_rows_reachable(client):
+    """用户诉求：字符高度至少能到 50 行（此前 3 字就被宽度红线压到 26）。"""
+    from termify import textart
+
+    for n in (1, 2, 3, 4):
+        text = "龙腾四海"[:n]
+        assert textart.cjk_effective_height(text, 64) >= 50, n
+    resp = client.post("/api/text/convert",
+                       json={"text": "龙腾", "height": 50})
+    d = json.loads(resp.data)
+    assert d["height"] == 50 and d["rows"] == 50 and d["cols"] == 200
+
+
+def test_cjk_ink_box_no_cropped_edges():
+    """回归：按 em box 压缩时首行整行空白、字头只剩半格（"字被吃了一半"）。
+
+    现在按墨迹盒取样：首行与末行都必须有笔画，且列数 = 字数 × 高度 × 2。
+    """
+    from termify import textart
+
+    art = textart.render_cjk_ttf("黑体", "heiti", 26)
+    lines = art.split("\n")
+    assert lines[0].strip(), "首行空白 = 字头被吃掉"
+    assert lines[-1].strip(), "末行空白 = 字脚被吃掉"
+    assert all(len(ln) == 2 * 26 * 2 for ln in lines)  # 2 字 × 2 列/行 × 26 行
+
+
+def test_cjk_fontwall_endpoint(client):
+    resp = client.post("/api/cjk/ttf/fontwall", json={"text": "你好"})
+    assert resp.status_code == 200, resp.data
+    fonts = json.loads(resp.data)["fonts"]
+    assert fonts, "中文字体墙不能为空"
+    for f in fonts:
+        # 卡片必须带完整作品 + 尺寸（前端据此等比缩放，不截行）
+        assert f["art"] and f["full"] and f["cols"] > 0 and f["rows"] > 0
+        assert f["art"] == f["full"]
+        assert f["name"] in ("宋体", "黑体", "楷体")
+
+
+def test_figlet_fontwall_not_row_truncated(client):
+    """英文字体墙：任何字体都不得被砍行（旧实现统一截到 8 行）。"""
+    from termify import textart
+
+    resp = client.post("/api/text/fontwall", json={"text": "termify"})
+    fonts = json.loads(resp.data)["fonts"]
+    tall = 0
+    for f in fonts:
+        assert f["art"] == f["full"]          # 卡片与点选结果同源
+        assert len(f["art"].split("\n")) == f["rows"]
+        expect = textart.render_figlet("termify", f["slug"], 100)
+        assert f["rows"] == len(expect.split("\n")), f["slug"]
+        if f["rows"] > 8:
+            tall += 1
+    assert tall >= 5, "样本里应该有多款超过 8 行的字体（旧实现会截断）"
+
+
+def test_imgwall_endpoint_covers_charsets(client):
+    import io as _io
+
+    from PIL import Image
+
+    buf = _io.BytesIO()
+    Image.new("RGB", (48, 24), (200, 60, 40)).save(buf, format="PNG")
+    buf.seek(0)
+    resp = client.post("/api/text/imgwall", data={
+        "file": (buf, "墙.png"), "width": "60", "height": "30"},
+        content_type="multipart/form-data")
+    assert resp.status_code == 200, resp.data
+    fonts = json.loads(resp.data)["fonts"]
+    slugs = {f["slug"] for f in fonts}
+    assert {"ascii", "braille", "shades", "binary"} <= slugs
+    assert "custom" not in slugs  # 自定义字符无固定字形，不进墙
+    for f in fonts:
+        assert f["art"] and f["cols"] > 0 and f["rows"] > 0
+        assert f["cols"] <= 60  # 墙卡缩略图，宽度已按比例收窄
 
 
 def test_export_txt_endpoint(client):

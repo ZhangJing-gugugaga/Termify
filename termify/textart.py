@@ -52,8 +52,11 @@ DEFAULT_LINE_WIDTH = 120     # FIGlet 自动换行宽度（列）
 MIN_LINE_WIDTH = 40
 MAX_LINE_WIDTH = 300
 
-MAX_ART_COLS = 200           # 入库作品 / 字符画的最大列
+MAX_ART_COLS = 440           # 入库作品 / 字符画的最大列
 MAX_ART_ROWS = 120           # ……与最大行
+# 中文点阵的宽度预算（列）：1:2 终端比例下 cols = 2 × rows × 字数，
+# 留 40 列余量给导出预览。400 → 1~4 字都能拿到 50 行（见 cjk_effective_height）。
+CJK_MAX_CELL_W = 400
 
 _FIGLET_FONT_SLUGS: set[str] | None = None
 
@@ -266,16 +269,71 @@ def filter_cjk_text(text: object) -> str:
     return "".join(kept).strip()[:CJK_MAX_CHARS]
 
 
+def cjk_effective_height(text: object, height: object) -> int:
+    """用户要的字符高度 → 实际可渲染高度（宽度红线收缩后的值）。
+
+    1:2 终端比例下 cols = 2 × rows × 字数，宽度封顶 ``CJK_MAX_CELL_W``。
+    1~4 字都能拿满 50 行；字数越多收缩越狠（5 字 40 / 6 字 33 / 8 字 25）。
+    调用方（API /api/text/convert）必须复用本函数，否则回给前端的
+    effective height 与真正渲染出来的不一致，收缩提示永远不触发。
+    """
+    clean = filter_cjk_text(text)
+    try:
+        h = int(height)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        h = CJK_DEFAULT_HEIGHT
+    h = max(10, min(CJK_MAX_HEIGHT, h))
+    if not clean:
+        return h
+    return max(10, min(h, CJK_MAX_CELL_W // (2 * len(clean))))
+
+
+def _cjk_glyph_images(clean: str, font_path: str, cell_px: int):
+    """逐字光栅化，返回 [(char, PIL.Image)]（半角/空格返回 None 占位）。"""
+    from PIL import Image, ImageDraw, ImageFont
+
+    try:
+        f = ImageFont.truetype(font_path, cell_px)  # 字号 = 列数 = 方形
+    except (OSError, IOError):
+        raise TextArtError(
+            "中文字体加载失败 / Failed to load Chinese font")
+    out = []
+    for ch in clean:
+        if not (0x4E00 <= ord(ch) <= 0x9FFF or 0x3400 <= ord(ch) <= 0x4DBF):
+            out.append(None)  # 半角/空格：格子留白（列对齐由全角格保证）
+            continue
+        img = Image.new("L", (cell_px, cell_px), 255)
+        ImageDraw.Draw(img).text((0, 0), ch, font=f, fill=0)
+        out.append(img)
+    return out
+
+
+def _ink_box(glyphs) -> tuple[int, int, int, int]:
+    """一组字形的墨迹外接框（em box 坐标系的 y 区间，全字共用）。
+
+    根因（2026-09-27）：旧实现把整个 em box 平均压到 h 行，而 TTF 的
+    em box 上下都留白（黑体字号 192 时墨迹只占 y 12~185，约 90%），白边
+    又按比例分摊到 h 行里 —— 首行整行空白、字头那一横只剩半个格子，
+    观感就是「字被吃了一半」。改按墨迹盒取样：整幅字满幅落在 h 行内，
+    既不裁也不浪费。字形间基线不齐的问题也一并消失（全字共用一个盒）。
+    """
+    boxes = [g.point(lambda v: 255 - v).getbbox() for g in glyphs if g is not None]
+    boxes = [b for b in boxes if b]
+    if not boxes:
+        return None  # type: ignore[return-value]
+    return (min(b[1] for b in boxes), min(b[0] for b in boxes),
+            max(b[3] for b in boxes), max(b[2] for b in boxes))
+
+
 def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
                    height: object = CJK_DEFAULT_HEIGHT) -> str:
     """中文 → TTF 光栅化点阵字符画（纯本地）。
 
-    每个汉字先在高分辨率画布上逐字光栅化（字与字之间不重叠），再
-    统一横向压缩到 cell_w 列、纵向压到 ``height`` 行。横向压缩用
-    "取最暗" 而非平均——细横画在均值降采样里会被背景稀释到阈值以下
-    （「你好」碎成渣的根因），min-pool 保笔画存活。
+    每个汉字先在高分辨率画布上逐字光栅化（字与字之间不重叠），再把
+    **墨迹盒**（见 _ink_box）纵向压到 ``h`` 行、横向压到 ``2h`` 列。
+    压缩用 "取最暗" 而非平均——细横画在均值降采样里会被背景稀释到
+    阈值以下（「你好」碎成渣的根因），min-pool 保笔画存活。
     """
-    from PIL import Image, ImageDraw, ImageFont
 
     clean = filter_cjk_text(text)
     if not clean:
@@ -285,69 +343,58 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
     if font_path is None:
         raise TextArtError(
             "服务器缺少中文字体 / Server has no Chinese font installed")
-    try:
-        h = int(height)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        h = CJK_DEFAULT_HEIGHT
-    h = max(10, min(CJK_MAX_HEIGHT, h))
-    # 终端字符宽高比 ≈ 1:2 → 每字列数 = 2×行数，字形在终端里才是
-    # 正常比例（此前 cell_w = h/2 是把像素比误当字符比，纵向拉长糊掉）
-    # 宽度红线：1:2 比例下 12 字 × 默认行高 = 384 列 > MAX_ART_COLS(200)，
-    # 行高随字数自动收缩（总列数封顶 160，留余量）；极限字数 × 行高下限
-    # 仍超红线时直接报错（语义清晰优于静默截断）。
-    max_cell_w = MAX_ART_COLS - 40  # 160：总宽上限（含余量，供导出预览）
-    h = min(h, max_cell_w // (2 * len(clean)))
-    if h < 10:
+    # 宽度红线：1:2 比例下总列数 = 2 × 行数 × 字数，超了就按字数收缩
+    # （见 cjk_effective_height）。字数多到 10 行都放不下才报错
+    # （语义清晰优于静默截断）。
+    h = cjk_effective_height(clean, height)
+    if h * 2 * len(clean) > CJK_MAX_CELL_W:
         raise TextArtError(
             f"文字过多（{len(clean)} 字）——请缩短到 "
-            f"{max_cell_w // 20} 字以内 / Too many characters")
+            f"{CJK_MAX_CELL_W // 20} 字以内 / Too many characters")
     cell_w = h * 2
     scale = 6  # 高分辨率光栅化：min-pool 采样窗口越大，细横画存活率越高
     # （scale=3 时 songti 在 10-16 行低网格下笔画碎裂、时断时续，观感
     # 如"字被截断"；scale=6 实测三字体笔画连贯结构完整，h16 不劣化）
-    # 画布 = 字形外接正方形（字号 cell_w*scale），垂直居中在 h×scale
-    # 画布内——字形按方块渲染，取中部 h*scale 条带映射到终端 1:2 格
+    # 画布 = 字形外接正方形（字号 cell_w*scale），字形按方块渲染
     cell_px = cell_w * scale
-    grid: list[list[bool]] = [[False] * (cell_w * len(clean))
-                              for _ in range(h)]
-    try:
-        f = ImageFont.truetype(font_path, cell_px)  # 字号 = 列数 = 方形
-    except (OSError, IOError):
-        raise TextArtError(
-            "中文字体加载失败 / Failed to load Chinese font")
-    # 画布必须等于字号（cell_px 见方），否则字形上下各被裁 1/4——
-    # "上下截断、只有中间一部分"的真因：旧画布高 h*scale 仅为字形一半，
-    # y_off 恒为负，"你好世界"等居中结构看不出，"夏/张/曼"等上中下
-    # 结构的字赤裸裸缺头缺尾。
-    # min-pool：方形 em box 压到 1:2 终端格 → 纵向步进 2*scale、窗口
-    # 2*scale 高 × scale 宽取最暗（保笔画），横向步进 scale。
-    y_step = 2 * scale
-    for ci, ch in enumerate(clean):
-        if not (0x4E00 <= ord(ch) <= 0x9FFF or 0x3400 <= ord(ch) <= 0x4DBF):
-            continue  # 半角/空格：格子留白（列对齐由全角格保证）
-        img = Image.new("L", (cell_px, cell_px), 255)
-        ImageDraw.Draw(img).text((0, 0), ch, font=f, fill=0)
+    glyphs = _cjk_glyph_images(clean, font_path, cell_px)
+    box = _ink_box(glyphs)
+    if box is None:  # 纯半角输入：全宽留白行
+        return "\n".join([" " * cell_w] * h)
+    ink_top, _, ink_bot, _ = box
+    ink_h = max(1, ink_bot - ink_top)
+    # 墨迹盒 → h 行：每行 ink_h/h 像素高；x 方向整幅 em box → cell_w 列
+    band_h = ink_h / h
+    grid = [[" "] * (cell_w * len(clean)) for _ in range(h)]
+    for ci, img in enumerate(glyphs):
+        if img is None:
+            continue
         sp = img.load()
+        base = ci * cell_w
         for ty in range(h):
-            y0 = ty * y_step
+            y0 = ink_top + ty * band_h
+            row = grid[ty]
             for tx in range(cell_w):
                 x0 = tx * scale
                 darkest = 255
-                for sy in range(y_step):
-                    for sx in range(scale):
-                        v = sp[x0 + sx, y0 + sy]
-                        if v < darkest:
-                            darkest = v
+                # 纵向隔行采样：1px 竖笔画跨越 ≥2 个采样点，绝不会漏
+                y = y0
+                while y < y0 + band_h:
+                    if y < ink_bot:
+                        for sx in range(scale):
+                            v = sp[x0 + sx, int(y)]
+                            if v < darkest:
+                                darkest = v
+                    y += 2
                 if darkest < 128:
-                    grid[ty][ci * cell_w + tx] = True
-    rows = ["".join("#" if on else " " for on in row) for row in grid]
+                    row[base + tx] = "#"
+    rows = ["".join(row) for row in grid]
     while rows and not rows[-1].strip():
         rows.pop()
     return "\n".join(rows)
 
 
 PREVIEW_TEXT_MAX = 10   # 预览用文本截断（长文本只取前 10 个字符渲染）
-PREVIEW_MAX_ROWS = 8    # 预览卡片最大行数（超高字体截断，保持卡片整齐）
 
 
 def render_font_previews(text: object) -> list[dict]:
@@ -367,15 +414,45 @@ def render_font_previews(text: object) -> list[dict]:
             art = render_figlet(clean, f["slug"], 100)
         except TextArtError:
             continue  # 个别字体对截断文本渲染失败 → 跳过不致命
-        lines = art.split("\n")
-        # 卡片缩略图截断；full 字段带完整作品——点击卡片前端本地切换，零请求
-        preview = lines[:PREVIEW_MAX_ROWS]
+        # 卡片与点选结果同源：art 存完整作品，前端按 cols/rows 等比缩放
+        # （transform: scale）铺满卡片。旧实现把 art 砍到 8 行，ANSI Shadow
+        # 这类高字体被拦腰截断（正是用户截图里"半个字"的观感）。
         cols, rows = art_dims(art)
         out.append({"slug": f["slug"], "name": f["name"],
-                    "art": "\n".join(preview),
-                    "full": art, "cols": cols, "rows": rows})
+                    "art": art, "full": art, "cols": cols, "rows": rows})
     if not out:
         raise TextArtError("没有可用字体 / No font available")
+    return out
+
+
+# 中文字体墙：卡片里只放 2 个字（4 字 × 16 行 = 128 列，卡片里会缩到
+# 不可读），点卡片仍作用于用户输入的全文。
+CJK_PREVIEW_CHARS = 2
+CJK_PREVIEW_HEIGHT = 16
+
+
+def render_cjk_font_previews(text: object = "字符",
+                             height: object = None) -> list[dict]:
+    """中文字体墙：每款可用中文字体一张预览卡（点卡片即换）。
+
+    不可用的字体（缺字体文件）不返回——前端字体墙里没必要摆置灰项，
+    缺字体由左栏下拉置灰表达。
+    """
+    sample = filter_cjk_text(text)[:CJK_PREVIEW_CHARS] or "字符"
+    h = CJK_PREVIEW_HEIGHT if height is None else height
+    out: list[dict] = []
+    for f in cjk_available_fonts():
+        if not f["available"]:
+            continue
+        try:
+            art = render_cjk_ttf(sample, f["slug"], h)
+        except TextArtError:
+            continue
+        cols, rows = art_dims(art)
+        out.append({"slug": f["slug"], "name": f["name"],
+                    "art": art, "full": art, "cols": cols, "rows": rows})
+    if not out:
+        raise TextArtError("没有可用的中文字体 / No Chinese font available")
     return out
 
 
@@ -447,20 +524,87 @@ def render_ansi_art(art: str, theme: object = DEFAULT_THEME) -> str:
 def render_terminal_command(art: str, theme: object = None) -> str:
     """Art → python -c 单行命令：粘贴到任意终端（含 Windows cmd）即显示。
 
-    base64 编码完全免疫引号/换行/反斜杠/控制字符的 shell 转义差异，
-    任意平台（cmd / PowerShell / POSIX sh）行为一致。
+    zlib + base64 双重编码：base64 免疫引号/换行/反斜杠/控制字符的 shell
+    转义差异，zlib 把带 TrueColor 转义的作品压到 1/5~1/10（一个 SGR 序列
+    就 19 字节，纯 base64 的大图轻松上 10 万字符，撞 cmd.exe 8191 上限；
+    压缩后绝大多数作品压进单条命令行）。平台无关：cmd / PowerShell / sh 一致。
 
     theme 给定时按主题着色（无色 art）；原色 art 已含转义则原样嵌入。
     theme 缺省保持旧行为（原样）。
     """
     import base64 as _b64
+    import zlib as _zlib
     payload = art
-    if theme is not None and "" not in art:
+    if theme is not None and "\x1b" not in art:
         # 无色 art 按主题整行着色；已含 TrueColor 转义（原色作品）则原样嵌入
         payload = render_ansi_art(art, theme)
-    b64 = _b64.b64encode(payload.encode("utf-8")).decode("ascii")
-    return ('python -c "import sys,base64;'
-            f'sys.stdout.write(base64.b64decode(\'{b64}\').decode(\'utf-8\'))"')
+    raw = payload.encode("utf-8")
+    b64 = _b64.b64encode(_zlib.compress(raw, 9)).decode("ascii")
+    return ('python -c "import sys,zlib,base64;'
+            f'sys.stdout.write(zlib.decompress(base64.b64decode(\'{b64}\'))'
+            '.decode(\'utf-8\'))"')
+
+
+# 单条命令行超过这个长度就别指望粘进终端了（cmd.exe 8191 字符硬上限，
+# PowerShell 32K 但整行读起来没法用）——前端据此改推「下载 .py」。
+TERMINAL_CMD_MAX = 7000
+
+
+def terminal_command_size(art: str, theme: object = None) -> int:
+    """render_terminal_command 产出的命令行长度（字符数）。"""
+    return len(render_terminal_command(art, theme))
+
+
+_PY_SCRIPT_TEMPLATE = '''#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Termify 字符艺术 —— 在任意终端运行即可显示：
+
+    python %(name)s.py
+
+字符画以 zlib+base64 内嵌（免疫一切 shell / 引号 / 编码差异），
+依赖仅标准库。%(note)s
+"""
+import base64
+import sys
+import zlib
+
+PAYLOAD = (
+%(chunks)s
+)
+
+
+def main() -> None:
+    sys.stdout.write(zlib.decompress(base64.b64decode(PAYLOAD)).decode("utf-8"))
+    sys.stdout.write("\\n")
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+
+def render_python_script(art: str, theme: object = None,
+                         name: str = "termify-art") -> str:
+    """Art → 可直接 ``python xxx.py`` 运行的单文件脚本。
+
+    终端命令（python -c 一行）撞 cmd.exe 8191 字符上限时，大作品的正解：
+    下载这个 .py，双击/命令行运行都出图，还能在脚本里改配色。
+    """
+    import base64 as _b64
+    import re as _re
+
+    payload = art
+    if theme is not None and "\x1b" not in art:
+        payload = render_ansi_art(art, theme)
+    b64 = _b64.b64encode(
+        __import__("zlib").compress(payload.encode("utf-8"), 9)).decode("ascii")
+    chunks = [b64[i:i + 76] for i in range(0, len(b64), 76)]
+    body = "\n".join('    "%s"' % c for c in chunks) or '    ""'
+    safe = _re.sub(r"[^A-Za-z0-9._-]+", "_", str(name or "termify-art")) or \
+        "termify-art"
+    return _PY_SCRIPT_TEMPLATE % {"name": safe, "chunks": body, "note":
+                                  "内嵌彩色转义，终端需支持 24 位色。" if
+                                  "\x1b" in payload else "纯文本字符画。"}
 
 
 _STANDALONE_HTML_TEMPLATE = """<!DOCTYPE html>

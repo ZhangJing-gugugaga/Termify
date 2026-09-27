@@ -173,6 +173,38 @@ def _task_get_or_404(task_id: str):
 from termify import gallery as _gallery_mod
 from termify.charset import CHARSETS
 
+# 单一画廊开关（docs/DECISION-LOCAL-FIRST-2026-09-22.md §1）：桌面包 launcher
+# 注入 TERMIFY_ENABLE_GALLERY=0 → 启动时根本不注册画廊路由与页面，与云端 0
+# 依赖；本地 Web / 线上缺省（未设或 =1）行为不变。
+# 取值在 import 时确定（launcher 在 `from app import app` 之前注入），
+# 因此不需要、也不支持运行期切换——双形态由进程级环境变量区分。
+GALLERY_ENABLED = os.environ.get("TERMIFY_ENABLE_GALLERY", "1").strip().lower() \
+    not in ("0", "false", "no", "off")
+
+
+def gallery_route(rule: str, **options):
+    """注册画廊路由；开关关闭时原样返回函数（不注册，端点不存在）。
+
+    只影响注册、不触碰函数实现：关掉画廊后这些函数在进程内不可达，
+    转换/预览/导出等非画廊链路完全不受影响。
+    """
+    def decorator(fn):
+        if GALLERY_ENABLED:
+            return app.route(rule, **options)(fn)
+        return fn
+    return decorator
+
+
+@app.context_processor
+def _inject_gallery_flag():
+    """模板按 ``gallery_enabled`` 隐藏画廊入口与发布按钮。
+
+    开关关闭时画廊路由根本不存在，模板若照旧渲染入口就会出现"点了报 404"
+    的死按钮；所有模板（含 include 的发布弹窗）统一读这个标记。
+    """
+    return {"gallery_enabled": GALLERY_ENABLED}
+
+
 GALLERY_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 os.makedirs(GALLERY_DATA_DIR, exist_ok=True)
 GALLERY_DB = _gallery_mod.GalleryDB(os.path.join(GALLERY_DATA_DIR, "termify.db"))
@@ -910,26 +942,25 @@ def text_convert():
         return jsonify({"error": reason}), 429
     if _textart_mod.cjk_has_glyph(data.get("text")):
         try:
-            # 行高：用户可调（10-40 行，默认 CJK_DEFAULT_HEIGHT），非法值兜底
-            try:
-                cjk_height = int(data.get("height"))
-            except (TypeError, ValueError):
-                cjk_height = _textart_mod.CJK_DEFAULT_HEIGHT
-            cjk_height = max(10, min(64, cjk_height))
+            # 行高：用户可调（10-64 行，默认 CJK_DEFAULT_HEIGHT），超范围
+            # 与宽度红线收缩统一走 textart.cjk_effective_height——前端要拿
+            # 同一个值做「已自动收缩」提示，两边各算一份必然对不上。
+            cjk_height = _textart_mod.cjk_effective_height(
+                data.get("text"), data.get("height"))
             art = _textart_mod.render_cjk_ttf(
                 data.get("text"), data.get("font"), cjk_height)
         except _textart_mod.TextArtError as exc:
             return jsonify({"error": str(exc)}), 400
         cols, rows = _textart_mod.art_dims(art)
         clean_len = len(_textart_mod.filter_cjk_text(data.get("text")))
-        effective_h = min(cjk_height, 160 // (2 * clean_len)) if clean_len else cjk_height
         avail = {f["slug"] for f in _textart_mod.cjk_available_fonts()
                  if f["available"]}
         font = data.get("font") if data.get("font") in avail \
             else _textart_mod.CJK_DEFAULT_FONT
         return jsonify({"ok": True, "mode": "cjk", "art": art,
                         "cols": cols, "rows": rows, "font": font,
-                        "height": effective_h,
+                        "height": cjk_height,
+                        "max_height": _textart_mod.CJK_MAX_HEIGHT,
                         "text": _textart_mod.filter_cjk_text(
                             data.get("text"))})
     try:
@@ -1068,6 +1099,21 @@ def cjk_ttf_fonts():
     return jsonify({"ok": True, "fonts": _textart_mod.cjk_available_fonts()})
 
 
+@app.route("/api/cjk/ttf/fontwall", methods=["POST"])
+def cjk_ttf_fontwall():
+    """中文字体墙：{text?} → 全部可用中文字体的预览卡（点卡片即换）。"""
+    data = request.get_json(silent=True) or {}
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "text-fontwall", per_minute=60)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    try:
+        previews = _textart_mod.render_cjk_font_previews(data.get("text"))
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True, "fonts": previews})
+
+
 @app.route("/api/cjk/ttf/render", methods=["POST"])
 def cjk_ttf_render():
     """中文点阵：{text, font?, height?} → 字符画。纯本地。"""
@@ -1091,6 +1137,9 @@ def cjk_ttf_render():
         font_slug = _textart_mod.CJK_DEFAULT_FONT
     return jsonify({"ok": True, "art": art, "cols": cols, "rows": rows,
                     "font": font_slug,
+                    "height": _textart_mod.cjk_effective_height(
+                        data.get("text"), data.get("height")),
+                    "max_height": _textart_mod.CJK_MAX_HEIGHT,
                     "text": _textart_mod.filter_cjk_text(
                         data.get("text"))})
 
@@ -1118,6 +1167,81 @@ def _imgascii_flip(img, flip: object):
     return img
 
 
+# 图片模式可选字符集（blocks 不提供：其字符本身即真彩色，与配色行冲突，
+# 动画工坊专属）。顺序即字体墙卡片顺序。
+IMGASCII_CHARSETS = ("ascii", "ascii-lite", "braille", "shades", "geometric",
+                     "binary", "custom")
+IMGASCII_CHARSET_NAMES = {
+    "ascii": "默认字符", "ascii-lite": "简约字符", "braille": "盲文字符",
+    "shades": "明暗渐变块", "geometric": "几何图形", "binary": "极简二值",
+    "custom": "自定义字符",
+}
+
+
+def _imgascii_read(file):
+    """multipart 图片 → (PIL RGB 画布, 错误响应 or None)。
+
+    透明区合成到终端底色，与前端预览底一致；多帧动图拒绝（引导动画工坊）。
+    """
+    from PIL import Image
+
+    if file is None or not file.filename:
+        return None, (jsonify({"error": "请选择图片 / Choose an image"}), 400)
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext == ".gif":
+        return None, (jsonify({"error": "动图请移步「动画工坊」/ Animated "
+                                        "images: use the Animation Lab",
+                               "redirect": "/"}), 400)
+    if ext not in IMGASCII_EXT:
+        return None, (jsonify({"error": "不支持的格式（支持 png/jpg/bmp/webp）"
+                                        " / Unsupported format"}), 400)
+    task_id = uuid.uuid4().hex[:12]
+    save_path = _safe_uploads_path(f"{task_id}{ext}")
+    file.save(save_path)
+    try:
+        img = Image.open(save_path)
+        n_frames = getattr(img, "n_frames", 1)
+        if n_frames and n_frames > 1:
+            raise _ImgAsciiGif()
+        img = img.convert("RGBA")
+        canvas = Image.new("RGB", img.size, (10, 14, 20))
+        canvas.paste(img, mask=img.split()[3])
+        return canvas, None
+    finally:
+        if os.path.exists(save_path):
+            try:
+                os.remove(save_path)
+            except OSError:
+                pass
+
+
+class _ImgAsciiGif(Exception):
+    """上传的是动图（多帧）——需要引导去动画工坊。"""
+
+
+def _imgascii_render(canvas, charset, width, height, ramp, color_mode):
+    """画布 → 单帧字符画 dict（art/cols/rows），源像素色走内嵌 TrueColor。"""
+    from termify import engine as _engine
+
+    tmp_path = _tmp_save(canvas, ".png")
+    try:
+        seq = _engine.convert(tmp_path, charset, width, height,
+                              charset_ramp=ramp, color_mode=color_mode)
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+    lines = seq.lines_per_frame[0]
+    plain_lines = [re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", ln) for ln in lines]
+    cols = max((len(ln) for ln in plain_lines), default=0)
+    # source 模式保留 TrueColor ANSI（lines 原样，终端粘贴即显色）；
+    # 主题色模式产纯文本（预览前端着色、导出按钮按主题套色）
+    art = "\n".join(lines) if color_mode == "source" else "\n".join(plain_lines)
+    return {"art": art, "cols": cols, "rows": len(lines)}
+
+
 @app.route("/api/text/imgascii", methods=["POST"])
 def text_imgascii():
     """图片艺术化：multipart 图片 + 参数 → {art}。同步、纯本地。
@@ -1134,24 +1258,10 @@ def text_imgascii():
     输出统一为 txt：原色保留内嵌 TrueColor ANSI，主题色纯文本由前端着色预览，
     彩色导出复用结果区的复制 ANSI 按钮。
     """
-    from termify import engine as _engine
-    from PIL import Image
-
     ip = _client_ip()
     ok, reason = _rate_check(ip, "imgascii", per_minute=20)
     if not ok:
         return jsonify({"error": reason}), 429
-    file = request.files.get("file")
-    if file is None or not file.filename:
-        return jsonify({"error": "请选择图片 / Choose an image"}), 400
-    ext = os.path.splitext(file.filename or "")[1].lower()
-    if ext == ".gif":
-        return jsonify({"error": "动图请移步「动画工坊」/ Animated images: "
-                                 "use the Animation Lab",
-                        "redirect": "/"}), 400
-    if ext not in IMGASCII_EXT:
-        return jsonify({"error": "不支持的格式（支持 png/jpg/bmp/webp）"
-                                 " / Unsupported format"}), 400
 
     def _int_arg(name, lo, hi, default):
         try:
@@ -1167,8 +1277,7 @@ def text_imgascii():
     if palette not in valid_palettes:
         palette = "green"
     charset = request.form.get("charset", "ascii")
-    if charset not in ("ascii", "ascii-lite", "braille", "shades", "geometric",
-                       "binary", "custom"):
+    if charset not in IMGASCII_CHARSETS:
         charset = "ascii"
     ramp = request.form.get("charset_ramp") or None
     flip = request.form.get("flip", "none")
@@ -1176,46 +1285,83 @@ def text_imgascii():
     # 主题色不嵌入 ANSI：mono 路径产纯文本，预览由前端 CSS 着色、
     # 彩色导出由结果区「复制 ANSI」按钮（export-ansi 按主题套色）完成。
 
-    task_id = uuid.uuid4().hex[:12]
-    save_path = _safe_uploads_path(f"{task_id}{ext}")
-    file.save(save_path)
-    tmp_path = None
     try:
-        img = Image.open(save_path)
-        n_frames = getattr(img, "n_frames", 1)
-        if n_frames and n_frames > 1:
-            return jsonify({"error": "检测到动图（多帧）——请移步「动画工坊」"
-                                     " / Animated image detected: use the "
-                                     "Animation Lab", "redirect": "/"}), 400
-        img = _imgascii_flip(img.convert("RGBA"), flip)
-        bg = (10, 14, 20)  # 透明区合成底色，与终端预览底一致
-        canvas = Image.new("RGB", img.size, bg)
-        canvas.paste(img, mask=img.split()[3])
-        tmp_path = _tmp_save(canvas, ".png")
-        seq = _engine.convert(tmp_path, charset, width, height,
-                              charset_ramp=ramp, color_mode=color_mode)
-        lines = seq.lines_per_frame[0]
-        _plain_lines = [re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", ln)
-                        for ln in lines]
-        plain = "\n".join(_plain_lines)
-        cols = max((len(ln) for ln in _plain_lines), default=0)
-        # source 模式保留 TrueColor ANSI（lines 原样，终端粘贴即显色）；
-        # 主题色模式产纯文本（预览前端着色、导出按钮按主题套色）
-        art = "\n".join(lines) if color_mode == "source" else plain
-        return jsonify({"ok": True, "mode": color_mode, "palette": palette,
-                        "art": art, "cols": cols, "rows": len(lines)})
+        canvas, err = _imgascii_read(request.files.get("file"))
+        if err:
+            return err
+        canvas = _imgascii_flip(canvas, flip)
+        out = _imgascii_render(canvas, charset, width, height, ramp,
+                               color_mode)
+    except _ImgAsciiGif:
+        return jsonify({"error": "检测到动图（多帧）——请移步「动画工坊」"
+                                 " / Animated image detected: use the "
+                                 "Animation Lab", "redirect": "/"}), 400
     except ValueError as exc:
         return jsonify({"error": str(exc)[:200]}), 400
     except Exception as exc:  # noqa: BLE001
         app.logger.warning("imgascii failed: %s", exc)
         return jsonify({"error": "转换失败，图片可能已损坏 / Conversion failed"}), 400
-    finally:
-        for p in (save_path, tmp_path):
-            if p and os.path.exists(p):
-                try:
-                    os.remove(p)
-                except OSError:
-                    pass
+    return jsonify({"ok": True, "mode": color_mode, "palette": palette,
+                    "art": out["art"], "cols": out["cols"],
+                    "rows": out["rows"]})
+
+
+@app.route("/api/text/imgwall", methods=["POST"])
+def text_imgwall():
+    """图片字体墙：同一张图 × 全部可选字符集 → 预览卡（点卡片即换即看）。
+
+    和英文字体墙同一套卡片：一次上传、一次转换出所有变体，避免每点一张
+    卡就重传一次图。custom（自定义字符）没有固定字形，不进墙。
+    """
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "imgascii", per_minute=20)
+    if not ok:
+        return jsonify({"error": reason}), 429
+
+    def _int_arg(name, lo, hi, default):
+        try:
+            v = int(request.form.get(name, default))
+        except (TypeError, ValueError):
+            return default
+        return max(lo, min(hi, v))
+
+    width = _int_arg("width", IMGASCII_MIN_W, IMGASCII_MAX_W, 80)
+    height = _int_arg("height", IMGASCII_MIN_H, IMGASCII_MAX_H, 40)
+    palette = request.form.get("palette", "green")
+    if palette not in set(_textart_mod.ART_THEMES) | {"source"}:
+        palette = "green"
+    color_mode = "source" if palette == "source" else "mono"
+    try:
+        canvas, err = _imgascii_read(request.files.get("file"))
+        if err:
+            return err
+        canvas = _imgascii_flip(canvas, request.form.get("flip", "none"))
+        # 墙卡缩略图：整幅按比例缩到 60 列以内，卡片里才看得清
+        scale = min(1.0, 60.0 / max(1, width))
+        w_small = max(IMGASCII_MIN_W, int(width * scale))
+        h_small = max(6, int(height * scale))
+        previews = []
+        for cs in IMGASCII_CHARSETS:
+            if cs == "custom":
+                continue
+            try:
+                out = _imgascii_render(canvas, cs, w_small, h_small, None,
+                                       color_mode)
+            except Exception:  # noqa: BLE001 — 个别字符集失败不影响整墙
+                continue
+            previews.append({"slug": cs, "name": IMGASCII_CHARSET_NAMES[cs],
+                             "art": out["art"], "full": "",
+                             "cols": out["cols"], "rows": out["rows"]})
+    except _ImgAsciiGif:
+        return jsonify({"error": "检测到动图（多帧）——请移步「动画工坊」"
+                                 " / Animated image detected: use the "
+                                 "Animation Lab", "redirect": "/"}), 400
+    except Exception as exc:  # noqa: BLE001
+        app.logger.warning("imgwall failed: %s", exc)
+        return jsonify({"error": "转换失败，图片可能已损坏 / Conversion failed"}), 400
+    if not previews:
+        return jsonify({"error": "没有可用字符集 / No charset available"}), 400
+    return jsonify({"ok": True, "fonts": previews})
 
 
 def _tmp_save(img, ext: str) -> str:
@@ -1279,11 +1425,50 @@ def text_terminal_command():
     if theme is not None and (not isinstance(theme, str)
                               or theme not in _textart_mod.ART_THEMES):
         theme = _textart_mod.DEFAULT_THEME
-    return jsonify({"ok": True,
-                    "cmd": _textart_mod.render_terminal_command(art, theme)})
+    cmd = _textart_mod.render_terminal_command(art, theme)
+    # 超长就别指望粘进终端了（cmd.exe 8191 字符硬上限）——前端据此把
+    # 主推动作换成「下载 .py」，而不是让用户粘一坨然后失败。
+    return jsonify({"ok": True, "cmd": cmd, "cmd_len": len(cmd),
+                    "too_long": len(cmd) > _textart_mod.TERMINAL_CMD_MAX})
 
 
-@app.route("/api/gallery/upload-text", methods=["POST"])
+@app.route("/api/text/export-py", methods=["POST"])
+def text_export_py():
+    """可执行 .py：字符画内嵌成 zlib+base64，`python xxx.py` 即显示。
+
+    终端命令（python -c 一行）在大作品上会撞上命令行长度上限，.py 是
+    社区通行的正解（lddgo 一类工具也都是给文件而不是给一坨粘贴缓冲）。
+    """
+    # JSON（桌面 fetch）与表单 POST（移动端原生下载）双兼容
+    data = request.get_json(silent=True)
+    if data is None:
+        data = request.form.to_dict()
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
+    ip = _client_ip()
+    ok, reason = _rate_check(ip, "text-convert", per_minute=120)
+    if not ok:
+        return jsonify({"error": reason}), 429
+    try:
+        # keep_ansi：原色 art 自带 SGR 转义，不能剥
+        art = _textart_mod.validate_stored_art(data.get("art"), keep_ansi=True)
+    except _textart_mod.TextArtError as exc:
+        return jsonify({"error": str(exc)}), 400
+    theme = data.get("theme")
+    if theme is not None and (not isinstance(theme, str)
+                              or theme not in _textart_mod.ART_THEMES):
+        theme = _textart_mod.DEFAULT_THEME
+    name = _gallery_mod.sanitize(data.get("name"), 40).replace(" ", "_") or \
+        "termify-art"
+    script = _textart_mod.render_python_script(art, theme, name)
+    resp = make_response(script)
+    resp.headers.set("Content-Type", "text/x-python; charset=utf-8")
+    resp.headers.set("Content-Disposition",
+                     _download_disposition(name, ".py"))
+    return resp
+
+
+@gallery_route("/api/gallery/upload-text", methods=["POST"])
 def gallery_upload_text():
     """字符艺术作品入库：art → 终端风 PNG source → 缩略图/OG → DB。
 
@@ -1925,7 +2110,7 @@ def _gallery_remove_file(base: str, name: str) -> None:
         pass
 
 
-@app.route("/api/gallery/upload", methods=["POST"])
+@gallery_route("/api/gallery/upload", methods=["POST"])
 def gallery_upload():
     """Accept multipart upload (source image + JSON params + form fields).
 
@@ -2133,13 +2318,13 @@ def gallery_upload():
     return resp
 
 
-@app.route("/api/gallery/custom-tags", methods=["GET"])
+@gallery_route("/api/gallery/custom-tags", methods=["GET"])
 def gallery_custom_tags():
     """全站自定义标签热度（公开作品），供画廊「自定义标签」下拉筛选。"""
     return jsonify({"ok": True, "tags": GALLERY_DB.custom_tag_counts()})
 
 
-@app.route("/api/gallery/list", methods=["GET"])
+@gallery_route("/api/gallery/list", methods=["GET"])
 def gallery_list():
     """Paginated list of gallery works.
 
@@ -2173,7 +2358,7 @@ def gallery_list():
     })
 
 
-@app.route("/api/gallery/work/<work_id>", methods=["GET"])
+@gallery_route("/api/gallery/work/<work_id>", methods=["GET"])
 def gallery_work(work_id):
     """Detail for one work. Bumps view count. Returns params for pre-fill."""
     work = GALLERY_DB.get_work(work_id)
@@ -2199,7 +2384,7 @@ def gallery_work(work_id):
     return jsonify(out)
 
 
-@app.route("/api/gallery/like/<work_id>", methods=["POST"])
+@gallery_route("/api/gallery/like/<work_id>", methods=["POST"])
 def gallery_like(work_id):
     """Toggle like. IP + cookie double rate limit. Returns {liked, count}."""
     ip = _client_ip()
@@ -2228,7 +2413,7 @@ def gallery_like(work_id):
     return resp
 
 
-@app.route("/api/gallery/report/<work_id>", methods=["POST"])
+@gallery_route("/api/gallery/report/<work_id>", methods=["POST"])
 def gallery_report(work_id):
     """Submit a report. Rate limit 10/day per IP."""
     ip = _client_ip()
@@ -2247,7 +2432,7 @@ def gallery_report(work_id):
     return jsonify({"ok": True, "report_id": report_id})
 
 
-@app.route("/api/gallery/work/<work_id>", methods=["DELETE"])
+@gallery_route("/api/gallery/work/<work_id>", methods=["DELETE"])
 def gallery_delete(work_id):
     """Delete a work. Requires valid admin token (cookie or header) or global admin pwd via Header."""
     work = GALLERY_DB.get_work(work_id)
@@ -2296,7 +2481,7 @@ def _security_headers(resp):
     return resp
 
 
-@app.route("/api/gallery/admin", methods=["GET"])
+@gallery_route("/api/gallery/admin", methods=["GET"])
 def gallery_admin_list():
     """Admin dashboard: list works + pending reports.
 
@@ -2314,7 +2499,7 @@ def gallery_admin_list():
     })
 
 
-@app.route("/api/gallery/admin/<work_id>", methods=["DELETE"])
+@gallery_route("/api/gallery/admin/<work_id>", methods=["DELETE"])
 def gallery_admin_delete(work_id):
     """Admin hard delete."""
     hdr_pwd = request.headers.get("X-Termify-Admin-Pwd", "")
@@ -2340,7 +2525,7 @@ def gallery_admin_delete(work_id):
     return jsonify({"ok": True})
 
 
-@app.route("/api/gallery/admin/report/<int:report_id>", methods=["POST"])
+@gallery_route("/api/gallery/admin/report/<int:report_id>", methods=["POST"])
 def gallery_admin_resolve_report(report_id):
     """Mark a report resolved/dismissed."""
     hdr_pwd = request.headers.get("X-Termify-Admin-Pwd", "")
@@ -2356,7 +2541,7 @@ def gallery_admin_resolve_report(report_id):
 
 # --- gallery preview + download (derived from stored source) ---
 
-@app.route("/api/gallery/source-frames/<work_id>", methods=["GET"])
+@gallery_route("/api/gallery/source-frames/<work_id>", methods=["GET"])
 def gallery_source_frames(work_id):
     """Serve stored source frames of a VIDEO gallery work as base64 JPEGs.
 
@@ -2402,7 +2587,7 @@ def gallery_source_frames(work_id):
     })
 
 
-@app.route("/api/gallery/preview/<work_id>", methods=["GET"])
+@gallery_route("/api/gallery/preview/<work_id>", methods=["GET"])
 def gallery_preview(work_id):
     """Render a gallery work's frames in the requested charset/size.
 
@@ -2495,7 +2680,7 @@ def _export_budget_reject(width: int, height: int, frames: int):
     }), 400
 
 
-@app.route("/api/gallery/download/<work_id>", methods=["GET"])
+@gallery_route("/api/gallery/download/<work_id>", methods=["GET"])
 def gallery_download(work_id):
     """Generate + serve a .py, .html or .mp4 download for a gallery work.
 
@@ -2648,7 +2833,7 @@ def _work_raw_file_authorized(work: dict) -> bool:
     return _secret_equal(request.headers.get("X-Termify-Admin-Pwd", ""), _admin_pwd())
 
 
-@app.route("/gallery/file/<work_id>/source")
+@gallery_route("/gallery/file/<work_id>/source")
 def gallery_source(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work or not os.path.isfile(work["source_path"]):
@@ -2658,7 +2843,7 @@ def gallery_source(work_id):
     return send_file(work["source_path"])
 
 
-@app.route("/gallery/file/<work_id>/thumb")
+@gallery_route("/gallery/file/<work_id>/thumb")
 def gallery_thumb(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work or not os.path.isfile(work["thumbnail_path"]):
@@ -2666,7 +2851,7 @@ def gallery_thumb(work_id):
     return send_file(work["thumbnail_path"], mimetype="image/gif")
 
 
-@app.route("/gallery/file/<work_id>/og")
+@gallery_route("/gallery/file/<work_id>/og")
 def gallery_og(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work or not os.path.isfile(work["og_path"]):
@@ -2674,7 +2859,7 @@ def gallery_og(work_id):
     return send_file(work["og_path"], mimetype="image/png")
 
 
-@app.route("/gallery/file/<work_id>/audio")
+@gallery_route("/gallery/file/<work_id>/audio")
 def gallery_audio(work_id):
     """Stream a video work's extracted audio track (view-page playback)."""
     work = GALLERY_DB.get_work(work_id)
@@ -2695,12 +2880,12 @@ def gallery_audio(work_id):
 
 # --- page routes ---
 
-@app.route("/gallery")
+@gallery_route("/gallery")
 def gallery_page():
     return render_template("gallery.html")
 
 
-@app.route("/v/<work_id>")
+@gallery_route("/v/<work_id>")
 def gallery_view(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work:
@@ -2717,7 +2902,7 @@ def gallery_view(work_id):
     return render_template("view_work.html", work=work)
 
 
-@app.route("/admin")
+@gallery_route("/admin")
 def gallery_admin_page():
     return render_template("admin.html")
 

@@ -35,6 +35,7 @@
 
   /* ── 状态 ── */
   var TA = { art: "", cols: 0, rows: 0, font: "", text: "", fg: [51, 255, 51] };
+  var taMode = "text";   // text = 字符艺术化 · image = 图片艺术化
   var taInput = byId("taInput");
   var taFont = byId("taFont");
   var taOutput = byId("taOutput");
@@ -128,7 +129,7 @@
     }
     if (taMetaText) taMetaText.textContent = modeLabel + " · " + d.cols + " x " + d.rows;
     if (taResultMeta) taResultMeta.hidden = false;
-    if (taThemeRow) taThemeRow.hidden = false;  // 有作品 → 配色行可见
+    syncThemeRow();   // 有作品 → 配色行可见（两种模式共用同一行）
     fitOutputFont();
   }
 
@@ -265,15 +266,16 @@
       if (d.error) { showOutputError(d.error); hideFontWall(); return; }
       showArt(d);
       if (d.mode === "cjk") {
-        hideFontWall();  // 中文路径无字体墙
-        // 高度被按文本长度自动收缩时给出提示（上限 64，过高会超宽度红线）
+        loadCJKWall(text);   // 中文字体墙：点卡片换字形（样张 → 重渲染）
+        // 高度被按文本长度自动收缩时给出提示（宽度红线，见
+        // textart.cjk_effective_height）
         if (requestedH >= 10 && d.height &&
             requestedH - d.height >= 2) {
-          toast("字符高度过高，已按文本长度自动收缩到 " + d.height +
-                " 行（过高可能超出宽度限制、体验不佳）");
+          toast("字符高度已按文本长度收缩到 " + d.height +
+                " 行（总宽上限 " + (d.cols) + " 列，字越多收缩越狠）");
         }
       } else {
-        loadFontWall(text);  // FIGlet 成功 → 字体墙点亮，点卡片即换
+        loadFigletWall(text);  // FIGlet 成功 → 字体墙点亮，点卡片即换
       }
     }).catch(function () {
       busy = false;
@@ -283,9 +285,11 @@
     });
   });
 
-  /* ── 复制 / 下载 / 分享 + 导出矩阵（ANSI / 终端命令 / PNG / HTML）+ 配色 ── */
+  /* ── 复制 / 下载 / 分享 + 导出矩阵（ANSI / .py / 终端命令 / PNG / HTML）+ 配色 ── */
   var currentTheme = "green";
   var taThemeRow = byId("taThemeRow");
+  var taThemeSource = taThemeRow ? taThemeRow.querySelector(
+    '.ta-theme-dot[data-theme="source"]') : null;
   var THEME_COLORS = {
     green: "rgb(51, 255, 51)", cyan: "rgb(0, 212, 255)",
     amber: "rgb(255, 176, 0)", magenta: "rgb(255, 79, 216)",
@@ -306,13 +310,28 @@
   }
   if (taThemeRow) taThemeRow.addEventListener("click", function (e) {
     var dot = e.target.closest(".ta-theme-dot");
-    if (dot) applyTheme(dot.getAttribute("data-theme"));
+    if (!dot || dot.hidden) return;
+    applyTheme(dot.getAttribute("data-theme"));
   });
+  /* 配色行现在两种模式共用（原来图片模式把配色放在左面板，位置和英文字符化
+     不一致）。「原色」只有图片艺术化有源像素可取，文字模式下隐藏。 */
+  function syncThemeRow() {
+    if (!taThemeRow) return;
+    if (taThemeSource) taThemeSource.hidden = (taMode !== "image");
+    taThemeRow.hidden = !TA.art;
+  }
 
   function exportName() {
     return (TA.text || "textart").slice(0, 40) +
       (TA.font ? "_" + TA.font : "");
   }
+
+  /* 复制纯文本：剥掉 TrueColor 转义。原色作品的 art 里带着 ESC 序列，
+     直接复制出去在记事本/编辑器里是一串乱码，而且和预览看到的不一致。 */
+  function stripAnsi(s) {
+    return String(s).replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+  }
+  function hasAnsi(s) { return /\x1b\[[0-9;]*[A-Za-z]/.test(String(s)); }
 
   var copyBtn = byId("taCopyBtn");
   /* ── 移动端兼容助手 ──
@@ -353,7 +372,10 @@
   }
   if (copyBtn) copyBtn.addEventListener("click", function () {
     if (!TA.art) return;
-    copyText(TA.art, "已复制 / Copied", "复制失败 / Copy failed");
+    var plain = stripAnsi(TA.art);
+    copyText(plain, hasAnsi(TA.art)
+      ? "已复制纯文本（已剥颜色转义）" : "已复制 / Copied",
+      "复制失败 / Copy failed");
   });
   var dlBtn = byId("taDownloadBtn");
   if (dlBtn) dlBtn.addEventListener("click", function () {
@@ -362,7 +384,11 @@
                  { art: TA.art, name: exportName() });
   });
 
-  /* ANSI 彩色复制（对齐安全：整行着色一次 reset） */
+  /* ANSI 彩色复制：整行着色一次 reset。注意它**不是**给 shell 提示符用的
+     ——把 ESC[38;2;…m 粘到 PowerShell / cmd 提示符必然是 ParserError
+     （`[` 后面缺少类型名称），那是 shell 在解析转义而不是终端在显示。
+     能显色的场景是「粘进终端窗口」或「粘进文件再 cat」。复制前按体积
+     给出提示，大作品直接推 .py。 */
   var ansiBtn = byId("taAnsiBtn");
   if (ansiBtn) ansiBtn.addEventListener("click", function () {
     if (!TA.art) { toast("请先生成 / Generate first"); return; }
@@ -372,12 +398,23 @@
       body: JSON.stringify({ art: TA.art, theme: TA.theme || currentTheme })
     }).then(function (r) { return r.json(); }).then(function (d) {
       if (d.error) { toast(d.error); return; }
-      copyText(d.ansi, "已复制 ANSI（粘贴到终端即显色）",
+      copyText(d.ansi, "已复制 ANSI（粘进终端窗口即显色；粘到 PowerShell/cmd " +
+               "提示符会报错，请改用「下载 .py」）",
                "复制失败 / Copy failed");
     }).catch(function () { toast("网络异常，请重试"); });
   });
 
-  /* 终端命令复制（python -c，base64 免疫引号/换行；后端按主题着色） */
+  /* 可执行 .py：python xxx.py 直接出图。终端命令撞命令行长度上限时的主推 */
+  var pyBtn = byId("taPyBtn");
+  if (pyBtn) pyBtn.addEventListener("click", function () {
+    if (!TA.art) { toast("请先生成 / Generate first"); return; }
+    postDownload("/api/text/export-py", {
+      art: TA.art, theme: TA.theme || currentTheme, name: exportName()
+    });
+  });
+
+  /* 终端命令（python -c，zlib+base64 压缩，已比旧版小 5~10 倍）。
+     仍然超长（>7000 字符）时 cmd.exe 粘不进去，改为提示下载 .py。 */
   var termBtn = byId("taTermBtn");
   if (termBtn) termBtn.addEventListener("click", function () {
     if (!TA.art) { toast("请先生成 / Generate first"); return; }
@@ -387,11 +424,17 @@
       body: JSON.stringify({ art: TA.art, theme: TA.theme || currentTheme })
     }).then(function (r) { return r.json(); }).then(function (d) {
       if (d.error) { toast(d.error); return; }
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(d.cmd).then(
-          function () { toast("命令已复制（含配色），粘贴到任何终端运行"); },
-          function () { toast("复制失败 / Copy failed"); });
+      if (d.too_long) {
+        postDownload("/api/text/export-py", {
+          art: TA.art, theme: TA.theme || currentTheme, name: exportName()
+        });
+        toast("作品太大（命令行 " + d.cmd_len + " 字符，超出 cmd.exe 上限），" +
+              "已改为下载 .py：python 跑一下即可");
+        return;
       }
+      copyText(d.cmd, "命令已复制（" + d.cmd_len +
+               " 字符），粘贴到任何终端运行",
+               "复制失败 / Copy failed");
     }).catch(function () { toast("网络异常，请重试"); });
   });
 
@@ -501,40 +544,47 @@
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
-  /* ── 字体墙：FIGlet 文本在全部字体下的预览，点击即换 ── */
+  /* ── 字体墙：英文字体 / 中文字体 / 图片字符集共用一套卡片，点击即换 ──
+     卡片把整幅作品用 transform: scale 等比缩进固定大小的框里：不截行、
+     不裁字、不出内部滚动条。等宽字体下 advance ≈ 0.6em、line-height 1.05，
+     所以 cols/rows 一到手就能算出缩放比，不必等布局回流。 */
   var taFontwall = byId("taFontwall");
   var taFontwallGrid = byId("taFontwallGrid");
+  var taFwTitle = byId("taFwTitle");
   var fwAbort = null;
+  var FW_CH = 0.6;     // 1em = 基准字号下单个字符的宽度
+  var FW_LH = 1.05;    // 行高倍数（与 CSS .ta-fw-art line-height 对齐）
 
   function hideFontWall() {
     if (taFontwall) taFontwall.hidden = true;
     if (fwAbort) { fwAbort.abort(); fwAbort = null; }
   }
 
-  function markActiveFontCard() {
-    if (!taFontwallGrid || !taFont) return;
-    var cards = taFontwallGrid.querySelectorAll(".ta-fw-card");
-    for (var i = 0; i < cards.length; i++) {
-      cards[i].classList.toggle("active",
-        cards[i].getAttribute("data-slug") === taFont.value);
-    }
+  function markActiveFontCard(slug) {
+    if (!taFontwallGrid) return;
+    taFontwallGrid.querySelectorAll(".ta-fw-card").forEach(function (c) {
+      c.classList.toggle("active", c.getAttribute("data-slug") === slug);
+    });
   }
 
-  /* 宽字形预览缩放：按卡片可用宽度等比缩小字号，完整露出作品
-     （等宽字体下 scrollWidth 与字号线性相关，一次测量即可换算）。 */
+  /* 缩放：按卡片实际可用宽度 + 框高取 min，宁可小一点也不截断。
+     基准 8px 字号（CSS .ta-fw-art 的 font-size）。 */
   function fitFontwallArt() {
     if (!taFontwallGrid) return;
     var cards = taFontwallGrid.querySelectorAll(".ta-fw-card");
     for (var i = 0; i < cards.length; i++) {
+      var box = cards[i].querySelector(".ta-fw-box");
       var art = cards[i].querySelector(".ta-fw-art");
-      if (!art) continue;
-      art.style.fontSize = "";  // 先回到 CSS 基准字号再测量
-      var sw = art.scrollWidth, cw = art.clientWidth;
-      if (sw > cw && sw > 0) {
-        var base = parseFloat(getComputedStyle(art).fontSize) || 8;
-        var fit = Math.max(4, Math.floor(base * cw / sw * 10) / 10);
-        art.style.fontSize = fit + "px";
-      }
+      if (!box || !art) continue;
+      var cols = parseInt(art.getAttribute("data-cols"), 10) || 1;
+      var rows = parseInt(art.getAttribute("data-rows"), 10) || 1;
+      var base = 8;
+      var w = box.clientWidth || 150;
+      var h = box.clientHeight || 108;
+      var scale = Math.min(1, w / (cols * base * FW_CH),
+                            h / (rows * base * FW_LH));
+      // 下限 0.3：再小就不可读了，宁可让极罕见的超高字体溢出裁切
+      art.style.transform = "scale(" + Math.max(0.3, scale) + ")";
     }
   }
   var fwFitTimer = null;
@@ -544,61 +594,108 @@
     fwFitTimer = setTimeout(fitFontwallArt, 120);
   });
 
-  function loadFontWall(text) {
-    if (!taFontwall || !taFontwallGrid || !text || !text.trim()) return;
+  function renderFontWall(fonts, activeSlug, title) {
+    if (!taFontwall || !taFontwallGrid || !fonts || !fonts.length) return;
     taFontwall.hidden = false;
-    taFontwallGrid.innerHTML =
-      '<p class="ta-fw-loading">字体墙渲染中…</p>';
+    if (taFwTitle) taFwTitle.textContent = title || "字体墙 · 点击切换";
+    taFontwallGrid.innerHTML = fonts.map(function (f) {
+      // data-full 携带完整作品 → 点卡片本地切换，零请求（不触发限流）；
+      // 为空（如图片字符集墙）时回落到重新生成。
+      return '<button type="button" class="ta-fw-card" data-slug="' +
+        esc(f.slug) + '" data-full="' + esc(f.full || "") +
+        '" data-cols="' + (f.cols || 0) + '" data-rows="' + (f.rows || 0) +
+        '" title="' + esc(f.name) + " · " + (f.cols || 0) + "x" +
+        (f.rows || 0) + '">' +
+        '<span class="ta-fw-box"><span class="ta-fw-art" data-cols="' +
+        (f.cols || 0) + '" data-rows="' + (f.rows || 0) + '">' +
+        esc(f.art) + "</span></span>" +
+        '<span class="ta-fw-name">' + esc(f.name) + "</span></button>";
+    }).join("");
+    markActiveFontCard(activeSlug);
+    fitFontwallArt();
+    requestAnimationFrame(fitFontwallArt);  // 首帧字体回退后再校正一次
+  }
+
+  function wallLoading() {
+    if (!taFontwall || !taFontwallGrid) return;
+    taFontwall.hidden = false;
+    taFontwallGrid.innerHTML = '<p class="ta-fw-loading">字体墙渲染中…</p>';
+  }
+  function wallFailed() {
+    if (taFontwallGrid && taFontwallGrid.querySelector(".ta-fw-loading")) {
+      taFontwallGrid.innerHTML =
+        '<p class="ta-fw-loading">字体墙加载失败，可重试生成</p>';
+    }
+  }
+  function postJSON(path, body) {
     if (fwAbort) fwAbort.abort();
     fwAbort = (typeof AbortController !== "undefined")
       ? new AbortController() : null;
-    fetch("/api/text/fontwall", {
+    return fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: text }),
+      body: JSON.stringify(body),
       signal: fwAbort ? fwAbort.signal : undefined
-    }).then(function (r) { return r.json(); }).then(function (d) {
-      if (!d.ok || !taFontwallGrid) return;
-      taFontwallGrid.innerHTML = d.fonts.map(function (f) {
-        // data-full 携带完整作品 → 点卡片本地切换，零请求（不触发限流）
-        return '<button type="button" class="ta-fw-card" data-slug="' +
-          esc(f.slug) + '" data-full="' + esc(f.full || "") +
-          '" data-cols="' + (f.cols || 0) + '" data-rows="' + (f.rows || 0) +
-          '" title="' + esc(f.name) + '">' +
-          '<span class="ta-fw-art">' + esc(f.art) + "</span>" +
-          '<span class="ta-fw-name">' + esc(f.name) + "</span></button>";
-      }).join("");
-      markActiveFontCard();
-      fitFontwallArt();
-      requestAnimationFrame(fitFontwallArt);  // 首帧字体回退/滚动条稳定后再校正一次
-    }).catch(function () {
-      if (taFontwallGrid && taFontwallGrid.querySelector(".ta-fw-loading")) {
-        taFontwallGrid.innerHTML =
-          '<p class="ta-fw-loading">字体墙加载失败，可重试生成</p>';
-      }
-    });
+    }).then(function (r) { return r.json(); });
+  }
+
+  /* 英文 FIGlet 字体墙 */
+  function loadFigletWall(text) {
+    if (!taFontwall || !text || !text.trim()) return;
+    wallLoading();
+    postJSON("/api/text/fontwall", { text: text }).then(function (d) {
+      if (!d.ok || !d.fonts) { wallFailed(); return; }
+      renderFontWall(d.fonts, taFont ? taFont.value : "",
+                     "字体墙 · FIGlet " + d.fonts.length + " 款 · 点击切换");
+    }).catch(wallFailed);
+  }
+
+  /* 中文字体墙（宋/黑/楷）。卡片里是 2 字样张，点卡片作用于输入全文。 */
+  function loadCJKWall(text) {
+    if (!taFontwall) return;
+    wallLoading();
+    postJSON("/api/cjk/ttf/fontwall", { text: text || "" }).then(function (d) {
+      if (!d.ok || !d.fonts) { wallFailed(); return; }
+      renderFontWall(d.fonts, taFont ? taFont.value : "",
+                     "字体墙 · 中文字体 · 点击切换");
+    }).catch(wallFailed);
+  }
+
+  /* 点卡片：优先本地切换（data-full），否则回到生成按钮重渲染 */
+  function onWallPick(card) {
+    var slug = card.getAttribute("data-slug");
+    if (!slug) return;
+    var full = card.getAttribute("data-full");
+    markActiveFontCard(slug);
+    if (full && taMode === "text" && !hasCJK(taInput ? taInput.value : "")) {
+      if (taFont) taFont.value = slug;
+      showArt({ art: full,
+                cols: parseInt(card.getAttribute("data-cols"), 10) || 0,
+                rows: parseInt(card.getAttribute("data-rows"), 10) || 0,
+                font: slug, mode: "figlet",
+                text: (taInput ? taInput.value : "").slice(0, 80) });
+      return;
+    }
+    // 中文 / 图片：墙卡只是样张，得拿当前输入重新渲染一次
+    if (taMode === "image") {
+      if (imgCharset) { imgCharset.value = slug; syncRampVisibility(); }
+      if (imgConvertBtn) imgConvertBtn.click();
+    } else {
+      if (taFont) taFont.value = slug;
+      if (convertBtn) convertBtn.click();
+    }
   }
 
   if (taFontwallGrid) taFontwallGrid.addEventListener("click", function (e) {
     var card = e.target.closest(".ta-fw-card");
-    if (!card || busy) return;
-    var slug = card.getAttribute("data-slug");
-    if (!slug || (taFont && taFont.value === slug)) return;
-    if (taFont) taFont.value = slug;  // 与左栏下拉保持同步
-    var full = card.getAttribute("data-full");
-    if (full) {
-      // 本地切换：fontwall 响应已含完整作品，不再请求 convert
-      showArt({ art: full,
-                cols: parseInt(card.getAttribute("data-cols"), 10) || 0,
-                rows: parseInt(card.getAttribute("data-rows"), 10) || 0,
-                font: slug,
-                text: (taInput ? taInput.value : "").slice(0, 80) });
-      markActiveFontCard();
-    } else if (convertBtn) {
-      convertBtn.click();  // 兜底（无 data-full 时回落请求）
-    }
+    if (!card || busy || imgBusy) return;
+    if (taFont && card.getAttribute("data-slug") === taFont.value &&
+        taMode === "text") return;
+    onWallPick(card);
   });
-  if (taFont) taFont.addEventListener("change", markActiveFontCard);
+  if (taFont) taFont.addEventListener("change", function () {
+    markActiveFontCard(taFont.value);
+  });
 
   /* ── 示例 chips：点卡片填入输入框并触发生成 ── */
   if (taOutput) taOutput.addEventListener("click", function (e) {
@@ -620,13 +717,12 @@
       t.classList.toggle("active", t === tab);
     });
     var isImage = tab.getAttribute("data-mode") === "image";
+    taMode = isImage ? "image" : "text";
     if (taTextPanel) taTextPanel.hidden = isImage;
     if (taImagePanel) taImagePanel.hidden = !isImage;
     hideFontWall();  // 切模式时清字体墙
-    // 配色条收敛：图片模式的配色在左面板圆点行，结果区主题行只属于
-    // 文字模式——切到图片即隐藏（showImgArt 生成后也会保持隐藏），
-    // 切回文字且有作品时恢复，避免两个配色条同时出现。
-    if (taThemeRow) taThemeRow.hidden = isImage || !TA.art;
+    if (taOutput) taOutput.style.color = "";  // 换模式别留上一模式的主题色
+    syncThemeRow();
   });
 
   /* ── 图片艺术化（配色点 + 原色，导出复用结果区按钮行）── */
@@ -636,9 +732,11 @@
   var imgCharset = byId("taImgCharset");
   var imgRamp = byId("taImgRamp");
   var imgConvertBtn = byId("taImgConvertBtn");
-  var imgPaletteRow = byId("taImgPalette");
-  var imgPalette = "green";   // 当前配色：主题名或 "source"（原色）
   var imgBusy = false;
+
+  function syncRampVisibility() {
+    if (imgRamp && imgCharset) imgRamp.hidden = imgCharset.value !== "custom";
+  }
 
   if (imgPickBtn) imgPickBtn.addEventListener("click", function () {
     if (imgFile) imgFile.click();
@@ -646,23 +744,14 @@
   if (imgFile) imgFile.addEventListener("change", function () {
     if (imgNameHint && imgFile.files.length) {
       imgNameHint.textContent = "已选：" + imgFile.files[0].name;
+      hideFontWall();  // 换图 → 旧字符集墙作废
     }
   });
-  if (imgCharset) imgCharset.addEventListener("change", function () {
-    if (imgRamp) imgRamp.hidden = imgCharset.value !== "custom";
-  });
-  if (imgPaletteRow) imgPaletteRow.addEventListener("click", function (e) {
-    var dot = e.target.closest(".ta-theme-dot");
-    if (!dot) return;
-    imgPalette = dot.getAttribute("data-palette") || "green";
-    imgPaletteRow.querySelectorAll(".ta-theme-dot").forEach(function (d) {
-      d.classList.toggle("active", d === dot);
-    });
-  });
+  if (imgCharset) imgCharset.addEventListener("change", syncRampVisibility);
 
   function imgParams() {
     return {
-      palette: imgPalette,
+      palette: (taMode === "image" ? (TA.theme || currentTheme) : "green"),
       width: byId("taImgWidth") ? byId("taImgWidth").value : "80",
       height: byId("taImgHeight") ? byId("taImgHeight").value : "40",
       charset: imgCharset ? imgCharset.value : "ascii",
@@ -674,7 +763,7 @@
   function showImgArt(d, meta) {
     TA.art = d.art; TA.cols = d.cols; TA.rows = d.rows;
     TA.font = ""; TA.text = meta;
-    TA.theme = imgPalette;  // 导出（ANSI/PNG/HTML）随图片配色
+    TA.theme = d.palette || "green";  // 导出（ANSI/.py/PNG/HTML）随配色
     if (!taOutput) return;
     taOutput.classList.add("has-art");
     // 原色：art 内嵌 TrueColor ANSI → 逐段着色 HTML；主题色纯文本 → CSS 着色
@@ -694,7 +783,7 @@
         d.cols + " x " + d.rows;
     }
     if (taResultMeta) taResultMeta.hidden = false;
-    if (taThemeRow) taThemeRow.hidden = true;  // 配色已由面板圆点决定
+    syncThemeRow();   // 配色行在预览下方，与英文字符化同一位置
     fitOutputFont();
   }
 
@@ -756,6 +845,7 @@
           return;
         }
         showImgArt(d, imgFile.files[0].name);
+        loadImgWall();
       })
       .catch(function (msg) {
         imgBusy = false;
@@ -763,6 +853,50 @@
         showOutputError(String(msg || "网络异常，请重试"));
       });
   });
+
+  /* 图片字符集墙：同一张图 × 全部字符集，一次上传出齐所有变体。
+     （与英文/中文字体墙同一套卡片，点卡片即换即看。）
+     墙按「图 + 尺寸 + 配色 + 翻转 + 字符集」缓存：点卡片换字符集时只重渲染
+     结果、不重传图片。 */
+  var imgWallKey = null;
+  function imgWallCacheKey() {
+    if (!imgFile || !imgFile.files.length) return null;
+    var f = imgFile.files[0];
+    var p = imgParams();
+    // 不含 charset：墙内容与当前字符集无关（点卡片换字符集不该重传图）
+    return [f.name, f.size, f.lastModified, p.width, p.height, p.palette,
+            p.flip].join("|");
+  }
+  function loadImgWall(force) {
+    if (!taFontwall || !imgFile || !imgFile.files.length) return;
+    var p = imgParams();
+    if (p.charset === "custom" && !p.charset_ramp) {
+      // 自定义字符没有固定字形，墙无意义
+      hideFontWall();
+      imgWallKey = null;
+      return;
+    }
+    var key = imgWallCacheKey();
+    if (!force && key === imgWallKey && !taFontwall.hidden) return;
+    imgWallKey = key;
+    wallLoading();
+    var fd = new FormData();
+    fd.append("file", imgFile.files[0]);
+    ["width", "height", "palette", "flip"].forEach(function (k) {
+      fd.append(k, p[k]);
+    });
+    if (fwAbort) fwAbort.abort();
+    fwAbort = (typeof AbortController !== "undefined")
+      ? new AbortController() : null;
+    fetch("/api/text/imgwall", { method: "POST", body: fd,
+                                 signal: fwAbort ? fwAbort.signal : undefined })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok || !d.fonts) { wallFailed(); return; }
+        renderFontWall(d.fonts, imgCharset ? imgCharset.value : "",
+                       "字符墙 · " + d.fonts.length + " 种字符集 · 点击切换");
+      }).catch(function () { wallFailed(); imgWallKey = null; });
+  }
 
   /* ── init ── */
   loadFonts();

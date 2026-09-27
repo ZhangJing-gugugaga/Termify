@@ -24,9 +24,14 @@ def test_fontwall_renders_all_fonts(client):
     f0 = data["fonts"][0]
     assert {"slug", "name", "art"} <= set(f0.keys())
     assert "\n" in f0["art"]  # 多行字形
-    # 预览尺寸克制：行数不超上限
+    # 2026-09-27：不再截到 8 行（旧实现把 ANSI Shadow / Colossal 这类高字体
+    # 拦腰截断，正是用户截图里的"半个字"）。卡片改为等比缩放整幅作品，
+    # 所以 art 必须与 full 同源，并带上 cols/rows 供前端算缩放比。
     for f in data["fonts"]:
-        assert len(f["art"].split("\n")) <= 8
+        assert f["art"] == f["full"]
+        assert f["cols"] > 0 and f["rows"] > 0
+        assert len(f["art"].split("\n")) == f["rows"]
+    assert any(f["rows"] > 8 for f in data["fonts"]), "样本应含 >8 行的字体"
 
 
 def test_fontwall_rejects_chinese(client):
