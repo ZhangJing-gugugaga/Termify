@@ -167,6 +167,13 @@ CJK_MAX_CHARS = 8           # 单次渲染汉字上限（1:2 比例 × 160 列�
                             # 与 render_cjk_ttf 的行高收缩公式一致）
 CJK_DEFAULT_HEIGHT = 16     # 单字占的字符画行数（列数自动 = 2×行数，见下）
 CJK_MAX_HEIGHT = 64         # 字符高度上限（过高时按文本长度自动收缩）
+# 点阵的"点亮"字符用 █ 实心块而不是 #。
+# 中文点阵本质是位图，而 # 的墨迹只占 em box 的 ~43%（实测 13px 字号下
+# 墨迹 10px），相邻行之间天然留 36% 空隙 → 整幅字看着被横切成一条条
+# （用户报的"被切割"），且**无论行距收到多紧都存在**：# 填不满字符格。
+# █ 的墨迹接近整个 em box（18px/13px），上下行自然连成一体，观感与真正的
+# 点阵字一致；终端粘贴、.txt/.py 导出、画廊回放也都是实心块。
+_CJK_ON = "█"
 # (key, 展示名, 字体候选)。候选按序探测，首个存在者生效（Win/Linux/macOS）。
 CJK_FONTS: list[tuple[str, str, tuple[str, ...]]] = [
     ("songti", "宋体", (
@@ -395,7 +402,7 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
                             lit = True
                     y += 2
                 if lit:
-                    row[base + tx] = "#"
+                    row[base + tx] = _CJK_ON
     rows = ["".join(row) for row in grid]
     while rows and not rows[-1].strip():
         rows.pop()

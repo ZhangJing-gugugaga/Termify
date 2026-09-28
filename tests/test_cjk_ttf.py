@@ -72,7 +72,9 @@ class TestRenderCjkTtf:
         art = textart.render_cjk_ttf("你好")
         cols, rows = textart.art_dims(art)
         assert cols > 0 and rows > 0
-        assert "#" in art  # 有实像素
+        # 点阵的"点亮"字符是 █ 实心块（# 填不满字符格，整幅字会被切成
+        # 横向条带——见 textart._CJK_ON 的说明）
+        assert textart._CJK_ON in art
         # 无制表/控制字符
         assert all(ord(ch) >= 0x20 or ch == "\n" for ch in art)
 
@@ -91,7 +93,7 @@ class TestRenderCjkTtf:
     def test_bad_font_falls_back_to_default(self):
         # 传一个不存在的 slug → 回落默认字体，不该抛错
         art = textart.render_cjk_ttf("测", "definitely-not-a-font")
-        assert "#" in art
+        assert textart._CJK_ON in art
 
     def test_dimension_capped(self):
         art = textart.render_cjk_ttf("一二三四五六七八九十百千")
