@@ -34,7 +34,8 @@
   if (modalClose) modalClose.addEventListener("click", function () { modal.hidden = true; });
 
   /* ── 状态 ── */
-  var TA = { art: "", cols: 0, rows: 0, font: "", text: "", fg: [51, 255, 51] };
+  // mode 决定预览的字符格比例：cjk=1:2 点阵、figlet=1:1、其余(图片)=1.3
+  var TA = { art: "", cols: 0, rows: 0, font: "", text: "", fg: [51, 255, 51], mode: "figlet" };
   var taMode = "text";   // text = 字符艺术化 · image = 图片艺术化
   var taInput = byId("taInput");
   var taFont = byId("taFont");
@@ -96,28 +97,51 @@
       '<div class="ta-chips">' + chips + "</div></div>";
     if (taResultMeta) taResultMeta.hidden = true;
   }
-  /* 输出字号自适应：等宽字符画列数随内容变化（中文点阵最宽可到 440 列、
-     FIGlet 更宽），固定 0.62rem 会横向溢出容器——按超出比例缩小字号，
-     保证整幅作品完整可见（与字体墙同算法）。
+  /* 预览窗口贴合内容（对齐主页 fitTerminalFontSize 的做法，2026-09-28）。
+     旧实现只按**宽度**缩字号，框高由 CSS 的 min-height:320px 撑着：
+     128 列 × 16 行的中文点阵只占框高的 68%，底部 104px 全是空的——
+     从外面看就是"字浮在框的上半截、下面被切掉了"（用户报的"被切割 /
+     显示不完全"）。现在改成两步：
+       1) 按网格固有比例（列 × 0.6em : 行 × 行高）从可用宽推出框高；
+       2) 字号同时满足宽高两个方向 → 内容 100% 填满框，无空白带。
+     行高按来源模式定：中文点阵是 1:2 网格（1.2）、FIGlet 是 1:1 网格
+     （1.0）、图片艺术化服务端按 1.3 生成（1.3，与 frames.CELL_H_EM 同源）。
      返回实际字号，供调用方决定要不要提示"已缩到最小"。 */
+  // 字符格高宽比（行高倍数）：主预览与字体墙卡片必须用同一份，
+  // 否则同一幅字在两个位置的胖瘦不一样（用户第一次报"预览与字体墙不一致"）。
+  //   cjk    1:2 点阵（服务端 cell_w = 2 × 行数）
+  //   figlet FIGlet 字形按近方形字格设计
+  //   img    服务端 frames.CELL_H_EM = 1.3
+  var OUTPUT_LH = { cjk: 1.2, figlet: 1.05, img: 1.3 };
   function fitOutputFont() {
-    if (!taOutput || !TA.art) return 0;
-    taOutput.style.fontSize = "";
-    // clientWidth 含 padding，scrollWidth 也是"内容 + padding"——两者直接
-    // 比较会在作品宽度落在 (内容宽, clientWidth) 之间时漏判，作品横向溢出
-    // 容器（右侧被切 + 横向滚动条）。先把 padding 扣掉再比。
+    if (!taOutput || !TA.art || !TA.cols || !TA.rows) return 0;
+    var lh = OUTPUT_LH[TA.mode] || OUTPUT_LH.figlet;
     var cs = getComputedStyle(taOutput);
     var padX = (parseFloat(cs.paddingLeft) || 0) +
                (parseFloat(cs.paddingRight) || 0);
-    var sw = taOutput.scrollWidth, cw = taOutput.clientWidth - padX;
-    var fs = parseFloat(cs.fontSize) || 10;
-    if (sw > cw && sw > 0) {
-      // 下限 2px：超宽作品（如 4 字 × 50 行 = 400 列）需要 ~3px 才塞得下，
-      // 旧的 4px 下限会让它横向溢出、右侧"显示不完全"。宁可小到看不清，
-      // 也要整幅在框内；要原始尺寸用 .txt / .py / PNG 导出。
-      fs = Math.max(2, Math.floor(fs * cw / sw * 10) / 10);
-      taOutput.style.fontSize = fs + "px";
-    }
+    var padY = (parseFloat(cs.paddingTop) || 0) +
+               (parseFloat(cs.paddingBottom) || 0);
+    var availW = taOutput.clientWidth - padX;
+    if (availW <= 0) return 0;
+    var CELL_W = 0.6;
+    var gridAspect = (TA.cols * CELL_W) / (TA.rows * lh);
+    var maxH = Math.max(240, Math.round(window.innerHeight * 0.62));
+    var boxH = Math.max(160, Math.min(maxH, Math.round(availW / gridAspect) + padY));
+    var availH = boxH - padY;
+    var fs = Math.min(availW / (TA.cols * CELL_W), availH / (TA.rows * lh));
+    // 下限 2px：超宽作品（如 4 字 × 50 行 = 400 列）需要 ~3px 才塞得下，
+    // 旧的 4px 下限会让它横向溢出、右侧"显示不完全"。宁可小到看不清，
+    // 也要整幅在框内；要原始尺寸用 .txt / .py / PNG 导出。
+    fs = Math.max(2, Math.min(fs, 30));
+    // 字号被 30px 上限或 2px 下限夹住时，框高要跟着字号走，否则又留空白带
+    boxH = Math.max(160, Math.min(maxH,
+              Math.round(TA.rows * fs * lh) + padY));
+    taOutput.style.lineHeight = lh;
+    taOutput.style.fontSize = fs + "px";
+    // CSS 的 min-height:320px 会压过行内 height（min-height 优先级更高），
+    // 框永远收不下来 → 先放开 min-height，它就退回"JS 未跑时的兜底值"。
+    taOutput.style.minHeight = "0px";
+    taOutput.style.height = boxH + "px";
     return fs;
   }
   var outputFitTimer = null;
@@ -129,6 +153,7 @@
   function showArt(d) {
     TA.art = d.art; TA.cols = d.cols; TA.rows = d.rows;
     TA.font = d.font || ""; TA.text = d.text || "";
+    TA.mode = d.mode || "figlet";
     if (!taOutput) return;
     taOutput.classList.add("has-art");
     taOutput.textContent = d.art;
@@ -569,7 +594,7 @@
   var taFwTitle = byId("taFwTitle");
   var fwAbort = null;
   var FW_CH = 0.6;     // 1em = 基准字号下单个字符的宽度
-  var FW_LH = 1.05;    // 行高倍数（与 CSS .ta-fw-art line-height 对齐）
+  var FW_LH = 1.05;    // 兜底行高（正常值走卡片上的 data-lh，见 OUTPUT_LH）
 
   function hideFontWall() {
     if (taFontwall) taFontwall.hidden = true;
@@ -598,10 +623,11 @@
       var cols = parseInt(art.getAttribute("data-cols"), 10) || 1;
       var rows = parseInt(art.getAttribute("data-rows"), 10) || 1;
       var base = 8;
+      var lh = parseFloat(art.getAttribute("data-lh")) || FW_LH;
       var w = Math.max(40, (box.clientWidth || 150) - FW_PAD_X);
       var h = Math.max(24, (box.clientHeight || 108) - FW_PAD_Y);
       var scale = Math.min(1, w / (cols * base * FW_CH),
-                            h / (rows * base * FW_LH));
+                            h / (rows * base * lh));
       // 下限 0.3：再小就不可读了，宁可让极罕见的超高字体溢出裁切
       art.style.transform = "scale(" + Math.max(0.3, scale) + ")";
     }
@@ -613,7 +639,7 @@
     fwFitTimer = setTimeout(fitFontwallArt, 120);
   });
 
-  function renderFontWall(fonts, activeSlug, title) {
+  function renderFontWall(fonts, activeSlug, title, kind) {
     if (!taFontwall || !taFontwallGrid || !fonts || !fonts.length) return;
     taFontwall.hidden = false;
     if (taFwTitle) taFwTitle.textContent = title || "字体墙 · 点击切换";
@@ -625,7 +651,8 @@
         '" data-cols="' + (f.cols || 0) + '" data-rows="' + (f.rows || 0) +
         '" title="' + esc(f.name) + " · " + (f.cols || 0) + "x" +
         (f.rows || 0) + '">' +
-        '<span class="ta-fw-box"><span class="ta-fw-art" data-cols="' +
+        '<span class="ta-fw-box"><span class="ta-fw-art" data-lh="' +
+        (OUTPUT_LH[kind] || OUTPUT_LH.figlet) + '" data-cols="' +
         (f.cols || 0) + '" data-rows="' + (f.rows || 0) + '">' +
         esc(f.art) + "</span></span>" +
         '<span class="ta-fw-name">' + esc(f.name) + "</span></button>";
@@ -665,7 +692,8 @@
     postJSON("/api/text/fontwall", { text: text }).then(function (d) {
       if (!d.ok || !d.fonts) { wallFailed(); return; }
       renderFontWall(d.fonts, taFont ? taFont.value : "",
-                     "字体墙 · FIGlet " + d.fonts.length + " 款 · 点击切换");
+                     "字体墙 · FIGlet " + d.fonts.length + " 款 · 点击切换",
+                     "figlet");
     }).catch(wallFailed);
   }
 
@@ -676,7 +704,7 @@
     postJSON("/api/cjk/ttf/fontwall", { text: text || "" }).then(function (d) {
       if (!d.ok || !d.fonts) { wallFailed(); return; }
       renderFontWall(d.fonts, taFont ? taFont.value : "",
-                     "字体墙 · 中文字体 · 点击切换");
+                     "字体墙 · 中文字体 · 点击切换", "cjk");
     }).catch(wallFailed);
   }
 
@@ -782,6 +810,7 @@
   function showImgArt(d, meta) {
     TA.art = d.art; TA.cols = d.cols; TA.rows = d.rows;
     TA.font = ""; TA.text = meta;
+    TA.mode = "img";
     TA.theme = d.palette || "green";  // 导出（ANSI/.py/PNG/HTML）随配色
     if (!taOutput) return;
     taOutput.classList.add("has-art");
@@ -913,7 +942,8 @@
       .then(function (d) {
         if (!d.ok || !d.fonts) { wallFailed(); return; }
         renderFontWall(d.fonts, imgCharset ? imgCharset.value : "",
-                       "字符墙 · " + d.fonts.length + " 种字符集 · 点击切换");
+                       "字符墙 · " + d.fonts.length + " 种字符集 · 点击切换",
+                       "img");
       }).catch(function () { wallFailed(); imgWallKey = null; });
   }
 
