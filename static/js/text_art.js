@@ -96,18 +96,29 @@
       '<div class="ta-chips">' + chips + "</div></div>";
     if (taResultMeta) taResultMeta.hidden = true;
   }
-  /* 输出字号自适应：等宽字符画列数随内容变化（中文点阵 96-160 列、
-     FIGlet 更宽），固定 0.62rem 会在容器里横向截断——按 scrollWidth
-     超出比例缩小字号，保证整幅作品完整可见（与字体墙同算法）。 */
+  /* 输出字号自适应：等宽字符画列数随内容变化（中文点阵最宽可到 440 列、
+     FIGlet 更宽），固定 0.62rem 会横向溢出容器——按超出比例缩小字号，
+     保证整幅作品完整可见（与字体墙同算法）。
+     返回实际字号，供调用方决定要不要提示"已缩到最小"。 */
   function fitOutputFont() {
-    if (!taOutput || !TA.art) return;
+    if (!taOutput || !TA.art) return 0;
     taOutput.style.fontSize = "";
-    var sw = taOutput.scrollWidth, cw = taOutput.clientWidth;
+    // clientWidth 含 padding，scrollWidth 也是"内容 + padding"——两者直接
+    // 比较会在作品宽度落在 (内容宽, clientWidth) 之间时漏判，作品横向溢出
+    // 容器（右侧被切 + 横向滚动条）。先把 padding 扣掉再比。
+    var cs = getComputedStyle(taOutput);
+    var padX = (parseFloat(cs.paddingLeft) || 0) +
+               (parseFloat(cs.paddingRight) || 0);
+    var sw = taOutput.scrollWidth, cw = taOutput.clientWidth - padX;
+    var fs = parseFloat(cs.fontSize) || 10;
     if (sw > cw && sw > 0) {
-      var base = parseFloat(getComputedStyle(taOutput).fontSize) || 10;
-      var fit = Math.max(4, Math.floor(base * cw / sw * 10) / 10);
-      taOutput.style.fontSize = fit + "px";
+      // 下限 2px：超宽作品（如 4 字 × 50 行 = 400 列）需要 ~3px 才塞得下，
+      // 旧的 4px 下限会让它横向溢出、右侧"显示不完全"。宁可小到看不清，
+      // 也要整幅在框内；要原始尺寸用 .txt / .py / PNG 导出。
+      fs = Math.max(2, Math.floor(fs * cw / sw * 10) / 10);
+      taOutput.style.fontSize = fs + "px";
     }
+    return fs;
   }
   var outputFitTimer = null;
   window.addEventListener("resize", function () {
@@ -127,10 +138,15 @@
       taPreviewTitle.textContent = "text art · " + modeLabel +
         " " + d.cols + "x" + d.rows;
     }
-    if (taMetaText) taMetaText.textContent = modeLabel + " · " + d.cols + " x " + d.rows;
     if (taResultMeta) taResultMeta.hidden = false;
     syncThemeRow();   // 有作品 → 配色行可见（两种模式共用同一行）
-    fitOutputFont();
+    var fs = fitOutputFont();
+    if (taMetaText) {
+      taMetaText.textContent = modeLabel + " · " + d.cols + " x " + d.rows +
+        // 缩到下限以下 = 已经看不清了，明说"预览已缩到最小"，并指出
+        // 原始尺寸走导出——否则用户以为作品被切了
+        (fs && fs < 4 ? " · 预览已缩到最小，导出为原始尺寸" : "");
+    }
   }
 
   /* ── 输入语言检测 + 字体源切换 ── */
@@ -567,8 +583,11 @@
     });
   }
 
-  /* 缩放：按卡片实际可用宽度 + 框高取 min，宁可小一点也不截断。
-     基准 8px 字号（CSS .ta-fw-art 的 font-size）。 */
+  /* 缩放：按卡片可用宽高取 min，但**留出边距**——正好铺满卡片时作品
+     会顶到左右边缘（框内无 padding + overflow:hidden），首尾字符看着
+     就是被切掉一个（用户报的"字体墙预览偏移"）。基准 8px 字号。 */
+  var FW_PAD_X = 16;   // 左右合计留白（每侧 8px）
+  var FW_PAD_Y = 10;   // 上下合计留白
   function fitFontwallArt() {
     if (!taFontwallGrid) return;
     var cards = taFontwallGrid.querySelectorAll(".ta-fw-card");
@@ -579,8 +598,8 @@
       var cols = parseInt(art.getAttribute("data-cols"), 10) || 1;
       var rows = parseInt(art.getAttribute("data-rows"), 10) || 1;
       var base = 8;
-      var w = box.clientWidth || 150;
-      var h = box.clientHeight || 108;
+      var w = Math.max(40, (box.clientWidth || 150) - FW_PAD_X);
+      var h = Math.max(24, (box.clientHeight || 108) - FW_PAD_Y);
       var scale = Math.min(1, w / (cols * base * FW_CH),
                             h / (rows * base * FW_LH));
       // 下限 0.3：再小就不可读了，宁可让极罕见的超高字体溢出裁切
