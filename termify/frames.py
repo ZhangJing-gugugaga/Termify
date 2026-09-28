@@ -8,6 +8,29 @@ from PIL import Image, ImageSequence
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # PRD §7.1
 
+# 终端字符格的宽高比（em）：与前端 fitTerminalFontSize / fitViewFontSize 的
+# charRatio=0.6 / lineHeightRatio=1.3 同源。引擎此前把 1 个字符格当 1×1
+# 方块像素用——非方形素材一律纵向拉长 ~2.2 倍、两侧留下成对实心黑边条
+# （用户截图里图片字符化"那两根竖着的东西"就是黑边条被字符化成最密字符）。
+CELL_W_EM = 0.6
+CELL_H_EM = 1.3
+
+
+def fit_cells(src_w: int, src_h: int, width: int, height: int) -> tuple[int, int]:
+    """源图在 width×height 字符网格里的等比贴合尺寸（单位：字符格）。
+
+    网格本身假设装得下源比例（调用方给定的网格宽高比不必等于源比例，
+    贴不满的部分由调用方在**字符空间**用空格补齐——绝不在像素空间垫黑，
+    那会被字符化成实心色块）。
+    """
+    if src_w <= 0 or src_h <= 0 or width <= 0 or height <= 0:
+        return max(1, width), max(1, height)
+    # (fw·CELL_W) / (fh·CELL_H) = sw/sh  →  fw/fh = CELL_H·sw / (CELL_W·sh)
+    cols_per_row = (CELL_H_EM * src_w) / (CELL_W_EM * src_h)
+    fh = min(height, max(1, round(width / cols_per_row)))
+    fw = min(width, max(1, round(fh * cols_per_row)))
+    return max(1, fw), max(1, fh)
+
 
 def extract_frames(path: str) -> list[tuple[Image.Image, float]]:
     """Return list of (RGBA frame, duration_seconds).

@@ -23,8 +23,14 @@ def test_convert_gif_yields_multiple_frames(two_frame_gif):
     # First frame black -> densest char, second white -> sparsest char.
     densest = CHARSETS["ascii"]["chars"][0]
     sparsest = CHARSETS["ascii"]["chars"][-1]
-    assert all(ch == densest for ch in seq.lines_per_frame[0][0])
-    assert all(ch == sparsest for ch in seq.lines_per_frame[1][0])
+    # 2026-09-28 起比例在字符空间贴合（frames.fit_cells，格子 0.6:1.3 em）：
+    # 8×4 源（2:1）在 8×4 网格里贴合为 8 列 × 2 行、上下各补 1 行空格——
+    # 旧实现把字符格当方块像素，整格填满但纵向压扁 2.2 倍。
+    for frame, want in ((seq.lines_per_frame[0], densest),
+                        (seq.lines_per_frame[1], sparsest)):
+        assert frame[0].strip() == "" and frame[-1].strip() == ""  # 补边行
+        body = "".join(frame[1:-1])
+        assert body == want * 8 * (len(frame) - 2)
     # Interval from GIF duration (0.05s).
     assert seq.interval == 0.05
 

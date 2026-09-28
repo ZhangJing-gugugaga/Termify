@@ -363,8 +363,15 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
         return "\n".join([" " * cell_w] * h)
     ink_top, _, ink_bot, _ = box
     ink_h = max(1, ink_bot - ink_top)
-    # 墨迹盒 → h 行：每行 ink_h/h 像素高；x 方向整幅 em box → cell_w 列
+    # 墨迹盒 → h 行：每行 ink_h/h 像素高；x 方向整幅 em box → cell_w 列。
+    # 采样用**覆盖度**而非 min-pool：旧「取最暗」只要窗口沾到一笔就点亮，
+    # 黑体这类粗笔画字体的相邻笔画在低行数下整片粘连成实心条（用户报的
+    # 「黑体渲染失败」）；改为「该行任一水平切片的墨量均值 ≥ 阈值」才点亮
+    # ——粗笔画的窗口均值高（保留），只蹭到笔画边的窗口均值低（不再点亮）。
+    # 实测 heiti h=16 结构立现，songti/kaiti 细笔画不受影响（切片贴线时
+    # 均值≈255）。
     band_h = ink_h / h
+    COV_THRESHOLD = 160  # 0-255：切片内平均墨量
     grid = [[" "] * (cell_w * len(clean)) for _ in range(h)]
     for ci, img in enumerate(glyphs):
         if img is None:
@@ -376,17 +383,18 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
             row = grid[ty]
             for tx in range(cell_w):
                 x0 = tx * scale
-                darkest = 255
+                lit = False
                 # 纵向隔行采样：1px 竖笔画跨越 ≥2 个采样点，绝不会漏
                 y = y0
-                while y < y0 + band_h:
+                while y < y0 + band_h and not lit:
                     if y < ink_bot:
+                        ink = 0
                         for sx in range(scale):
-                            v = sp[x0 + sx, int(y)]
-                            if v < darkest:
-                                darkest = v
+                            ink += 255 - sp[x0 + sx, int(y)]
+                        if ink / scale >= COV_THRESHOLD:
+                            lit = True
                     y += 2
-                if darkest < 128:
+                if lit:
                     row[base + tx] = "#"
     rows = ["".join(row) for row in grid]
     while rows and not rows[-1].strip():

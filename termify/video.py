@@ -325,6 +325,27 @@ def _scale_dims(charset: str, width: int, height: int) -> tuple[int, int]:
     return width, height
 
 
+def _pad_frame_lines(lines: list[str], width: int, height: int) -> list[str]:
+    """字符空间补齐（与 engine._pad_frame 同规则）：贴合画比网格小的部分
+    用空格/空行居中补齐，绝不在像素空间垫黑（会被字符化成实心色块）。"""
+    row_pad = max(0, height - len(lines))
+    top = row_pad // 2
+    out = [" " * width] * top
+    for ln in lines:
+        lead = max(0, (width - len(ln)) // 2)
+        out.append(" " * lead + ln + " " * max(0, width - len(ln) - lead))
+    out.extend([" " * width] * (height - top - len(lines)))
+    return out
+
+
+def _src_size(frames_dir: str) -> tuple[int, int]:
+    """源帧尺寸（读第一帧的文件头，不解码全部）。"""
+    from PIL import Image
+
+    with Image.open(frames_dir_to_images(frames_dir)[0]) as im:
+        return im.size
+
+
 def _stride_pick(items, max_frames: int | None):
     """均匀抽稀到 max_frames（保留首尾）；不足则原样返回。"""
     if not max_frames or len(items) <= max_frames or max_frames < 2:
@@ -349,19 +370,29 @@ def sequence_from_frames_dir(frames_dir: str, charset: str, width: int, height: 
     在 1~2 vCPU 的机器上能直接把进程 OOM 掉（2026-09-28 实测本地开发
     服务就是这样被系统杀掉、页面全线 Failed to fetch）。
     """
-    from termify.engine import FrameSequence, render_frame, scale_frame
+    from termify.engine import FrameSequence, render_frame
+    from termify.frames import fit_cells, scale_frame
     from PIL import Image
 
-    sw, sh = _scale_dims(charset, width, height)
+    fit_w, fit_h = fit_cells(*_src_size(frames_dir), width, height)
+    if charset == "blocks":
+        sw, sh = fit_w, fit_h * 2
+    elif charset == "braille":
+        sw, sh = fit_w * 2, fit_h * 4
+    else:
+        sw, sh = fit_w, fit_h
     lines_per_frame = []
     for fpath in _stride_pick(frames_dir_to_images(frames_dir), max_frames):
         img = Image.open(fpath).convert("RGB")
-        scaled = scale_frame(img, sw, sh)
-        lines_per_frame.append(render_frame(scaled, charset, sw, sh,
-                                            fg_color=fg_color,
-                                            bg_color=bg_color,
-                                            charset_ramp=charset_ramp,
-                                            color_mode=color_mode))
+        # 比例已在字符空间贴合，像素画布直接拉到贴合尺寸
+        scaled = scale_frame(img, sw, sh, keep_aspect=False)
+        lines_per_frame.append(_pad_frame_lines(
+            render_frame(scaled, charset, sw, sh,
+                         fg_color=fg_color,
+                         bg_color=bg_color,
+                         charset_ramp=charset_ramp,
+                         color_mode=color_mode),
+            width, height))
     return FrameSequence(
         lines_per_frame=lines_per_frame,
         interval=interval if interval and interval > 0 else 0.1,

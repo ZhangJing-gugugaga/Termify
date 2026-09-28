@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from termify.charset import CHARSETS, render_frame
-from termify.frames import extract_frames, scale_frame
+from termify.frames import extract_frames, fit_cells, scale_frame
 
 
 @dataclass
@@ -28,6 +28,23 @@ class FrameSequence:
     charset: str
 
 
+def _pad_frame(lines: list[str], width: int, height: int) -> list[str]:
+    """字符空间补齐：行内左右补空格、上下补空行（居中）。
+
+    贴合后的画比网格小（网格比例 ≠ 源比例时），缺的部分必须是"没有字符"
+    而不是"最暗的字符"——像素空间垫黑会被字符化成实心色块。
+    """
+    out = []
+    row_pad = max(0, height - len(lines))
+    top = row_pad // 2
+    out.extend([" " * width] * top)
+    for ln in lines:
+        lead = max(0, (width - len(ln)) // 2)
+        out.append(" " * lead + ln + " " * max(0, width - len(ln) - lead))
+    out.extend([" " * width] * (height - top - len(lines)))
+    return out
+
+
 def convert(path: str, charset: str, width: int = 80, height: int = 24,
             fg_color=None, bg_color=None, charset_ramp=None,
             color_mode="mono", max_frames: int | None = None) -> FrameSequence:
@@ -35,7 +52,7 @@ def convert(path: str, charset: str, width: int = 80, height: int = 24,
 
     Pipeline (PRD §5.3):
       1. extract_frames  -> list[(RGBA, duration)]
-      2. scale_frame     -> resized to width x height (letterboxed)
+      2. fit + scale     -> 等比贴合到字符格（1:2 格子比，见 frames.fit_cells）
       3. render_frame    -> pixel -> character lines
     All frames share one interval (first frame's, default 0.1s).
     fg_color / bg_color are optional (R,G,B) tuples; passed through to
@@ -51,21 +68,27 @@ def convert(path: str, charset: str, width: int = 80, height: int = 24,
         )
 
     frames = extract_frames(path)
+    src_w, src_h = frames[0][0].size
+    fit_w, fit_h = fit_cells(src_w, src_h, width, height)
     if charset == "blocks":
-        scale_w, scale_h = width, height * 2
+        scale_w, scale_h = fit_w, fit_h * 2
     elif charset == "braille":
-        scale_w, scale_h = width * 2, height * 4
+        scale_w, scale_h = fit_w * 2, fit_h * 4
     else:
-        scale_w, scale_h = width, height
+        scale_w, scale_h = fit_w, fit_h
     if max_frames and len(frames) > max_frames and max_frames >= 2:
         last = len(frames) - 1
         step = max_frames - 1
         frames = [frames[int(round(i * last / step))] for i in range(max_frames)]
-    scaled = [scale_frame(f, scale_w, scale_h) for f, _ in frames]
+    # 比例已在字符空间贴合，像素画布直接拉到贴合尺寸（不再像素级 letterbox）
+    scaled = [scale_frame(f, scale_w, scale_h, keep_aspect=False)
+              for f, _ in frames]
     lines_per_frame = [
-        render_frame(s, charset, scale_w, scale_h,
-                     fg_color=fg_color, bg_color=bg_color,
-                     charset_ramp=charset_ramp, color_mode=color_mode)
+        _pad_frame(
+            render_frame(s, charset, scale_w, scale_h,
+                         fg_color=fg_color, bg_color=bg_color,
+                         charset_ramp=charset_ramp, color_mode=color_mode),
+            width, height)
         for s in scaled
     ]
 

@@ -179,8 +179,11 @@
 
 /* ── 右：终端输出 ── */
 .ta-stage { min-width: 0; }
-/* hidden 属性必须赢过本页所有 display 规则（.ta-theme-row 等都是
-   display:flex，UA 的 [hidden]{display:none} 会被覆盖 → 配色条藏不住） */
+/* hidden 属性必须赢过本页所有 display 规则（.ta-theme-row、.ta-grid-2
+   等都是 display:flex/grid，UA 的 [hidden]{display:none} 会被同权重的
+   页面规则覆盖 → 隐藏失效。英文模式下「字符高度」框就是这样常驻的——
+   它只对中文点阵有意义，FIGlet 的字形尺寸由字体决定）。 */
+[hidden] { display: none !important; }
 .ta-stage [hidden] { display: none !important; }
 .ta-output {
     font-family: var(--font-mono);

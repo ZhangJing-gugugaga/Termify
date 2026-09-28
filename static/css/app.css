@@ -25,6 +25,11 @@
             overflow-x: hidden;
         }
 
+        /* HTML hidden 语义必须赢：页面里大量 .output-card/.palette-row 等
+           display:flex/grid 规则与 [hidden] 同权重，谁在后谁赢——曾把
+           「字符高度」这类靠 hidden 收起的控件顶出来。 */
+        [hidden] { display: none !important; }
+
         /* Subtle grid background */
         body::before {
             content: '';
