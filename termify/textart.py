@@ -179,7 +179,25 @@ CJK_MAX_HEIGHT = 64         # 字符高度上限（过高时按文本长度自�
 # █ 的墨迹接近整个 em box（18px/13px），上下行自然连成一体，观感与真正的
 # 点阵字一致；终端粘贴、.txt/.py 导出、画廊回放也都是实心块。
 _CJK_ON = "█"
+def _bundled_heiti_path() -> str:
+    """仓库内置 Noto Sans CJK SC Light 的绝对路径（static/fonts/）。
+
+    中文点阵"黑体"的统一字体：各端（开发机/ECS/发布包）都指向同一份
+    文件，渲染结果逐字节一致。OFL-1.1 允许随仓库再分发，许可证与版权
+    声明见 static/fonts/LICENSE.NotoSansCJK。
+    """
+    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    return _os.path.join(root, "static", "fonts", "NotoSansCJKsc-Light.otf")
+
+
 # (key, 展示名, 字体候选)。候选按序探测，首个存在者生效（Win/Linux/macOS）。
+# 黑体首选**仓库内置**的 Noto Sans CJK SC Light（static/fonts/，OFL-1.1，
+# 许可证见 static/fonts/LICENSE.NotoSansCJK）：各端共用同一份字体文件，
+# 本地/线上逐字节一致。教训（2026-09-29）：此前 heiti 在 Windows 命中
+# simhei.ttf、在 ECS 命中 NotoSansCJK-Regular.ttc——同一选项两端字形完全
+# 不同，且 Regular 权重笔画粗、在覆盖度采样下低行数粘连成实心块（用户
+# 端到端看到的"线上被切割、本地没事"的根因）。Light 权重笔画细，26 行
+# 网格下结构与 simhei 相当。系统字体仅作内置文件缺失时的兜底。
 CJK_FONTS: list[tuple[str, str, tuple[str, ...]]] = [
     ("songti", "宋体", (
         "simsun.ttc", "SimSun.ttf",
@@ -187,9 +205,8 @@ CJK_FONTS: list[tuple[str, str, tuple[str, ...]]] = [
         "NotoSerifCJK-Regular.ttc",
     )),
     ("heiti", "黑体", (
+        _bundled_heiti_path(),
         "simhei.ttf", "SimHei.ttf",
-        "NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     )),
     ("kaiti", "楷体", (
         "simkai.ttf", "KaiTi.ttf",
@@ -342,10 +359,11 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
     """中文 → TTF 光栅化点阵字符画（纯本地）。
 
     每个汉字先在高分辨率画布上逐字光栅化（字与字之间不重叠），再把
-    **墨迹盒**（见 _ink_box）纵向压到 ``h`` 行、横向压到 ``2h`` 列。
-    压缩用 "取最暗" 而非平均——细横画在均值降采样里会被背景稀释到
-    阈值以下（「你好」碎成渣的根因），min-pool 保笔画存活。
+    **墨迹盒**（见 _ink_box）压到 ``h`` 行 × ``2h`` 列。压缩用格子的
+    二维面积覆盖度采样（见下），而非逐点取值。
     """
+
+    from PIL import Image
 
     clean = filter_cjk_text(text)
     if not clean:
@@ -364,7 +382,7 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
             f"文字过多（{len(clean)} 字）——请缩短到 "
             f"{CJK_MAX_CELL_W // 20} 字以内 / Too many characters")
     cell_w = h * 2
-    scale = 6  # 高分辨率光栅化：min-pool 采样窗口越大，细横画存活率越高
+    scale = 6  # 高分辨率光栅化：源像素越多，面积平均的量化误差越小
     # （scale=3 时 songti 在 10-16 行低网格下笔画碎裂、时断时续，观感
     # 如"字被截断"；scale=6 实测三字体笔画连贯结构完整，h16 不劣化）
     # 画布 = 字形外接正方形（字号 cell_w*scale），字形按方块渲染
@@ -374,39 +392,32 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
     if box is None:  # 纯半角输入：全宽留白行
         return "\n".join([" " * cell_w] * h)
     ink_top, _, ink_bot, _ = box
-    ink_h = max(1, ink_bot - ink_top)
     # 墨迹盒 → h 行：每行 ink_h/h 像素高；x 方向整幅 em box → cell_w 列。
-    # 采样用**覆盖度**而非 min-pool：旧「取最暗」只要窗口沾到一笔就点亮，
-    # 黑体这类粗笔画字体的相邻笔画在低行数下整片粘连成实心条（用户报的
-    # 「黑体渲染失败」）；改为「该行任一水平切片的墨量均值 ≥ 阈值」才点亮
-    # ——粗笔画的窗口均值高（保留），只蹭到笔画边的窗口均值低（不再点亮）。
-    # 实测 heiti h=16 结构立现，songti/kaiti 细笔画不受影响（切片贴线时
-    # 均值≈255）。
-    band_h = ink_h / h
-    COV_THRESHOLD = 160  # 0-255：切片内平均墨量
+    # 采样用**二维面积覆盖度**（PIL BOX 缩放 = 每个格子取其源像素块的平均
+    # 墨量）。此前的两代实现都有结构性缺陷：
+    #   ① min-pool「取最暗」：窗口沾到一笔就点亮 → 粗笔画字体的相邻笔画
+    #      在低行数下粘连成实心条（「黑体渲染失败」）；
+    #   ② 扫描线覆盖度「任一水平切片均值 ≥ 阈值」：纵向取的是 max，等于
+    #      对整幅图做形态学膨胀，细横画变粗、贴线的笔画粘连；且细斜笔
+    #      （捺、点）在 6px 窗口里均值不足被丢掉 —— 内置 Light 字体下
+    #      「海/腾」内笔画画不全。
+    # 面积平均对三者同时成立：粗笔画不粘连（空隙有真实面积权重）、细
+    # 横画存活（占格面积达阈值即点亮）、斜笔画按面积自然过渡。实测
+    # Light/SimHei/宋/楷 在 10/26/64 行下结构与原字形一致。
+    COV_THRESHOLD = 110  # 0-255：格子内平均墨量（≈43% 面积）
     grid = [[" "] * (cell_w * len(clean)) for _ in range(h)]
     for ci, img in enumerate(glyphs):
         if img is None:
             continue
-        sp = img.load()
+        # 纵向按全字共用的墨迹盒裁剪（与旧实现同），横向保持 em box
+        small = img.crop((0, ink_top, cell_px, ink_bot)).resize(
+            (cell_w, h), Image.BOX)
+        px = small.load()
         base = ci * cell_w
         for ty in range(h):
-            y0 = ink_top + ty * band_h
             row = grid[ty]
             for tx in range(cell_w):
-                x0 = tx * scale
-                lit = False
-                # 纵向隔行采样：1px 竖笔画跨越 ≥2 个采样点，绝不会漏
-                y = y0
-                while y < y0 + band_h and not lit:
-                    if y < ink_bot:
-                        ink = 0
-                        for sx in range(scale):
-                            ink += 255 - sp[x0 + sx, int(y)]
-                        if ink / scale >= COV_THRESHOLD:
-                            lit = True
-                    y += 2
-                if lit:
+                if 255 - px[tx, ty] >= COV_THRESHOLD:
                     row[base + tx] = _CJK_ON
     rows = ["".join(row) for row in grid]
     while rows and not rows[-1].strip():
