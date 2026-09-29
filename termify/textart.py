@@ -165,7 +165,12 @@ def art_dims(art: str) -> tuple[int, int]:
 
 CJK_MAX_CHARS = 8           # 单次渲染汉字上限（1:2 比例 × 160 列红线推出，
                             # 与 render_cjk_ttf 的行高收缩公式一致）
-CJK_DEFAULT_HEIGHT = 16     # 单字占的字符画行数（列数自动 = 2×行数，见下）
+CJK_DEFAULT_HEIGHT = 26     # 单字占的字符画行数（列数自动 = 2×行数，见下）。
+                            # 16 → 26（2026-09-28）：16 行下「完」的儿只剩两根
+                            # 竖、「腾」的灬 压成 1-2 格，肉眼看就是"字的下半部分
+                            # 没了"（用户连报三轮"被切割/显示不完全"）。26 行时
+                            # 撇、竖弯钩、灬 都成形的——这不是裁切 bug，是分辨率。
+                            # 1~7 字都拿得到 26 行（宽度预算 400 列）。
 CJK_MAX_HEIGHT = 64         # 字符高度上限（过高时按文本长度自动收缩）
 # 点阵的"点亮"字符用 █ 实心块而不是 #。
 # 中文点阵本质是位图，而 # 的墨迹只占 em box 的 ~43%（实测 13px 字号下
@@ -443,7 +448,7 @@ def render_font_previews(text: object) -> list[dict]:
 # 中文字体墙：卡片里只放 2 个字（4 字 × 16 行 = 128 列，卡片里会缩到
 # 不可读），点卡片仍作用于用户输入的全文。
 CJK_PREVIEW_CHARS = 2
-CJK_PREVIEW_HEIGHT = 16
+CJK_PREVIEW_HEIGHT = 26   # 与默认高度一致：墙卡和主预览同一份字形
 
 
 def render_cjk_font_previews(text: object = "字符",

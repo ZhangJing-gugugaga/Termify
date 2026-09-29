@@ -7,9 +7,9 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>字符艺术 · Termify</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260928b">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260928b">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260928b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260928e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260928e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260928e">
 </head>
 <body class="page-text-art">
     <!-- ═══════════ NAVIGATION ═══════════ -->
@@ -66,11 +66,11 @@
                         <div>
                             <label class="ta-label" for="taCjkHeight">字符高度</label>
                             <input type="number" class="ta-select" id="taCjkHeight"
-                                   min="10" max="64" value="16">
+                                   min="10" max="64" value="26">
                         </div>
                         <div>
                             <span class="ta-label">字符宽度</span>
-                            <p class="ta-hint" style="margin-top:10px">自动（= 高度 × 2，终端 1:2 比例）。10–64 行：1~4 字都能拉满，字数越多按总宽自动收缩</p>
+                            <p class="ta-hint" style="margin-top:10px">自动（= 高度 × 2，终端 1:2 比例）。10–64 行，默认 26（笔画才成形）；字数越多按总宽自动收缩</p>
                         </div>
                     </div>
 
@@ -217,6 +217,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260928d" defer></script>
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260928e" defer></script>
 </body>
 </html>
