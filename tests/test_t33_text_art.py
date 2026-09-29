@@ -452,15 +452,21 @@ def test_cjk_ink_box_no_cropped_edges():
 
 
 def test_cjk_fontwall_endpoint(client):
+    """中文字符墙（2026-09-29 起）：同一点阵 × 字符集，不再是字体墙。"""
+    from termify import textart
+
     resp = client.post("/api/cjk/ttf/fontwall", json={"text": "你好"})
     assert resp.status_code == 200, resp.data
-    fonts = json.loads(resp.data)["fonts"]
-    assert fonts, "中文字体墙不能为空"
-    for f in fonts:
+    cards = json.loads(resp.data)["charsets"]
+    assert cards, "中文字符墙不能为空"
+    for f in cards:
         # 卡片必须带完整作品 + 尺寸（前端据此等比缩放，不截行）
         assert f["art"] and f["full"] and f["cols"] > 0 and f["rows"] > 0
         assert f["art"] == f["full"]
-        assert f["name"] in ("宋体", "黑体", "楷体")
+        assert f["slug"] in {c[0] for c in textart.CJK_CHARSETS}
+    # 点亮字符随卡片变化（字块/盲文/经典…共用同一份点阵骨架）
+    assert {textart.cjk_on_char(f["slug"]) for f in cards} >= \
+        {textart._CJK_ON, "#"}
 
 
 def test_figlet_fontwall_not_row_truncated(client):

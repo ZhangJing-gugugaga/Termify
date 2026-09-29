@@ -172,48 +172,57 @@ CJK_DEFAULT_HEIGHT = 26     # 单字占的字符画行数（列数自动 = 2×�
                             # 撇、竖弯钩、灬 都成形的——这不是裁切 bug，是分辨率。
                             # 1~7 字都拿得到 26 行（宽度预算 400 列）。
 CJK_MAX_HEIGHT = 64         # 字符高度上限（过高时按文本长度自动收缩）
-# 点阵的"点亮"字符用 █ 实心块而不是 #。
+# 点阵的"点亮"字符：默认 █ 实心块，可在 CJK_CHARSETS 里换风格。
 # 中文点阵本质是位图，而 # 的墨迹只占 em box 的 ~43%（实测 13px 字号下
 # 墨迹 10px），相邻行之间天然留 36% 空隙 → 整幅字看着被横切成一条条
 # （用户报的"被切割"），且**无论行距收到多紧都存在**：# 填不满字符格。
 # █ 的墨迹接近整个 em box（18px/13px），上下行自然连成一体，观感与真正的
 # 点阵字一致；终端粘贴、.txt/.py 导出、画廊回放也都是实心块。
 _CJK_ON = "█"
-def _bundled_heiti_path() -> str:
-    """仓库内置 Noto Sans CJK SC Light 的绝对路径（static/fonts/）。
-
-    中文点阵"黑体"的统一字体：各端（开发机/ECS/发布包）都指向同一份
-    文件，渲染结果逐字节一致。OFL-1.1 允许随仓库再分发，许可证与版权
-    声明见 static/fonts/LICENSE.NotoSansCJK。
-    """
-    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-    return _os.path.join(root, "static", "fonts", "NotoSansCJKsc-Light.otf")
-
-
 # (key, 展示名, 字体候选)。候选按序探测，首个存在者生效（Win/Linux/macOS）。
-# 黑体首选**仓库内置**的 Noto Sans CJK SC Light（static/fonts/，OFL-1.1，
-# 许可证见 static/fonts/LICENSE.NotoSansCJK）：各端共用同一份字体文件，
-# 本地/线上逐字节一致。教训（2026-09-29）：此前 heiti 在 Windows 命中
-# simhei.ttf、在 ECS 命中 NotoSansCJK-Regular.ttc——同一选项两端字形完全
-# 不同，且 Regular 权重笔画粗、在覆盖度采样下低行数粘连成实心块（用户
-# 端到端看到的"线上被切割、本地没事"的根因）。Light 权重笔画细，26 行
-# 网格下结构与 simhei 相当。系统字体仅作内置文件缺失时的兜底。
+# 黑体选项已按用户决策下线（2026-09-29）：各端系统黑体字重/字形不一致
+# （Windows SimHei / Linux Noto Sans CJK），统一打包又引入 16MB 字体资产
+# 与跨端观感分歧，四轮修复仍过不了用户视觉关——字符墙改为字符集预览，
+# 字形维度只保留宋体/楷体。
 CJK_FONTS: list[tuple[str, str, tuple[str, ...]]] = [
     ("songti", "宋体", (
         "simsun.ttc", "SimSun.ttf",
         "/usr/share/fonts/truetype/arphic/uming.ttc",
         "NotoSerifCJK-Regular.ttc",
     )),
-    ("heiti", "黑体", (
-        _bundled_heiti_path(),
-        "simhei.ttf", "SimHei.ttf",
-    )),
     ("kaiti", "楷体", (
         "simkai.ttf", "KaiTi.ttf",
         "/usr/share/fonts/truetype/arphic/ukai.ttc",
     )),
 ]
-CJK_DEFAULT_FONT = "heiti"
+CJK_DEFAULT_FONT = "songti"
+
+# 中文点阵的"点亮"字符集（字符墙数据源，见 render_cjk_ttf 的 charset）。
+# 默认字块 █（9c3091b：# 墨迹只占 em box ~43%，整幅字被横切成条带）；
+# 其余为风格选项——同一份 1-bit 点阵，换哪个字符表示"点亮"。
+CJK_CHARSETS: list[tuple[str, str, str]] = [
+    # (slug, 展示名, 点亮字符)。字符须在 JetBrains Mono 与 DejaVu Sans
+    # Mono（PNG 导出内置字体）里都有字形，避免预览/导出出豆腐块。
+    ("block", "字块", "█"),
+    ("shade", "明暗", "▓"),
+    ("dot", "圆点", "●"),
+    ("geometric", "几何", "◆"),
+    ("braille", "盲文", "⣿"),
+    ("ascii", "经典", "#"),
+]
+CJK_DEFAULT_CHARSET = "block"
+
+
+def known_cjk_charset(slug: object) -> bool:
+    return isinstance(slug, str) and any(
+        c[0] == slug for c in CJK_CHARSETS)
+
+
+def cjk_on_char(charset: object = None) -> str:
+    """charset slug → "点亮"字符；未知/缺省回落字块 █。"""
+    if known_cjk_charset(charset):
+        return next(c[2] for c in CJK_CHARSETS if c[0] == charset)
+    return CJK_CHARSETS[0][2]
 
 _CJK_FONT_DIRS = (
     "",  # 裸名：交给 PIL 的默认搜索路径（Windows 会扫 Fonts 目录）
@@ -355,12 +364,14 @@ def _ink_box(glyphs) -> tuple[int, int, int, int]:
 
 
 def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
-                   height: object = CJK_DEFAULT_HEIGHT) -> str:
+                   height: object = CJK_DEFAULT_HEIGHT,
+                   charset: object = None) -> str:
     """中文 → TTF 光栅化点阵字符画（纯本地）。
 
     每个汉字先在高分辨率画布上逐字光栅化（字与字之间不重叠），再把
     **墨迹盒**（见 _ink_box）压到 ``h`` 行 × ``2h`` 列。压缩用格子的
-    二维面积覆盖度采样（见下），而非逐点取值。
+    二维面积覆盖度采样（见下），而非逐点取值。``charset`` 选"点亮"
+    字符（CJK_CHARSETS，缺省字块 █），只影响输出字符、不影响点阵。
     """
 
     from PIL import Image
@@ -405,6 +416,7 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
     # 横画存活（占格面积达阈值即点亮）、斜笔画按面积自然过渡。实测
     # Light/SimHei/宋/楷 在 10/26/64 行下结构与原字形一致。
     COV_THRESHOLD = 110  # 0-255：格子内平均墨量（≈43% 面积）
+    on_char = cjk_on_char(charset)
     grid = [[" "] * (cell_w * len(clean)) for _ in range(h)]
     for ci, img in enumerate(glyphs):
         if img is None:
@@ -418,7 +430,7 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
             row = grid[ty]
             for tx in range(cell_w):
                 if 255 - px[tx, ty] >= COV_THRESHOLD:
-                    row[base + tx] = _CJK_ON
+                    row[base + tx] = on_char
     rows = ["".join(row) for row in grid]
     while rows and not rows[-1].strip():
         rows.pop()
@@ -456,31 +468,32 @@ def render_font_previews(text: object) -> list[dict]:
     return out
 
 
-# 中文字体墙：卡片里只放 2 个字（4 字 × 16 行 = 128 列，卡片里会缩到
+# 中文字符墙：卡片里只放 2 个字（4 字 × 16 行 = 128 列，卡片里会缩到
 # 不可读），点卡片仍作用于用户输入的全文。
 CJK_PREVIEW_CHARS = 2
 CJK_PREVIEW_HEIGHT = 26   # 与默认高度一致：墙卡和主预览同一份字形
 
 
-def render_cjk_font_previews(text: object = "字符",
-                             height: object = None) -> list[dict]:
-    """中文字体墙：每款可用中文字体一张预览卡（点卡片即换）。
+def render_cjk_charset_previews(text: object = "字符",
+                                height: object = None,
+                                font: object = None) -> list[dict]:
+    """中文字符墙：同一份点阵按 CJK_CHARSETS 换"点亮"字符，一集一张卡。
 
-    不可用的字体（缺字体文件）不返回——前端字体墙里没必要摆置灰项，
-    缺字体由左栏下拉置灰表达。
+    （2026-09-29 产品调整：原"中文字体墙"下线——黑体各端字形不一致且
+    四轮修复过不了视觉关，字形维度收敛为宋体/楷体下拉，墙位改展示
+    字符集：字块/明暗/圆点/几何/盲文/经典。）
     """
     sample = filter_cjk_text(text)[:CJK_PREVIEW_CHARS] or "字符"
     h = CJK_PREVIEW_HEIGHT if height is None else height
+    # font 为 None/未知 slug 时 render_cjk_ttf 内部回落默认字体
     out: list[dict] = []
-    for f in cjk_available_fonts():
-        if not f["available"]:
-            continue
+    for slug, name, _on in CJK_CHARSETS:
         try:
-            art = render_cjk_ttf(sample, f["slug"], h)
+            art = render_cjk_ttf(sample, font, h, slug)
         except TextArtError:
             continue
         cols, rows = art_dims(art)
-        out.append({"slug": f["slug"], "name": f["name"],
+        out.append({"slug": slug, "name": name,
                     "art": art, "full": art, "cols": cols, "rows": rows})
     if not out:
         raise TextArtError("没有可用的中文字体 / No Chinese font available")

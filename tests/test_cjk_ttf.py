@@ -46,9 +46,11 @@ class TestFilterCjkText:
 
 class TestCjkFonts:
     def test_available_fonts_structure(self):
+        # 黑体已按用户决策下线（2026-09-29）：各端系统黑体字形不一致，
+        # 四轮修复过不了视觉关——字形维度只保留宋体/楷体
         fonts = textart.cjk_available_fonts()
         slugs = {f["slug"] for f in fonts}
-        assert {"songti", "heiti", "kaiti"} <= slugs
+        assert slugs == {"songti", "kaiti"}
         for f in fonts:
             assert isinstance(f["available"], bool)
 
@@ -66,6 +68,43 @@ class TestCjkFonts:
         assert textart._resolve_cjk_font("auto") is not None
 
 
+class TestCjkCharsets:
+    def test_table_shape(self):
+        assert textart.CJK_CHARSETS[0][0] == textart.CJK_DEFAULT_CHARSET
+        slugs = [c[0] for c in textart.CJK_CHARSETS]
+        assert len(slugs) == len(set(slugs))
+        for _slug, name, on in textart.CJK_CHARSETS:
+            assert name and on and len(on) == 1
+
+    def test_known_and_on_char(self):
+        assert textart.known_cjk_charset("braille") is True
+        assert textart.known_cjk_charset("nope") is False
+        assert textart.cjk_on_char("ascii") == "#"
+        assert textart.cjk_on_char(None) == textart._CJK_ON
+        assert textart.cjk_on_char("nope") == textart._CJK_ON
+
+    @needs_font
+    def test_charset_changes_on_char_not_grid(self):
+        base = textart.render_cjk_ttf("完成", "songti", 26)
+        block = textart.render_cjk_ttf("完成", "songti", 26, "block")
+        braille = textart.render_cjk_ttf("完成", "songti", 26, "braille")
+        assert block == base                       # 默认即字块
+        assert block.replace(textart._CJK_ON, " ") == \
+            braille.replace("⣿", " ")              # 点阵相同，仅字符不同
+        assert "⣿" in braille and textart._CJK_ON not in braille
+
+    @needs_font
+    def test_charset_wall_previews(self):
+        cards = textart.render_cjk_charset_previews("完成")
+        assert [c["slug"] for c in cards] == \
+            [c[0] for c in textart.CJK_CHARSETS]
+        arts = {c["slug"]: c["art"].replace(" ", "") for c in cards}
+        # 同一点阵：去掉点亮字符后骨架完全一致
+        skeletons = {s: a.replace(textart.cjk_on_char(s), "")
+                     for s, a in arts.items()}
+        assert len(set(skeletons.values())) == 1
+
+
 @needs_font
 class TestRenderCjkTtf:
     def test_basic_render(self):
@@ -78,8 +117,8 @@ class TestRenderCjkTtf:
         # 无制表/控制字符
         assert all(ord(ch) >= 0x20 or ch == "\n" for ch in art)
 
-    def test_all_three_fonts(self):
-        for slug in ("songti", "heiti", "kaiti"):
+    def test_all_fonts(self):
+        for slug in ("songti", "kaiti"):
             if textart._resolve_cjk_font(slug) is None:
                 continue
             art = textart.render_cjk_ttf("测试", slug)

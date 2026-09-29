@@ -157,7 +157,10 @@
     if (!taOutput) return;
     taOutput.classList.add("has-art");
     taOutput.textContent = d.art;
-    var modeLabel = d.mode === "cjk" ? "中文点阵 · " + (d.font || "")
+    var modeLabel = d.mode === "cjk"
+      ? "中文点阵 · " + (d.font || "") +
+        (CJK_CHARSET_NAMES[d.charset]
+          ? " · " + CJK_CHARSET_NAMES[d.charset] : "")
       : (d.font || "figlet");
     if (taPreviewTitle) {
       taPreviewTitle.textContent = "text art · " + modeLabel +
@@ -187,6 +190,10 @@
   var FIGLET_FONTS = [];
   var CJK_FONTS = [];
   var fontSource = "figlet";  // 当前左栏 select 展示的字体源
+  // 中文点阵的"点亮"字符集（字符墙选中项，slug 与服务端 CJK_CHARSETS 一致）
+  var taCJKCharset = "block";
+  var CJK_CHARSET_NAMES = { block: "字块", shade: "明暗", dot: "圆点",
+                            geometric: "几何", braille: "盲文", ascii: "经典" };
 
   function fillFontSelect() {
     if (!taFont) return;
@@ -220,7 +227,7 @@
     if (cjkHeightGroup) cjkHeightGroup.hidden = source !== "cjk";
     if (taFontHint) {
       taFontHint.textContent = source === "cjk"
-        ? "中文点阵：选择汉字字形（系统字体光栅化）。"
+        ? "中文点阵：宋体 / 楷体（系统字体光栅化），下方字符墙换点亮字符。"
         : "FIGlet 精选 " + FIGLET_FONTS.length + " 款字体，选择作品的整体字形。";
     }
   }
@@ -296,6 +303,7 @@
     if (fontSource === "cjk" && cjkHeightInput && cjkHeightInput.value) {
       requestedH = parseInt(cjkHeightInput.value, 10) || 0;
       body.height = cjkHeightInput.value;
+      body.charset = taCJKCharset;   // 字符墙选中的"点亮"字符
     }
     fetch("/api/text/convert", {
       method: "POST",
@@ -307,7 +315,10 @@
       if (d.error) { showOutputError(d.error); hideFontWall(); return; }
       showArt(d);
       if (d.mode === "cjk") {
-        loadCJKWall(text);   // 中文字体墙：点卡片换字形（样张 → 重渲染）
+        loadCJKWall(text);   // 中文字符墙：点卡片换点亮字符（样张 → 重渲染）
+        if (d.charset && CJK_CHARSET_NAMES[d.charset]) {
+          taCJKCharset = d.charset;  // 服务端回落时同步本地状态
+        }
         // 高度被按文本长度自动收缩时给出提示（宽度红线，见
         // textart.cjk_effective_height）
         if (requestedH >= 10 && d.height &&
@@ -697,14 +708,17 @@
     }).catch(wallFailed);
   }
 
-  /* 中文字体墙（宋/黑/楷）。卡片里是 2 字样张，点卡片作用于输入全文。 */
+  /* 中文字符墙：同一点阵 × 字符集（字块/明暗/圆点/几何/盲文/经典）。
+     点卡片换"点亮"字符，作用于当前输入重新渲染。 */
   function loadCJKWall(text) {
     if (!taFontwall) return;
     wallLoading();
-    postJSON("/api/cjk/ttf/fontwall", { text: text || "" }).then(function (d) {
-      if (!d.ok || !d.fonts) { wallFailed(); return; }
-      renderFontWall(d.fonts, taFont ? taFont.value : "",
-                     "字体墙 · 中文字体 · 点击切换", "cjk");
+    postJSON("/api/cjk/ttf/fontwall",
+             { text: text || "", font: taFont ? taFont.value : "" })
+      .then(function (d) {
+      if (!d.ok || !d.charsets) { wallFailed(); return; }
+      renderFontWall(d.charsets, taCJKCharset,
+                     "字符墙 · 点亮字符 · 点击切换", "cjk");
     }).catch(wallFailed);
   }
 
@@ -727,6 +741,9 @@
     if (taMode === "image") {
       if (imgCharset) { imgCharset.value = slug; syncRampVisibility(); }
       if (imgConvertBtn) imgConvertBtn.click();
+    } else if (fontSource === "cjk") {
+      taCJKCharset = slug;          // 中文字符墙：换"点亮"字符
+      if (convertBtn) convertBtn.click();
     } else {
       if (taFont) taFont.value = slug;
       if (convertBtn) convertBtn.click();
@@ -736,12 +753,13 @@
   if (taFontwallGrid) taFontwallGrid.addEventListener("click", function (e) {
     var card = e.target.closest(".ta-fw-card");
     if (!card || busy || imgBusy) return;
-    if (taFont && card.getAttribute("data-slug") === taFont.value &&
-        taMode === "text") return;
+    var active = (taMode === "text" && fontSource === "cjk")
+      ? taCJKCharset : (taFont ? taFont.value : "");
+    if (taMode === "text" && card.getAttribute("data-slug") === active) return;
     onWallPick(card);
   });
   if (taFont) taFont.addEventListener("change", function () {
-    markActiveFontCard(taFont.value);
+    markActiveFontCard(fontSource === "cjk" ? taCJKCharset : taFont.value);
   });
 
   /* ── 示例 chips：点卡片填入输入框并触发生成 ── */

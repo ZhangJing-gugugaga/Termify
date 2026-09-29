@@ -9,7 +9,7 @@
     <title>字符艺术 · Termify</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20260928e">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20260928e">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260928e">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20260929a">
 </head>
 <body class="page-text-art">
     <!-- ═══════════ NAVIGATION ═══════════ -->
@@ -178,8 +178,9 @@
                         </span>
                     </div>
 
-                    <!-- 字体墙：三种模式共用（英文字体 / 中文字体 / 图片字符集），
-                         点卡片即换即看 -->
+                    <!-- 字体墙：三种模式共用（英文字体 / 中文字符集 / 图片字符集），
+                         点卡片即换即看。中文模式下墙展示同一份点阵的各字符集
+                         预览（字块/明暗/圆点/几何/盲文/经典），字体只在左栏选 -->
                     <div class="ta-fontwall" id="taFontwall" hidden>
                         <p class="ta-fw-title" id="taFwTitle">字体墙 · 点击切换</p>
                         <div class="ta-fw-grid" id="taFontwallGrid"></div>
@@ -217,6 +218,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260928e" defer></script>
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20260929a" defer></script>
 </body>
 </html>

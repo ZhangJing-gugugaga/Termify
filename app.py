@@ -948,7 +948,8 @@ def text_convert():
             cjk_height = _textart_mod.cjk_effective_height(
                 data.get("text"), data.get("height"))
             art = _textart_mod.render_cjk_ttf(
-                data.get("text"), data.get("font"), cjk_height)
+                data.get("text"), data.get("font"), cjk_height,
+                data.get("charset"))
         except _textart_mod.TextArtError as exc:
             return jsonify({"error": str(exc)}), 400
         cols, rows = _textart_mod.art_dims(art)
@@ -959,6 +960,9 @@ def text_convert():
             else _textart_mod.CJK_DEFAULT_FONT
         return jsonify({"ok": True, "mode": "cjk", "art": art,
                         "cols": cols, "rows": rows, "font": font,
+                        "charset": data.get("charset")
+                        if _textart_mod.known_cjk_charset(data.get("charset"))
+                        else _textart_mod.CJK_DEFAULT_CHARSET,
                         "height": cjk_height,
                         "max_height": _textart_mod.CJK_MAX_HEIGHT,
                         "text": _textart_mod.filter_cjk_text(
@@ -1101,22 +1105,27 @@ def cjk_ttf_fonts():
 
 @app.route("/api/cjk/ttf/fontwall", methods=["POST"])
 def cjk_ttf_fontwall():
-    """中文字体墙：{text?} → 全部可用中文字体的预览卡（点卡片即换）。"""
+    """中文字符墙：{text?, font?} → 同一点阵 × 全部字符集的预览卡。
+
+    （2026-09-29 产品调整：原"中文字体墙"下线，墙位改为字符集预览——
+    字块/明暗/圆点/几何/盲文/经典，点卡片换"点亮"字符。）
+    """
     data = request.get_json(silent=True) or {}
     ip = _client_ip()
     ok, reason = _rate_check(ip, "text-fontwall", per_minute=60)
     if not ok:
         return jsonify({"error": reason}), 429
     try:
-        previews = _textart_mod.render_cjk_font_previews(data.get("text"))
+        previews = _textart_mod.render_cjk_charset_previews(
+            data.get("text"), font=data.get("font"))
     except _textart_mod.TextArtError as exc:
         return jsonify({"error": str(exc)}), 400
-    return jsonify({"ok": True, "fonts": previews})
+    return jsonify({"ok": True, "charsets": previews})
 
 
 @app.route("/api/cjk/ttf/render", methods=["POST"])
 def cjk_ttf_render():
-    """中文点阵：{text, font?, height?} → 字符画。纯本地。"""
+    """中文点阵：{text, font?, height?, charset?} → 字符画。纯本地。"""
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON body"}), 400
@@ -1124,9 +1133,10 @@ def cjk_ttf_render():
     ok, reason = _rate_check(ip, "cjk-ttf-render", per_minute=60)
     if not ok:
         return jsonify({"error": reason}), 429
+    charset = data.get("charset")
     try:
         art = _textart_mod.render_cjk_ttf(
-            data.get("text"), data.get("font"), data.get("height"))
+            data.get("text"), data.get("font"), data.get("height"), charset)
     except _textart_mod.TextArtError as exc:
         return jsonify({"error": str(exc)}), 400
     cols, rows = _textart_mod.art_dims(art)
@@ -1137,6 +1147,8 @@ def cjk_ttf_render():
         font_slug = _textart_mod.CJK_DEFAULT_FONT
     return jsonify({"ok": True, "art": art, "cols": cols, "rows": rows,
                     "font": font_slug,
+                    "charset": charset if _textart_mod.known_cjk_charset(
+                        charset) else _textart_mod.CJK_DEFAULT_CHARSET,
                     "height": _textart_mod.cjk_effective_height(
                         data.get("text"), data.get("height")),
                     "max_height": _textart_mod.CJK_MAX_HEIGHT,
