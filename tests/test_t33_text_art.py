@@ -491,7 +491,7 @@ def test_cjk_fontwall_endpoint(client):
         assert f["slug"] in {c[0] for c in textart.CJK_CHARSETS}
     # 点亮字符随卡片变化（字块/盲文/经典…共用同一份点阵骨架）
     assert {textart.cjk_on_char(f["slug"]) for f in cards} >= \
-        {textart._CJK_ON, "#"}
+        {textart._CJK_ON, "@"}
 
 
 def test_figlet_fontwall_not_row_truncated(client):

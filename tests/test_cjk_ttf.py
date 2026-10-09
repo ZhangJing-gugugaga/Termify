@@ -86,7 +86,8 @@ class TestCjkCharsets:
         assert textart.known_cjk_charset("braille") is True
         assert textart.known_cjk_charset("nope") is False
         assert textart.cjk_on_char("block") == textart._CJK_ON
-        assert textart.cjk_on_char("ascii") == "#"
+        # 经典用 @（# 墨迹太稀，预览小字号下笔画溶解——2026-10-09）
+        assert textart.cjk_on_char("ascii") == "@"
         # 缺省/未知 → 默认字符集（盲文，打包编码无单字）
         assert textart.cjk_on_char(None) == ""
         assert textart.cjk_on_char("nope") == ""
