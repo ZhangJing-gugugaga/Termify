@@ -513,6 +513,83 @@ def _pack_braille(glyphs, box, h: int, cell_px: int, cell_w: int) -> str:
     return "\n".join(lines)
 
 
+def render_art_braille(art: object, *, max_text_cols: int = 60) -> str:
+    """字符画 → 盲文打包形态（分享安全）。
+
+    FIGlet 块字符字体（█╔═║ 等，East Asian Ambiguous）在等宽预览里
+    对齐，但中文字体环境（记事本宋体 / 微信）里全角字符 + 半角空格
+    混排必错位——与中文点阵 2026-10-09 修复前同根因；纯 ASCII 字体
+    （standard/slant 等）没这个问题。块字符字体的分享正解 = 本转换：
+    按内置 DejaVu 的字符度量把字符画栅格化成 1-bit 点阵，再走与中文
+    点阵相同的盲文 2×4 打包（空白格 U+2800）——整行单一 Unicode 区块，
+    任何粘贴端同字宽对齐，形态与「图二」一致。
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    tidy = _tidy_art(art)
+    lines = tidy.split("\n")
+    cols = max(len(ln) for ln in lines)
+    rows = len(lines)
+    font = ImageFont.truetype(_bundled_mono_font(), 16)
+    char_w = font.getlength("M")
+    ascent, descent = font.getmetrics()
+    line_h = ascent + descent
+    src_w = max(1, round(cols * char_w))
+    src_h = max(4, rows * line_h)
+    # 目标网格：保持源形状纵横比（源位图就是按字体度量画的"显示形状"），
+    # 输出列数封顶 max_text_cols（每个盲文字符装 2 列像素），行数取 4 的
+    # 倍数（每行文本装 4 行像素）
+    aspect = src_w / src_h
+    grid_w = max(2, min(src_w, max_text_cols * 2))
+    grid_h = max(4, min(MAX_ART_ROWS * 4, round(grid_w / aspect / 4) * 4))
+
+    def rasterize(stroke: int) -> Image.Image:
+        img = Image.new("L", (src_w, src_h), 255)
+        draw = ImageDraw.Draw(img)
+        y = 0
+        for ln in lines:
+            if ln.strip():
+                draw.text((0, y), ln, font=font, fill=0, stroke_width=stroke)
+            y += line_h
+        return img.resize((grid_w, grid_h), Image.BOX)
+
+    def core_fraction(small: Image.Image) -> float:
+        buf = small.tobytes()
+        return sum(1 for v in buf if v < 128) / (grid_w * grid_h)
+
+    small = rasterize(0)
+    core = core_fraction(small)
+    # 细笔画两步自适应：standard 的 _/\ 斜线、block/ghost/starwars 等
+    # 1px 线条在 120 列网格里单像素覆盖度只有 ~10-40%，50% 墨量阈值下
+    # 整幅丢失（实测 block/starwars/impossible 点亮数为 0）——先加粗 1px
+    # 重画（stroke_width=1，2px 线条覆盖度 ~46% 存活）；浓密字体
+    # （ansi_shadow/bloody 的 3D 阴影）不加粗，阈值放宽反而糊掉阴影细节。
+    # 加粗后核心墨量仍 <6% 的极稀艺术再放宽阈值到 25% 墨量。
+    if core < 0.06:
+        stroked = rasterize(1)
+        if core_fraction(stroked) > core:
+            small, core = stroked, core_fraction(stroked)
+    px = small.load()
+    thr = 192 if core < 0.06 else 128
+    out_rows = grid_h // 4
+    out_cols = grid_w // 2
+    out = [[_BRAILLE_BLANK] * out_cols for _ in range(out_rows)]
+    for by in range(out_rows):
+        row = out[by]
+        for bx in range(out_cols):
+            bits = 0
+            for dx, dy, mask in _BRAILLE_DOTS:
+                if px[bx * 2 + dx, by * 4 + dy] < thr:
+                    bits |= mask
+            row[bx] = chr(0x2800 + bits)
+    lines_out = ["".join(r) for r in out]
+    while lines_out and not any(c != _BRAILLE_BLANK for c in lines_out[-1]):
+        lines_out.pop()
+    if not lines_out:
+        raise TextArtError("生成结果为空 / Empty result")
+    return "\n".join(lines_out)
+
+
 PREVIEW_TEXT_MAX = 10   # 预览用文本截断（长文本只取前 10 个字符渲染）
 
 
@@ -528,6 +605,18 @@ def render_font_previews(text: object) -> list[dict]:
             "请输入英文/数字内容 / Enter English letters or digits")
     clean = clean[:PREVIEW_TEXT_MAX]
     out: list[dict] = []
+    # 盲文·分享卡（首位）：块字符 FIGlet 字体在中文字体环境（记事本/微信）
+    # 全角/半角混排必错位（见 render_art_braille）——给一张一键可分享的
+    # 盲文形态，与中文点阵的默认盲文同一卖点。转换失败不致命，跳过。
+    try:
+        braille = render_art_braille(
+            render_figlet(clean, DEFAULT_FONT, 100))
+        cols, rows = art_dims(braille)
+        out.append({"slug": "braille-share", "name": "盲文·分享",
+                    "art": braille, "full": braille,
+                    "cols": cols, "rows": rows})
+    except TextArtError:
+        pass
     for f in curated_fonts():
         try:
             art = render_figlet(clean, f["slug"], 100)
@@ -763,9 +852,11 @@ def render_standalone_html(art: str, theme: object = DEFAULT_THEME) -> str:
 def _bundled_mono_font() -> str:
     """仓库内置 DejaVu Sans Mono 的绝对路径（static/fonts/）。
 
-    块元素 █▓▒░ / 盒线 / 盲文点阵 / 几何形状全覆盖——系统字体
-    （如 consola）缺这些字形时字符画 PNG 会渲染成豆腐块/噪声，
-    画廊缩略图"乱码"的根因。许可证见 static/fonts/LICENSE.DejaVu。
+    块元素 █▓▒░ / 盒线 / 几何形状全覆盖——系统字体（如 consola）缺这些
+    字形时字符画 PNG 会渲染成豆腐块/噪声，画廊缩略图"乱码"的根因。
+    盲文它**没有**（主流等宽字体全无 U+2800-28FF），盲文格由
+    _draw_braille_cell_png / render_art_braille 矢量/采样绘制。
+    许可证见 static/fonts/LICENSE.DejaVu。
     """
     root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
     return _os.path.join(root, "static", "fonts", "DejaVuSansMono.ttf")

@@ -112,7 +112,8 @@
   //   cjk    1:2 点阵（服务端 cell_w = 2 × 行数）
   //   figlet FIGlet 字形按近方形字格设计
   //   img    服务端 frames.CELL_H_EM = 1.3
-  var OUTPUT_LH = { cjk: 1.2, figlet: 1.05, img: 1.3 };
+  //   braille 盲文打包（分享版）：1:2 网格，同 cjk
+  var OUTPUT_LH = { cjk: 1.2, figlet: 1.05, img: 1.3, braille: 1.2 };
   /* 等宽 webfont（JetBrains Mono）没有盲文字形（U+2800-28FF，所有主流
      等宽字体都没有），浏览器回退到系统符号字体，advance 不再是 0.6em——
      字号贴合若写死 0.6 会横向溢出。用 canvas 按当前字体栈实测：同一字体
@@ -188,6 +189,8 @@
       ? "中文点阵 · " + (d.font || "") +
         (CJK_CHARSET_NAMES[d.charset]
           ? " · " + CJK_CHARSET_NAMES[d.charset] : "")
+      : d.mode === "braille"
+      ? "盲文点阵 · 分享版（粘贴到记事本/微信都对齐）"
       : (d.font || "figlet");
     if (taPreviewTitle) {
       taPreviewTitle.textContent = "text art · " + modeLabel +
@@ -250,14 +253,27 @@
   }
 
   function setFontSource(source) {
-    if (fontSource === source) return;
+    // 可见性不能放在"源未变化就 return"后面：首屏 fontSource 已是 figlet，
+    // 第一次输入英文时不会再走 fillFontSelect 分支——尺寸分组（含英文字符
+    // 宽度，2026-10-09 用户报"字符高度无法选择"）必须每次都刷新。
+    var changed = fontSource !== source;
     fontSource = source;
-    fillFontSelect();
-    if (cjkHeightGroup) cjkHeightGroup.hidden = source !== "cjk";
+    if (changed) fillFontSelect();
+    var cjk = source === "cjk";
+    if (cjkHeightGroup) {
+      // 空输入时仍隐藏（没有可生成的对象）；有输入则两种模式都显示
+      cjkHeightGroup.hidden = !taInput || !taInput.value.trim();
+      var f1 = byId("taCjkHeightField"), f2 = byId("taCjkWidthHint"),
+          f3 = byId("taFigWidthField"), f4 = byId("taFigHeightHint");
+      if (f1) f1.hidden = !cjk;
+      if (f2) f2.hidden = !cjk;
+      if (f3) f3.hidden = cjk;
+      if (f4) f4.hidden = cjk;
+    }
     if (taFontHint) {
       taFontHint.textContent = source === "cjk"
         ? "中文点阵：宋体 / 楷体（系统字体光栅化）。默认盲文——复制或下载后粘到记事本、微信都对齐可分享；字符墙可换字块等终端样式。"
-        : "FIGlet 精选 " + FIGLET_FONTS.length + " 款字体，选择作品的整体字形。";
+        : "FIGlet 精选 " + FIGLET_FONTS.length + " 款字体，选择作品的整体字形。字符墙首张「盲文·分享」卡把作品转成粘到哪都对齐的点阵形态。";
     }
   }
 
@@ -327,12 +343,16 @@
     if (taResultMeta) taResultMeta.hidden = true;
     skeleton();
     var body = { text: text, font: taFont ? taFont.value : "" };
-    // 中文点阵：行高随输入（10-64 行），英文 FIGlet 尺寸由字体决定
+    // 中文点阵：行高随输入（10-64 行），英文 FIGlet 尺寸由字体决定、
+    // 只露"字符宽度"（列上限，超宽换行）
     var requestedH = 0;
     if (fontSource === "cjk" && cjkHeightInput && cjkHeightInput.value) {
       requestedH = parseInt(cjkHeightInput.value, 10) || 0;
       body.height = cjkHeightInput.value;
       body.charset = taCJKCharset;   // 字符墙选中的"点亮"字符
+    } else if (fontSource === "figlet") {
+      var figW = byId("taFigWidth");
+      if (figW && figW.value) body.width = figW.value;
     }
     fetch("/api/text/convert", {
       method: "POST",
@@ -728,14 +748,15 @@
     }).then(function (r) { return r.json(); });
   }
 
-  /* 英文 FIGlet 字体墙 */
+  /* 英文 FIGlet 字体墙（首卡=盲文·分享：块字符字体粘到中文字体环境
+     会全角/半角错位，见服务端 render_art_braille） */
   function loadFigletWall(text) {
     if (!taFontwall || !text || !text.trim()) return;
     wallLoading();
     postJSON("/api/text/fontwall", { text: text }).then(function (d) {
       if (!d.ok || !d.fonts) { wallFailed(); return; }
       renderFontWall(d.fonts, taFont ? taFont.value : "",
-                     "字体墙 · FIGlet " + d.fonts.length + " 款 · 点击切换",
+                     "字体墙 · 点击切换（首张「盲文·分享」= 粘贴安全版）",
                      "figlet");
     }).catch(wallFailed);
   }
@@ -761,11 +782,12 @@
     var full = card.getAttribute("data-full");
     markActiveFontCard(slug);
     if (full && taMode === "text" && !hasCJK(taInput ? taInput.value : "")) {
-      if (taFont) taFont.value = slug;
+      if (slug !== "braille-share" && taFont) taFont.value = slug;
       showArt({ art: full,
                 cols: parseInt(card.getAttribute("data-cols"), 10) || 0,
                 rows: parseInt(card.getAttribute("data-rows"), 10) || 0,
-                font: slug, mode: "figlet",
+                font: slug === "braille-share" ? "" : slug,
+                mode: slug === "braille-share" ? "braille" : "figlet",
                 text: (taInput ? taInput.value : "").slice(0, 80) });
       return;
     }

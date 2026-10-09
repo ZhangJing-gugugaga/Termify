@@ -93,6 +93,28 @@ def test_render_figlet_and_cjk_filter():
         textart.render_figlet("你好")
 
 
+def test_render_art_braille_shareable():
+    """块字符 FIGlet（█╔═║ EAW=Ambiguous）在中文字体环境与半角空格混排
+    必错位——盲文打包是分享安全形态（与中文点阵 2026-10-09 修复同源）。"""
+    from termify import textart
+
+    art = textart.render_figlet("hello", "ansi_shadow")
+    braille = textart.render_art_braille(art)
+    assert braille
+    # 整幅只含盲文区字符（含空白 ⠀，绝无 ASCII 空格）
+    assert all(textart._is_braille(c) for c in braille if c != "\n")
+    cols, rows = textart.art_dims(braille)
+    assert 0 < cols <= 60 and 0 < rows <= textart.MAX_ART_ROWS
+    # 纵横比大体保持（换算成显示宽度：列×0.6em / 行×行高）
+    src_cols, src_rows = textart.art_dims(art)
+    src_ratio = (src_cols * 0.6) / (src_rows * 1.05)   # figlet 行高 1.05
+    out_ratio = (cols * 0.6) / (rows * 1.2)            # 盲文行高 1.2
+    assert abs(src_ratio - out_ratio) / src_ratio < 0.25
+    # 输入非字符串/空白 → 报错
+    with pytest.raises(textart.TextArtError):
+        textart.render_art_braille("   ")
+
+
 def test_render_figlet_invalid_font_falls_back():
     from termify import textart
 
@@ -480,6 +502,11 @@ def test_figlet_fontwall_not_row_truncated(client):
     fonts = json.loads(resp.data)["fonts"]
     tall = 0
     for f in fonts:
+        if f["slug"] == "braille-share":
+            # 盲文·分享卡：整幅盲文（块字符字体在中文字体环境分享会错位）
+            assert all(textart._is_braille(c)
+                       for c in f["art"] if c != "\n")
+            continue
         assert f["art"] == f["full"]          # 卡片与点选结果同源
         assert len(f["art"].split("\n")) == f["rows"]
         expect = textart.render_figlet("termify", f["slug"], 100)
@@ -487,6 +514,20 @@ def test_figlet_fontwall_not_row_truncated(client):
         if f["rows"] > 8:
             tall += 1
     assert tall >= 5, "样本里应该有多款超过 8 行的字体（旧实现会截断）"
+    # 首卡 = 盲文·分享（2026-10-09：块字符字体的分享安全形态）
+    assert fonts[0]["slug"] == "braille-share"
+
+
+def test_convert_figlet_width_param(client):
+    """英文路径的"字符宽度"（列上限）：超宽自动换行（2026-10-09 用户报
+    英文没有尺寸可选——FIGlet 字形高度由字体决定，能 honest 控制的是宽）。"""
+    from termify import textart
+
+    resp = client.post("/api/text/convert",
+                       json={"text": "hello world termify", "width": 60})
+    d = json.loads(resp.data)
+    assert d["ok"] and d["mode"] == "figlet"
+    assert d["cols"] <= 60, d["cols"]
 
 
 def test_imgwall_endpoint_covers_charsets(client):

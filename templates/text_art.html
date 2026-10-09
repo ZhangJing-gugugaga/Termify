@@ -63,14 +63,23 @@
                     </div>
 
                     <div class="ta-group ta-grid-2" id="taCjkHeightGroup" hidden>
-                        <div>
+                        <div id="taCjkHeightField">
                             <label class="ta-label" for="taCjkHeight">字符高度</label>
                             <input type="number" class="ta-select" id="taCjkHeight"
                                    min="10" max="64" value="26">
                         </div>
-                        <div>
+                        <div id="taCjkWidthHint">
                             <span class="ta-label">字符宽度</span>
                             <p class="ta-hint" style="margin-top:10px">自动（= 高度 × 2，终端 1:2 比例）。10–64 行，默认 26（笔画才成形）；字数越多按总宽自动收缩</p>
+                        </div>
+                        <div id="taFigWidthField" hidden>
+                            <label class="ta-label" for="taFigWidth">字符宽度（列）</label>
+                            <input type="number" class="ta-select" id="taFigWidth"
+                                   min="40" max="300" value="120">
+                        </div>
+                        <div id="taFigHeightHint" hidden>
+                            <span class="ta-label">字符高度</span>
+                            <p class="ta-hint" style="margin-top:10px">英文字形高度由所选字体决定（如 ANSI Shadow 6 行、Colossal 8 行）——字体墙点字体=换大小。字符宽度限制总列数（40–300），超宽自动换行</p>
                         </div>
                     </div>
 
@@ -218,6 +227,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20261009a" defer></script>
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20261009b" defer></script>
 </body>
 </html>
