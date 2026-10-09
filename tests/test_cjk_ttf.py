@@ -183,3 +183,19 @@ class TestRenderCjkTtf:
         art1 = textart.render_cjk_ttf("你好世界大")
         _, rows1 = textart.art_dims(art1)
         assert textart.CJK_DEFAULT_HEIGHT - 2 <= rows1 <= textart.CJK_DEFAULT_HEIGHT
+
+    @needs_font
+    def test_songti_thin_horizontal_survives(self):
+        """宋体横画极细，BOX 降采样跨行窗口时平均墨量 ~85，旧阈值 110 下
+        「生」的底横整条被丢、只剩右端碎片（用户报"宋体微小缺陷"
+        2026-10-09）。阈值 80 后底横必须存活：rows 20-25 左半存在 ≥25 格
+        的横向连续段。"""
+        art = textart.render_cjk_ttf("生成", "songti", 26, "block")
+        lines = art.split("\n")
+        assert len(lines) == 26
+        # 生 占左半（0-51），底横 = 尾部 6 行内最宽的连续横向段
+        bottom_heng = 0
+        for ln in lines[20:26]:
+            run = max((len(seg) for seg in ln[:52].split(" ")), default=0)
+            bottom_heng = max(bottom_heng, run)
+        assert bottom_heng >= 25, f"宋体底横丢失（最宽段 {bottom_heng} 格）"
