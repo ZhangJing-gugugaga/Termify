@@ -441,14 +441,17 @@ def test_cjk_ink_box_no_cropped_edges():
     """回归：按 em box 压缩时首行整行空白、字头只剩半格（"字被吃了一半"）。
 
     现在按墨迹盒取样：首行与末行都必须有笔画，且列数 = 字数 × 高度 × 2。
+    （默认输出已是盲文打包：空白格 ⠐ 中的 ⠀ 不是 ASCII 空白，str.strip()
+    认不出来，必须按"存在非 ⠀ 字符"判断该行有墨。）
     """
     from termify import textart
 
     art = textart.render_cjk_ttf("黑体", "heiti", 26)
     lines = art.split("\n")
-    assert lines[0].strip(), "首行空白 = 字头被吃掉"
-    assert lines[-1].strip(), "末行空白 = 字脚被吃掉"
+    assert any(c != "\u2800" for c in lines[0]), "首行空白 = 字头被吃掉"
+    assert any(c != "\u2800" for c in lines[-1]), "末行空白 = 字脚被吃掉"
     assert all(len(ln) == 2 * 26 * 2 for ln in lines)  # 2 字 × 2 列/行 × 26 行
+    assert all(textart._is_braille(c) for ln in lines for c in ln)
 
 
 def test_cjk_fontwall_endpoint(client):

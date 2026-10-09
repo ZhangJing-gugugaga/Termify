@@ -172,12 +172,20 @@ CJK_DEFAULT_HEIGHT = 26     # 单字占的字符画行数（列数自动 = 2×�
                             # 撇、竖弯钩、灬 都成形的——这不是裁切 bug，是分辨率。
                             # 1~7 字都拿得到 26 行（宽度预算 400 列）。
 CJK_MAX_HEIGHT = 64         # 字符高度上限（过高时按文本长度自动收缩）
-# 点阵的"点亮"字符：默认 █ 实心块，可在 CJK_CHARSETS 里换风格。
+# 点阵的"点亮"字符：█ 实心块，可在 CJK_CHARSETS 里换风格。
 # 中文点阵本质是位图，而 # 的墨迹只占 em box 的 ~43%（实测 13px 字号下
 # 墨迹 10px），相邻行之间天然留 36% 空隙 → 整幅字看着被横切成一条条
 # （用户报的"被切割"），且**无论行距收到多紧都存在**：# 填不满字符格。
 # █ 的墨迹接近整个 em box（18px/13px），上下行自然连成一体，观感与真正的
-# 点阵字一致；终端粘贴、.txt/.py 导出、画廊回放也都是实心块。
+# 点阵字一致。
+# ⚠️ 但 █（及 ▓●◆）是 East Asian Ambiguous 字符：浏览器预览用的
+# JetBrains Mono 里是 0.6em 等宽，而记事本（宋体）/微信等中文字体环境里
+# 是全角（实测 SimSun 24px em 下 █=24px、ASCII 空格=12px）——"1 像素 =
+# 1 个 █ + 半角空格"的输出在中文字体环境整幅错位（2026-10-09 用户实测：
+# 记事本打开全是碎条、朋友圈没法发）。**分享安全的是盲文**：整行字符全部
+# 落在 U+2800-28FF，无论回退到哪个字体都在同一字体里取字形，同字宽 →
+# 到处对齐（用户实测朋友圈效果极佳）。故默认字符集 = 盲文（打包编码），
+# 字块等 1 像素 = 1 字符的风格保留给终端/预览场景。
 _CJK_ON = "█"
 # (key, 展示名, 字体候选)。候选按序探测，首个存在者生效（Win/Linux/macOS）。
 # 黑体选项已按用户决策下线（2026-09-29）：各端系统黑体字重/字形不一致
@@ -198,19 +206,20 @@ CJK_FONTS: list[tuple[str, str, tuple[str, ...]]] = [
 CJK_DEFAULT_FONT = "songti"
 
 # 中文点阵的"点亮"字符集（字符墙数据源，见 render_cjk_ttf 的 charset）。
-# 默认字块 █（9c3091b：# 墨迹只占 em box ~43%，整幅字被横切成条带）；
-# 其余为风格选项——同一份 1-bit 点阵，换哪个字符表示"点亮"。
+# 默认盲文（2×4 打包编码，分享安全，见 _CJK_ON 处的宽度分析）；其余为
+# 1 像素 = 1 字符的终端风格——同一份 1-bit 点阵，换哪个字符表示"点亮"。
 CJK_CHARSETS: list[tuple[str, str, str]] = [
-    # (slug, 展示名, 点亮字符)。字符须在 JetBrains Mono 与 DejaVu Sans
-    # Mono（PNG 导出内置字体）里都有字形，避免预览/导出出豆腐块。
+    # (slug, 展示名, 点亮字符)。盲文是打包编码，没有单字"点亮"字符（on
+    # 留空）；其余字符须在 JetBrains Mono 与 DejaVu Sans Mono（PNG 导出
+    # 内置字体）里都有字形，避免预览/导出出豆腐块。
+    ("braille", "盲文", ""),
     ("block", "字块", "█"),
     ("shade", "明暗", "▓"),
     ("dot", "圆点", "●"),
     ("geometric", "几何", "◆"),
-    ("braille", "盲文", "⣿"),
     ("ascii", "经典", "#"),
 ]
-CJK_DEFAULT_CHARSET = "block"
+CJK_DEFAULT_CHARSET = "braille"
 
 
 def known_cjk_charset(slug: object) -> bool:
@@ -219,10 +228,13 @@ def known_cjk_charset(slug: object) -> bool:
 
 
 def cjk_on_char(charset: object = None) -> str:
-    """charset slug → "点亮"字符；未知/缺省回落字块 █。"""
-    if known_cjk_charset(charset):
-        return next(c[2] for c in CJK_CHARSETS if c[0] == charset)
-    return CJK_CHARSETS[0][2]
+    """charset slug → "点亮"字符（仅 1 像素 = 1 字符的字符集）。
+
+    盲文走 2×4 打包编码、没有单字"点亮"字符 → 返回空串；未知/缺省回落
+    默认字符集（现为盲文，同样空串）。
+    """
+    slug = charset if known_cjk_charset(charset) else CJK_DEFAULT_CHARSET
+    return next(c[2] for c in CJK_CHARSETS if c[0] == slug)
 
 _CJK_FONT_DIRS = (
     "",  # 裸名：交给 PIL 的默认搜索路径（Windows 会扫 Fonts 目录）
@@ -370,8 +382,9 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
 
     每个汉字先在高分辨率画布上逐字光栅化（字与字之间不重叠），再把
     **墨迹盒**（见 _ink_box）压到 ``h`` 行 × ``2h`` 列。压缩用格子的
-    二维面积覆盖度采样（见下），而非逐点取值。``charset`` 选"点亮"
-    字符（CJK_CHARSETS，缺省字块 █），只影响输出字符、不影响点阵。
+    二维面积覆盖度采样（见下），而非逐点取值。``charset`` 选输出风格
+    （CJK_CHARSETS）：缺省盲文 = 2×4 像素打包成盲文字符（分享安全）；
+    字块/明暗等 = 1 像素 1 字符（终端/预览场景）。
     """
 
     from PIL import Image
@@ -392,8 +405,12 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
         raise TextArtError(
             f"文字过多（{len(clean)} 字）——请缩短到 "
             f"{CJK_MAX_CELL_W // 20} 字以内 / Too many characters")
+    slug = charset if known_cjk_charset(charset) else CJK_DEFAULT_CHARSET
+    packed = slug == "braille"
     cell_w = h * 2
-    scale = 6  # 高分辨率光栅化：源像素越多，面积平均的量化误差越小
+    scale = 10 if packed else 6  # 高分辨率光栅化：源像素越多，面积平均的
+    # 量化误差越小。打包路径的取样格是 4h×4h 像素（每个盲文字符装 2×4），
+    # 每格覆盖的源像素数要与 1 像素路径（2h×h 格、scale 6）同量级 → scale 10。
     # （scale=3 时 songti 在 10-16 行低网格下笔画碎裂、时断时续，观感
     # 如"字被截断"；scale=6 实测三字体笔画连贯结构完整，h16 不劣化）
     # 画布 = 字形外接正方形（字号 cell_w*scale），字形按方块渲染
@@ -401,7 +418,10 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
     glyphs = _cjk_glyph_images(clean, font_path, cell_px)
     box = _ink_box(glyphs)
     if box is None:  # 纯半角输入：全宽留白行
-        return "\n".join([" " * cell_w] * h)
+        blank = "\u2800" if packed else " "
+        return "\n".join([blank * cell_w] * h)
+    if packed:
+        return _pack_braille(glyphs, box, h, cell_px, cell_w)
     ink_top, _, ink_bot, _ = box
     # 墨迹盒 → h 行：每行 ink_h/h 像素高；x 方向整幅 em box → cell_w 列。
     # 采样用**二维面积覆盖度**（PIL BOX 缩放 = 每个格子取其源像素块的平均
@@ -416,7 +436,7 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
     # 横画存活（占格面积达阈值即点亮）、斜笔画按面积自然过渡。实测
     # Light/SimHei/宋/楷 在 10/26/64 行下结构与原字形一致。
     COV_THRESHOLD = 110  # 0-255：格子内平均墨量（≈43% 面积）
-    on_char = cjk_on_char(charset)
+    on_char = cjk_on_char(slug)
     grid = [[" "] * (cell_w * len(clean)) for _ in range(h)]
     for ci, img in enumerate(glyphs):
         if img is None:
@@ -435,6 +455,62 @@ def render_cjk_ttf(text: object, font: object = CJK_DEFAULT_FONT,
     while rows and not rows[-1].strip():
         rows.pop()
     return "\n".join(rows)
+
+
+# 盲文点位掩码：U+2800 块内 2 列 × 4 行，与 charset._braille_coord_table /
+# output.video._BRAILLE_DOTS 同源（dot1-8 = 0x01..0x80）。
+_BRAILLE_DOTS = (
+    (0, 0, 0x01), (0, 1, 0x02), (0, 2, 0x04),
+    (1, 0, 0x08), (1, 1, 0x10), (1, 2, 0x20),
+    (0, 3, 0x40), (1, 3, 0x80),
+)
+
+_BRAILLE_BLANK = "\u2800"
+
+
+def _is_braille(ch: str) -> bool:
+    return _BRAILLE_BLANK <= ch <= "\u28ff"
+
+
+def _pack_braille(glyphs, box, h: int, cell_px: int, cell_w: int) -> str:
+    """1-bit 点阵 → 盲文打包：每个盲文字符装 2×4 像素（文本网格尺寸与
+    1 像素路径完全一致：每字 2h 列 × h 行），空白格用 U+2800。
+
+    为什么整行必须全盲文（空白也是 ⠀ 不是空格）：中文字体环境（记事本
+    宋体、微信）里 ASCII 空格是半角、任何"块"类字符是全角，混排必错位；
+    而整行全盲文时，缺字形的环境把**整行**回退到同一个符号字体 → 同宽
+    对齐（用户实测朋友圈/记事本有效）。采样阈值与 1 像素路径共用
+    COV_THRESHOLD 语义（面积覆盖度），但打包格是 2×4 像素聚合。
+    """
+    from PIL import Image
+
+    COV_THRESHOLD = 110  # 0-255：格子内平均墨量（≈43% 面积），同 1 像素路径
+    ink_top, _, ink_bot, _ = box
+    # 每字 2h 列 × h 行文本 → 4h 列 × 4h 行像素（正方形点阵；显示尺寸与
+    # 1 像素路径一致，像素分辨率反而 ×8）
+    pw, ph = cell_w * 2, h * 4
+    rows: list[list[str]] = [
+        [_BRAILLE_BLANK] * (cell_w * len(glyphs)) for _ in range(h)]
+    for ci, img in enumerate(glyphs):
+        if img is None:
+            continue
+        small = img.crop((0, ink_top, cell_px, ink_bot)).resize(
+            (pw, ph), Image.BOX)
+        px = small.load()
+        base = ci * cell_w
+        for by in range(h):          # 每行文本 = 4 行像素
+            row = rows[by]
+            for bx in range(cell_w):  # 每个盲文字符 = 2 列像素
+                bits = 0
+                for dx, dy, mask in _BRAILLE_DOTS:
+                    if 255 - px[bx * 2 + dx, by * 4 + dy] >= COV_THRESHOLD:
+                        bits |= mask
+                row[base + bx] = chr(0x2800 + bits)
+    lines = ["".join(row) for row in rows]
+    # 尾部全空白行裁掉（⠀ 不是空白字符，str.strip() 认不出来）
+    while lines and not any(c != _BRAILLE_BLANK for c in lines[-1]):
+        lines.pop()
+    return "\n".join(lines)
 
 
 PREVIEW_TEXT_MAX = 10   # 预览用文本截断（长文本只取前 10 个字符渲染）
@@ -707,6 +783,48 @@ ART_FG_DEFAULT = (51, 255, 51)  # 默认绿（与应用默认配色一致）
 ART_PAD = 24
 
 
+def _draw_braille_cell_png(draw, ch: str, x: float, y: float,
+                           char_w: float, char_h: float, color) -> None:
+    """盲文单格矢量点阵（与 output/video._draw_braille_cell 同源）：
+    内置 DejaVu 等主流等宽字体全无盲文字形，靠字体渲染是豆腐块。"""
+    bits = ord(ch) - 0x2800
+    if not bits:
+        return
+    sw = char_w / 2.0
+    sh = char_h / 4.0
+    for col, row, mask in _BRAILLE_DOTS:
+        if bits & mask:
+            draw.rectangle(
+                [round(x + col * sw), round(y + row * sh),
+                 round(x + (col + 1) * sw) - 1, round(y + (row + 1) * sh) - 1],
+                fill=color,
+            )
+
+
+def _draw_png_line(draw, ln: str, x0: float, y: float, font,
+                   char_w: float, line_h: int, fg) -> None:
+    """按等宽网格画一行：盲文段逐格矢量点阵，其余段整段交给字体渲染。
+
+    非盲文行 = 单段 draw.text，与旧实现（整行一次 draw.text）逐字节一致。
+    """
+    seg: list[str] = []
+    seg_x = x0
+    x = x0
+    for ch in ln:
+        if _is_braille(ch):
+            if seg:
+                draw.text((seg_x, y), "".join(seg), font=font, fill=fg)
+                seg = []
+            _draw_braille_cell_png(draw, ch, x, y, char_w, line_h, fg)
+        else:
+            if not seg:
+                seg_x = x
+            seg.append(ch)
+        x += char_w
+    if seg:
+        draw.text((seg_x, y), "".join(seg), font=font, fill=fg)
+
+
 def render_art_png(art: str, dst_path: str, *,
                    fg: tuple[int, int, int] = ART_FG_DEFAULT,
                    bg: tuple[int, int, int] = ART_BG) -> int:
@@ -760,7 +878,7 @@ def render_art_png(art: str, dst_path: str, *,
     y = ART_PAD
     for ln in lines:
         if ln:
-            draw.text((ART_PAD, y), ln, font=font, fill=fg)
+            _draw_png_line(draw, ln, ART_PAD, y, font, char_w, line_h, fg)
         y += line_h
     if canvas_w < 1200:  # 小作品整数倍 NEAREST 放大到 ≈1200px：
         # 非整数倍会造成颗粒疏密不均（缩略图二次缩放后糊+锯齿），

@@ -73,36 +73,64 @@ class TestCjkCharsets:
         assert textart.CJK_CHARSETS[0][0] == textart.CJK_DEFAULT_CHARSET
         slugs = [c[0] for c in textart.CJK_CHARSETS]
         assert len(slugs) == len(set(slugs))
-        for _slug, name, on in textart.CJK_CHARSETS:
-            assert name and on and len(on) == 1
+        # 盲文是 2×4 打包编码，没有单字"点亮"字符（on 留空）；其余为
+        # 1 像素 = 1 字符风格，点亮字符必须是单字符
+        for slug, name, on in textart.CJK_CHARSETS:
+            assert name
+            if slug == "braille":
+                assert on == ""
+            else:
+                assert on and len(on) == 1
 
     def test_known_and_on_char(self):
         assert textart.known_cjk_charset("braille") is True
         assert textart.known_cjk_charset("nope") is False
+        assert textart.cjk_on_char("block") == textart._CJK_ON
         assert textart.cjk_on_char("ascii") == "#"
-        assert textart.cjk_on_char(None) == textart._CJK_ON
-        assert textart.cjk_on_char("nope") == textart._CJK_ON
+        # 缺省/未知 → 默认字符集（盲文，打包编码无单字）
+        assert textart.cjk_on_char(None) == ""
+        assert textart.cjk_on_char("nope") == ""
 
     @needs_font
-    def test_charset_changes_on_char_not_grid(self):
-        base = textart.render_cjk_ttf("完成", "songti", 26)
+    def test_default_is_shareable_braille(self):
+        # 默认输出 = 盲文打包：整幅只含 U+2800-28FF（含空白 ⠀，绝无 ASCII
+        # 空格）——中文字体环境（记事本宋体 █ 全角 24px / 空格半角 12px，
+        # 混排必错位）里唯一能保持对齐的形态（2026-10-09 用户实测根因）
+        art = textart.render_cjk_ttf("完成", "songti", 26)
+        assert art
+        assert all(textart._is_braille(ch)
+                   for ch in art if ch != "\n")
+        # 文本网格与 1 像素路径同尺寸（预览/导出布局共用一套几何）
         block = textart.render_cjk_ttf("完成", "songti", 26, "block")
-        braille = textart.render_cjk_ttf("完成", "songti", 26, "braille")
-        assert block == base                       # 默认即字块
-        assert block.replace(textart._CJK_ON, " ") == \
-            braille.replace("⣿", " ")              # 点阵相同，仅字符不同
-        assert "⣿" in braille and textart._CJK_ON not in braille
+        assert textart.art_dims(art) == textart.art_dims(block)
+        assert textart._CJK_ON in block and textart._CJK_ON not in art
+
+    @needs_font
+    def test_braille_pack_ratio(self):
+        # 打包后每行 = 每字 2h 个盲文字符（2 列像素/字符），h 行 —— 2×4
+        art = textart.render_cjk_ttf("靠", "songti", 26)
+        lines = art.split("\n")
+        assert len(lines) <= 26
+        assert all(len(ln) == len(lines[0]) for ln in lines)  # 整幅等宽
+        assert len(lines[0]) <= 52  # 单字 2×26 列
 
     @needs_font
     def test_charset_wall_previews(self):
         cards = textart.render_cjk_charset_previews("完成")
         assert [c["slug"] for c in cards] == \
             [c[0] for c in textart.CJK_CHARSETS]
-        arts = {c["slug"]: c["art"].replace(" ", "") for c in cards}
-        # 同一点阵：去掉点亮字符后骨架完全一致
+        # 1 像素字符集之间：同一点阵，去掉点亮字符后骨架完全一致
+        per_pixel = [c for c in cards if c["slug"] != "braille"]
+        arts = {c["slug"]: c["art"].replace(" ", "") for c in per_pixel}
         skeletons = {s: a.replace(textart.cjk_on_char(s), "")
                      for s, a in arts.items()}
         assert len(set(skeletons.values())) == 1
+        # 盲文卡：打包编码，全盲文区字符，文本网格与像素卡同尺寸
+        braille = next(c for c in cards if c["slug"] == "braille")
+        assert all(textart._is_braille(ch)
+                   for ch in braille["art"] if ch != "\n")
+        assert (braille["cols"], braille["rows"]) == \
+            (per_pixel[0]["cols"], per_pixel[0]["rows"])
 
 
 @needs_font
@@ -111,8 +139,15 @@ class TestRenderCjkTtf:
         art = textart.render_cjk_ttf("你好")
         cols, rows = textart.art_dims(art)
         assert cols > 0 and rows > 0
-        # 点阵的"点亮"字符是 █ 实心块（# 填不满字符格，整幅字会被切成
-        # 横向条带——见 textart._CJK_ON 的说明）
+        # 默认 = 盲文打包（分享安全，见 TestCjkCharsets 的宽度分析）
+        assert any(textart._is_braille(ch) for ch in art)
+        # 无制表/控制字符
+        assert all(ord(ch) >= 0x20 or ch == "\n" for ch in art)
+
+    def test_block_charset_still_solid(self):
+        # 字块 █：1 像素 = 1 字符的终端风格（# 填不满字符格，整幅字会被
+        # 切成横向条带——见 textart._CJK_ON 的说明）
+        art = textart.render_cjk_ttf("你好", charset="block")
         assert textart._CJK_ON in art
         # 无制表/控制字符
         assert all(ord(ch) >= 0x20 or ch == "\n" for ch in art)
@@ -132,7 +167,7 @@ class TestRenderCjkTtf:
     def test_bad_font_falls_back_to_default(self):
         # 传一个不存在的 slug → 回落默认字体，不该抛错
         art = textart.render_cjk_ttf("测", "definitely-not-a-font")
-        assert textart._CJK_ON in art
+        assert any(textart._is_braille(ch) for ch in art)
 
     def test_dimension_capped(self):
         art = textart.render_cjk_ttf("一二三四五六七八九十百千")

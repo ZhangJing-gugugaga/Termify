@@ -113,6 +113,33 @@
   //   figlet FIGlet 字形按近方形字格设计
   //   img    服务端 frames.CELL_H_EM = 1.3
   var OUTPUT_LH = { cjk: 1.2, figlet: 1.05, img: 1.3 };
+  /* 等宽 webfont（JetBrains Mono）没有盲文字形（U+2800-28FF，所有主流
+     等宽字体都没有），浏览器回退到系统符号字体，advance 不再是 0.6em——
+     字号贴合若写死 0.6 会横向溢出。用 canvas 按当前字体栈实测：同一字体
+     栈解析出同一个回退字体，实测 advance 就是最终渲染宽度。按字符缓存。 */
+  var ratioCache = {};
+  function measuredRatio(ch, fallback) {
+    if (!(ch in ratioCache)) {
+      var w = fallback;
+      try {
+        var cs = getComputedStyle(taOutput);
+        var ctx = document.createElement("canvas").getContext("2d");
+        ctx.font = "100px " + cs.fontFamily;
+        var m = ctx.measureText(ch);
+        if (m && m.width > 0) w = m.width / 100;
+      } catch (e) { /* 量不出就按 0.6 兜底 */ }
+      ratioCache[ch] = w;
+    }
+    return ratioCache[ch];
+  }
+  function artCharRatio(art) {
+    var s = String(art || "");
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c >= 0x2800 && c <= 0x28ff) return measuredRatio("\u28ff", 0.6);
+    }
+    return 0.6;  // 非盲文：等宽字符格 0.6em
+  }
   function fitOutputFont() {
     if (!taOutput || !TA.art || !TA.cols || !TA.rows) return 0;
     var lh = OUTPUT_LH[TA.mode] || OUTPUT_LH.figlet;
@@ -123,7 +150,7 @@
                (parseFloat(cs.paddingBottom) || 0);
     var availW = taOutput.clientWidth - padX;
     if (availW <= 0) return 0;
-    var CELL_W = 0.6;
+    var CELL_W = artCharRatio(TA.art);
     var gridAspect = (TA.cols * CELL_W) / (TA.rows * lh);
     var maxH = Math.max(240, Math.round(window.innerHeight * 0.62));
     var boxH = Math.max(160, Math.min(maxH, Math.round(availW / gridAspect) + padY));
@@ -190,8 +217,10 @@
   var FIGLET_FONTS = [];
   var CJK_FONTS = [];
   var fontSource = "figlet";  // 当前左栏 select 展示的字体源
-  // 中文点阵的"点亮"字符集（字符墙选中项，slug 与服务端 CJK_CHARSETS 一致）
-  var taCJKCharset = "block";
+  // 中文点阵的"点亮"字符集（字符墙选中项，slug 与服务端 CJK_CHARSETS 一致）。
+  // 默认盲文：█+空格混排在中文字体环境（记事本/微信，█ 全角、空格半角）
+  // 整幅错位没法分享；盲文整行同区同宽，复制/下载到哪都对齐（2026-10-09）。
+  var taCJKCharset = "braille";
   var CJK_CHARSET_NAMES = { block: "字块", shade: "明暗", dot: "圆点",
                             geometric: "几何", braille: "盲文", ascii: "经典" };
 
@@ -227,7 +256,7 @@
     if (cjkHeightGroup) cjkHeightGroup.hidden = source !== "cjk";
     if (taFontHint) {
       taFontHint.textContent = source === "cjk"
-        ? "中文点阵：宋体 / 楷体（系统字体光栅化），下方字符墙换点亮字符。"
+        ? "中文点阵：宋体 / 楷体（系统字体光栅化）。默认盲文——复制或下载后粘到记事本、微信都对齐可分享；字符墙可换字块等终端样式。"
         : "FIGlet 精选 " + FIGLET_FONTS.length + " 款字体，选择作品的整体字形。";
     }
   }
@@ -604,8 +633,9 @@
   var taFontwallGrid = byId("taFontwallGrid");
   var taFwTitle = byId("taFwTitle");
   var fwAbort = null;
-  var FW_CH = 0.6;     // 1em = 基准字号下单个字符的宽度
   var FW_LH = 1.05;    // 兜底行高（正常值走卡片上的 data-lh，见 OUTPUT_LH）
+                       // 字符宽比例不在此写死：fitFontwallArt 按卡片内容
+                       // 实测（盲文 advance 非 0.6em，见 artCharRatio）
 
   function hideFontWall() {
     if (taFontwall) taFontwall.hidden = true;
@@ -635,9 +665,11 @@
       var rows = parseInt(art.getAttribute("data-rows"), 10) || 1;
       var base = 8;
       var lh = parseFloat(art.getAttribute("data-lh")) || FW_LH;
+      // 盲文卡的字符 advance 来自系统回退字体（非 0.6em），按内容实测
+      var ch = artCharRatio(art.textContent);
       var w = Math.max(40, (box.clientWidth || 150) - FW_PAD_X);
       var h = Math.max(24, (box.clientHeight || 108) - FW_PAD_Y);
-      var scale = Math.min(1, w / (cols * base * FW_CH),
+      var scale = Math.min(1, w / (cols * base * ch),
                             h / (rows * base * lh));
       // 下限 0.3：再小就不可读了，宁可让极罕见的超高字体溢出裁切
       art.style.transform = "scale(" + Math.max(0.3, scale) + ")";
@@ -969,4 +1001,19 @@
   loadFonts();
   syncInputHint();
   showEmpty();  // 增强空态：含示例 chips（替换 HTML 硬编码版本）
+  /* webfont（JetBrains Mono）就绪/晚到会改变字符 advance → 实测缓存作废，
+     重贴一次字号（盲文走系统回退字体，不受 webfont 加载影响）。 */
+  if (document.fonts) {
+    var refitAll = function () {
+      ratioCache = {};
+      fitOutputFont();
+      fitFontwallArt();
+    };
+    if (document.fonts.ready && document.fonts.ready.then) {
+      document.fonts.ready.then(refitAll);
+    }
+    if (document.fonts.addEventListener) {
+      document.fonts.addEventListener("loadingdone", refitAll);
+    }
+  }
 })();
