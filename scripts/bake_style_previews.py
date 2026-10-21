@@ -25,10 +25,11 @@ text first.  It therefore takes a separate path (bake_custom) that lays out the
 font's own infinity sign - a lying 8 / Moebius loop, the "infinite
 possibilities" the card stands for - and fills its stroke with a 12-glyph ramp
 that winds round each lobe, one glyph per frame.  Those cells are drawn here
-rather than by frame_to_image(): that function has a fast path for
-uniform-colour lines whose row slicing straddles cell borders, and a one-colour
-card always takes it.  The
-shared palette, the encoder settings and the decode-back check are the same ones
+rather than by frame_to_image(): when this card was baked that function's
+uniform-colour fast path sliced per-cell strips row-major and straddled cell
+borders, so a one-colour card could not use it (since fixed - the fast path now
+matches per-cell drawing byte for byte).  Drawing locally keeps the baked image
+independent of that code path.  The shared palette, the encoder settings and the decode-back check are the same ones
 the other nine cards use, so all ten stay 同规格.
 
 Reproducible: run "python scripts/bake_style_previews.py" from the repo root
@@ -190,13 +191,12 @@ def _glyph_cells(mask, geom):
 def _raster(lines, geom, out_w, out_h):
     """Draw one text frame cell by cell on the card's canvas.
 
-    frame_to_image() has a fast path for uniform-colour lines that concatenates
-    per-cell strips and then slices them a row at a time; a strip is
-    char_w*char_h*3 bytes, so those slices straddle cell borders and the frame
-    comes out as scattered noise.  The custom card is uniform-colour by design,
-    i.e. it would always take that path - so it draws the cells here instead,
-    with the same ImageDraw.text call per cell that the function's per-cell path
-    uses, on the same canvas.  Only the geometry is local: the shared palette,
+    frame_to_image()'s uniform-colour fast path used to concatenate per-cell
+    strips and slice them a row at a time, which straddled cell borders and made
+    a one-colour frame come out as scattered noise.  That path is fixed (it now
+    matches per-cell drawing byte for byte), but this card keeps its own renderer
+    so the baked image does not depend on it: the same ImageDraw.text call per
+    cell the function's per-cell path makes, on the same canvas.  Only the geometry is local: the shared palette,
     the encoder and the decode-back check below are untouched.
     """
     font, char_w, char_h, _, _, ox, oy = geom

@@ -246,35 +246,40 @@ def frame_to_image(lines: list[str], font, char_w: int, char_h: int,
                     for _fg, bg, _c in cells:
                         row += bytes(bg if bg is not None else default_bg) * char_w
                 span = bytes(row[:out_w * 3])
-                buf[off:off + len(span)] = span
+                n = min(len(span), out_w * 3)
+                buf[off:off + n] = span[:n]
             continue
         if all(c == "█" for c in chars):
             row = bytearray()
             for fg, _bg, _c in cells:
                 row += bytes(fg if fg is not None else default_fg) * char_w
             span = bytes(row[:out_w * 3])
+            n = min(len(span), out_w * 3)
             for yy in range(y0, min(y0 + char_h, out_h)):
                 off = yy * out_w * 3
-                buf[off:off + len(span)] = span
+                buf[off:off + n] = span[:n]
             continue
         fgs = {fg for fg, _, _ in cells}
         bgs = {bg for _, bg, _ in cells}
         text = "".join(chars)[:max_cells]
-        # uniform 非盲文行：字形条带拼装（每字符整格字节条带，行内拼接）
+        # uniform 非盲文行：字形条带拼装——每个字形整格缓存，但必须逐行取出各格
+        # 该行的 char_w*3 字节再拼接（整块字形字节不是行优先序列，直接整块切片
+        # 会从第 2 个字符起跨格错位）；行尾不足一帧宽度处保留默认背景。
         if len(fgs) <= 1 and len(bgs) <= 1 \
                 and not any(_is_braille(c) for c in text):
             fg = next(iter(fgs)) if fgs else None
             bg = next(iter(bgs)) if bgs else None
             color = fg if fg is not None else default_fg
             bg_fill = bg if bg is not None else default_bg
-            block = b"".join(_glyph_strip(c, color, bg_fill)
-                             for c in text)
-            row_w = len(text) * char_w * 3
+            strips = [_glyph_strip(c, color, bg_fill) for c in text]
+            span_w = char_w * 3
+            line_w = min(len(strips) * span_w, out_w * 3)
             for yy in range(y0, min(y0 + char_h, out_h)):
-                r = yy - y0
+                r = (yy - y0) * span_w
+                row = b"".join(s[r:r + span_w] for s in strips)
+                n = min(len(row), line_w)
                 off = yy * out_w * 3
-                span = block[r * row_w:(r + 1) * row_w]
-                buf[off:off + len(span)] = span
+                buf[off:off + n] = row[:n]
             continue
         text_lines.append((y, cells))
 
