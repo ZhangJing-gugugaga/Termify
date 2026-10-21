@@ -448,9 +448,18 @@
             }
             function viewerQueryColors() {
                 var q = "";
-                if (params.color) q += "&color=" + encodeURIComponent(String(params.color));
-                if (isRgbArr(params.fg)) q += "&fg=rgb(" + params.fg.map(function (x) { return x | 0; }).join(",") + ")";
-                if (isRgbArr(params.bg)) q += "&bg=rgb(" + params.bg.map(function (x) { return x | 0; }).join(",") + ")";
+                // 主题色（非「原作」）强制单色：丢掉作品保存的 color/fg/bg，
+                // 改发 color=mono + 主题 fg/bg，服务端才不会被原色模式回退覆盖
+                var themed = (curTheme !== "saved" && THEME_COLORS[curTheme]) ? THEME_COLORS[curTheme] : null;
+                if (themed) {
+                    q += "&color=mono";
+                } else if (params.color) {
+                    q += "&color=" + encodeURIComponent(String(params.color));
+                }
+                var qfg = themed ? themed.fg : params.fg;
+                var qbg = themed ? themed.bg : params.bg;
+                if (isRgbArr(qfg)) q += "&fg=rgb(" + qfg.map(function (x) { return x | 0; }).join(",") + ")";
+                if (isRgbArr(qbg)) q += "&bg=rgb(" + qbg.map(function (x) { return x | 0; }).join(",") + ")";
                 if (curCharset === "custom") q += "&chars=" + encodeURIComponent(viewRamp);
                 return q;
             }
@@ -979,7 +988,7 @@
                     ? "&chars=" + encodeURIComponent(viewRamp) : "";
                 if (curTheme !== "saved" && THEME_COLORS[curTheme]) {
                     var t = THEME_COLORS[curTheme];
-                    return "&fg=rgb(" + t.fg.join(",") + ")&bg=rgb(" + t.bg.join(",") + ")" + rampQ;
+                    return "&color=mono&fg=rgb(" + t.fg.join(",") + ")&bg=rgb(" + t.bg.join(",") + ")" + rampQ;
                 }
                 return viewerQueryColors();
             }
