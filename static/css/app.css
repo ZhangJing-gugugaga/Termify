@@ -729,6 +729,20 @@
             margin: 0 auto;
         }
 
+        /* 无素材时点风格卡：卡内成品 GIF 直接当终端演示，等比内缩不溢出窗口。
+           水平居中：终端是 flex 列 + align-items:center（见 :710-715），本来就居中；
+           margin:0 auto 让它在块流容器里也居中，别退化成左贴边预留。 */
+        .animation-terminal .terminal-body .preview-demo-art {
+            display: block;
+            width: auto;
+            height: auto;
+            margin: 0 auto;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            image-rendering: pixelated;
+        }
+
         /* Force block-element chars (▀ etc.) to single-width on CJK Windows */
         .animation-terminal .terminal-body span.hb {
             display: inline-block;

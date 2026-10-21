@@ -1348,10 +1348,18 @@
      ══════════════════════════════════════ */
 
   // Style cards
+  // 卡内可能是成品 GIF（<img>）也可能是纯文本示例：<img> 的 textContent 只剩换行缩进，
+  // 非空串但视觉空白 → 一律 trim 后判空，不能直接当真值用。
   var styleDemos = {};
   qa(".style-card").forEach(function (card) {
     var p = card.querySelector(".style-preview");
-    if (p) styleDemos[card.getAttribute("data-style")] = p.textContent;
+    if (!p) return;
+    var img = p.querySelector("img");
+    styleDemos[card.getAttribute("data-style")] = {
+      img: img ? (img.getAttribute("src") || "") : "",
+      alt: img ? (img.getAttribute("alt") || "") : "",
+      text: (p.textContent || "").trim()
+    };
   });
   function customDemoArt() {
     var ramp = S.ramp || "@%#*+=-:.";
@@ -1360,14 +1368,23 @@
     return row + "\n" + row + "\n " + row + "\n " + row + "\n  " + row + "\n  " + row +
            "\n " + row + "\n " + row;
   }
-  function showStyleDemo(style) {
+  // 无素材时的占位演示：卡里有成品 GIF 就直接放进终端（同源静态图，不发请求）
+  function showStyleDemo(style, preferText) {
     if (!preview) return;
     if (S.canvasEl) S.canvasEl.style.display = "none";
     preview.style.display = "";
-    if (style === "custom") {
-      preview.textContent = customDemoArt();
-    } else if (styleDemos[style]) {
-      preview.textContent = styleDemos[style];
+    var demo = styleDemos[style];
+    if (!preferText && demo && demo.img) {
+      preview.textContent = "";  // 先清掉上一张演示，避免叠图
+      var art = document.createElement("img");
+      art.className = "preview-demo-art";
+      art.src = demo.img;
+      art.alt = demo.alt || (style + " 风格演示 / style demo");
+      preview.appendChild(art);
+    } else if (style === "custom") {
+      preview.textContent = customDemoArt();  // 跟着 S.ramp 变，优先于卡内文本
+    } else if (demo && demo.text) {
+      preview.textContent = demo.text;
     }
     setTitleMeta();
   }
@@ -1765,7 +1782,7 @@
     if (rampInput) rampInput.value = v;
     closeCustomCharsetModal();
     if (S.taskId) requestPreview("custom");
-    else showStyleDemo("custom");
+    else showStyleDemo("custom", true);  // 改了字符梯就要看到新字符，别被卡内演示图盖住
   }
   (function buildCcPalette() {
     if (!ccPalette) return;
