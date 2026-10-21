@@ -302,7 +302,22 @@
     return lines;
   }
 
-  function renderBlocks(data, srcW, srcH) {
+  /* mono + fg：每个半块按自身亮度落到 bg→fg 渐变上（整幅只剩主题色系），
+     结构仍是「▀ + 上像素做前景 + 下像素做背景」。source/source256 或没有 fg 时
+     像素色优先——那是既有作品存下来的观感基线，必须逐格不变。 */
+  function renderBlocks(data, srcW, srcH, fg, bg, colorMode) {
+    var tint = !!fg && colorMode !== "source" && colorMode !== "source256";
+    var ramp = null;
+    if (tint) {
+      var base = bg || [0, 0, 0];
+      ramp = new Array(256);
+      for (var i = 0; i < 256; i++) {
+        var t = i / 255;
+        ramp[i] = [pyRound(base[0] + (fg[0] - base[0]) * t),
+                   pyRound(base[1] + (fg[1] - base[1]) * t),
+                   pyRound(base[2] + (fg[2] - base[2]) * t)];
+      }
+    }
     var lines = [];
     for (var yTop = 0; yTop < srcH; yTop += 2) {
       var yBot = yTop + 1 < srcH ? yTop + 1 : yTop;
@@ -311,15 +326,21 @@
       var lastFg = null, lastBg = null;
       for (var x = 0; x < srcW; x++) {
         var p1 = rowTop + x * 4, p2 = rowBot + x * 4;
-        var fg = [data[p1], data[p1 + 1], data[p1 + 2]];
-        var bg = [data[p2], data[p2 + 1], data[p2 + 2]];
-        if (lastFg === null || fg[0] !== lastFg[0] || fg[1] !== lastFg[1] || fg[2] !== lastFg[2]) {
-          parts.push(ansiFg(fg));
-          lastFg = fg;
+        var fgPx, bgPx;
+        if (tint) {
+          fgPx = ramp[pyRound(0.299 * data[p1] + 0.587 * data[p1 + 1] + 0.114 * data[p1 + 2])];
+          bgPx = ramp[pyRound(0.299 * data[p2] + 0.587 * data[p2 + 1] + 0.114 * data[p2 + 2])];
+        } else {
+          fgPx = [data[p1], data[p1 + 1], data[p1 + 2]];
+          bgPx = [data[p2], data[p2 + 1], data[p2 + 2]];
         }
-        if (lastBg === null || bg[0] !== lastBg[0] || bg[1] !== lastBg[1] || bg[2] !== lastBg[2]) {
-          parts.push(ansiBg(bg));
-          lastBg = bg;
+        if (lastFg === null || fgPx[0] !== lastFg[0] || fgPx[1] !== lastFg[1] || fgPx[2] !== lastFg[2]) {
+          parts.push(ansiFg(fgPx));
+          lastFg = fgPx;
+        }
+        if (lastBg === null || bgPx[0] !== lastBg[0] || bgPx[1] !== lastBg[1] || bgPx[2] !== lastBg[2]) {
+          parts.push(ansiBg(bgPx));
+          lastBg = bgPx;
         }
         parts.push("▀");
       }
@@ -403,7 +424,7 @@
     var bg = opts.bg || null;
     var src = opts.colorMode === "source" ? data : null;
     if (charset === "blocks") {
-      return renderBlocks(data, w, h);
+      return renderBlocks(data, w, h, fg, bg, opts.colorMode);
     }
     var lums = luminance(data);
     if (charset === "ascii") return renderRamp(lums, w, h, RAMP_ARRAYS.ascii, fg, bg, src);
@@ -488,7 +509,7 @@
     }
 
     function renderOne(i) {
-      if (charset === "blocks") return renderBlocks(scaledData(i), dims.w, dims.h);
+      if (charset === "blocks") return renderBlocks(scaledData(i), dims.w, dims.h, fg, bg, opts.colorMode);
       var data = sourceMode ? scaledData(i) : null;
       var lums = lumsFor(i);
       if (charset === "ascii") return renderRamp(lums, dims.w, dims.h, RAMP_ARRAYS.ascii, fg, bg, data);

@@ -523,11 +523,22 @@ def _render_dither(img, width, height, fg=None, bg=None, color_mode="mono"):
     return lines
 
 
-def _render_blocks(img, width, height):
+def _render_blocks(img, width, height, fg=None, bg=None, color_mode="mono"):
     if img.mode != "RGB":
         img = img.convert("RGB")
     buf = img.tobytes()
     src_w, src_h = img.size
+    # mono + fg：每个半块按自身亮度落到 bg→fg 渐变上，整幅只留主题色系；
+    # 亮度保留明暗结构，结构仍是「▀ + 上像素做前景 + 下像素做背景」。
+    # 没有 fg，或 color_mode 为 source/source256 时像素色优先——那是既有作品
+    # 存下来的观感基线，必须逐字不变。
+    tint = fg is not None and color_mode not in ("source", "source256")
+    if tint:
+        base = bg if bg is not None else (0, 0, 0)
+        ramp = [(round(base[0] + (fg[0] - base[0]) * (i / 255)),
+                 round(base[1] + (fg[1] - base[1]) * (i / 255)),
+                 round(base[2] + (fg[2] - base[2]) * (i / 255)))
+                for i in range(256)]
     out_lines = []
     for y_top in range(0, src_h, 2):
         y_bot = y_top + 1 if y_top + 1 < src_h else y_top
@@ -539,14 +550,18 @@ def _render_blocks(img, width, height):
         for x in range(src_w):
             o = row_top + x * 3
             ob = row_bot + x * 3
-            fg = (buf[o], buf[o + 1], buf[o + 2])
-            bg = (buf[ob], buf[ob + 1], buf[ob + 2])
-            if fg != last_fg:
-                parts.append(_ansi_fg(fg))
-                last_fg = fg
-            if bg != last_bg:
-                parts.append(_ansi_bg(bg))
-                last_bg = bg
+            if tint:
+                fg_px = ramp[round(0.299 * buf[o] + 0.587 * buf[o + 1] + 0.114 * buf[o + 2])]
+                bg_px = ramp[round(0.299 * buf[ob] + 0.587 * buf[ob + 1] + 0.114 * buf[ob + 2])]
+            else:
+                fg_px = (buf[o], buf[o + 1], buf[o + 2])
+                bg_px = (buf[ob], buf[ob + 1], buf[ob + 2])
+            if fg_px != last_fg:
+                parts.append(_ansi_fg(fg_px))
+                last_fg = fg_px
+            if bg_px != last_bg:
+                parts.append(_ansi_bg(bg_px))
+                last_bg = bg_px
             parts.append("▀")
         # No trailing reset: each ▀ has explicit fg/bg codes,
         # and reset would clear state causing next line's ▀ to render black.
@@ -728,14 +743,17 @@ def render_frame(img, charset_name, width, height, fg_color=None, bg_color=None,
                  charset_ramp=None, color_mode="mono"):
     """Map a PIL.Image (already scaled to width x height) to text lines.
 
-    fg_color / bg_color are (R, G, B) tuples or None. When provided, non-block
-    charsets wrap each character in TrueColor ANSI so the user can override
-    the default look. blocks ignores these (pixel colour wins).
+    fg_color / bg_color are (R, G, B) tuples or None. When provided, every
+    charset wraps its cells in TrueColor ANSI so the user can override the
+    default look. blocks keeps its ▀ structure but, in mono mode, remaps each
+    half-block onto the bg→fg ramp by luminance (one-hue tint); in source /
+    source256 it keeps the raw pixel colour.
     charset_ramp is the user-supplied character sequence, required when
     charset_name is "custom" (ignored otherwise).
     color_mode: "mono" (default, fg_color/bg_color as above), "source"
     (per-character TrueColor from source pixels) or "source256" (same but
-    quantized to xterm-256). Ignored by blocks (already truecolor).
+    quantized to xterm-256). blocks interprets it as the mono/source split
+    above; it is already truecolor either way.
     """
     if color_mode not in COLOR_MODES:
         raise ValueError(
@@ -750,7 +768,7 @@ def render_frame(img, charset_name, width, height, fg_color=None, bg_color=None,
             f"Image width {img.size[0]} != target {width} -- scale first"
         )
     if charset_name == "blocks":
-        return _render_blocks(img, width, height)
+        return _render_blocks(img, width, height, fg_color, bg_color, color_mode)
     if charset_name == "custom":
         ramp = sanitize_ramp(charset_ramp or "")
         return _render_ramp(img, width, height, fg_color, bg_color, ramp,
