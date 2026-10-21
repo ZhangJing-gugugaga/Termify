@@ -581,6 +581,14 @@
             position: relative;
         }
 
+        /* 预烘焙的 312x234（4:3）循环 GIF，铺满预览框 */
+        .style-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
         /* ASCII style preview */
         .style-preview.ascii {
             color: var(--green);
@@ -639,6 +647,24 @@
         .style-desc {
             font-size: 11px;
             color: var(--text-dim);
+        }
+
+        /* 网格底部引导语：占满整行，不参与卡片列宽 */
+        .style-note {
+            grid-column: 1 / -1;
+            margin: 0;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        .style-note a {
+            color: var(--green);
+            text-decoration: none;
+        }
+
+        .style-note a:hover {
+            text-decoration: underline;
         }
 
         /* ═══════════════════════════════════════════
