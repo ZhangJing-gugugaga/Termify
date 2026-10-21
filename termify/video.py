@@ -289,31 +289,22 @@ def convert_video_file(video_path: str, charset: str = "ascii",
     removed. Raises VideoError for extraction problems; other exceptions
     propagate.
     """
-    from termify.engine import FrameSequence, render_frame, scale_frame
-    from PIL import Image
-
     caller_owned_frames = frames_out_dir is not None
     frames_dir, fps = extract_frames(video_path, out_dir=frames_out_dir)
     try:
-        lines_per_frame = []
-        for fpath in frames_dir_to_images(frames_dir):
-            img = Image.open(fpath).convert("RGB")
-            scaled = scale_frame(img, width, height)
-            lines_per_frame.append(render_frame(scaled, charset, width, height))
+        # Render through the shared fit_cells pipeline: the source aspect
+        # ratio must land in character space. Scaling in pixel space with
+        # scale_frame(width, height) letterboxed every 16:9 clip into a
+        # squashed column (see sequence_from_frames_dir).
+        seq = sequence_from_frames_dir(frames_dir, charset, width, height,
+                                       interval=1.0 / fps)
     finally:
         if not caller_owned_frames:
             shutil.rmtree(frames_dir, ignore_errors=True)
         if delete_source and os.path.isfile(video_path):
             os.remove(video_path)
 
-    interval = 1.0 / fps
-    return FrameSequence(
-        lines_per_frame=lines_per_frame,
-        interval=interval,
-        width=width,
-        height=height,
-        charset=charset,
-    )
+    return seq
 
 
 def _scale_dims(charset: str, width: int, height: int) -> tuple[int, int]:

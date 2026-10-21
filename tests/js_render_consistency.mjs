@@ -96,9 +96,9 @@ args = json.loads(sys.stdin.buffer.read().decode("utf-8"))
 sys.path.insert(0, args["root"])
 from PIL import Image, ImageChops
 from termify.charset import render_frame, sanitize_ramp
-from termify.frames import scale_frame
+from termify.frames import fit_cells, scale_frame
 
-out = {"renders": {}, "sanitize": [], "fitRects": {}, "lums256": []}
+out = {"renders": {}, "sanitize": [], "fitRects": {}, "fitCells": {}, "lums256": []}
 
 # 亮度公式：全 RGB 空间序列哈希（与 JS 相同的结合序与舍入）
 h = 0
@@ -151,6 +151,11 @@ for sw, sh in args["fitSrc"]:
         out["fitRects"][str(sw) + "x" + str(sh) + ">" + str(tw) + "x" + str(th)] = (
             [bb[0], bb[1], bb[2] - bb[0], bb[3] - bb[1]] if bb else [0, 0, 0, 0])
 
+for sw, sh in args["cellSrc"]:
+    for tw, th in args["cellDst"]:
+        out["fitCells"][str(sw) + "x" + str(sh) + ">" + str(tw) + "x" + str(th)] = list(
+            fit_cells(sw, sh, tw, th))
+
 sys.stdout.buffer.write(base64.b64encode(json.dumps(out, ensure_ascii=True).encode("utf-8")))
 `;
 
@@ -162,6 +167,9 @@ const input = {
   ramps: RAMPS,
   fitSrc,
   fitDst,
+  cellSrc: [[320, 180], [1080, 1920], [100, 100], [1000, 10], [10, 1000],
+            [1920, 1080], [640, 480], [321, 181], [7, 3], [1, 1]],
+  cellDst: [[80, 24], [40, 12], [120, 40], [160, 40], [1, 1], [240, 240]],
 };
 const pyExe = process.env.TERMIFY_PYTHON || "python";
 const run = spawnSync(pyExe, ["-c", PY_CODE],
@@ -256,6 +264,20 @@ for (const [sw, sh] of fitSrc) {
   }
 }
 check("全部 " + (fitSrc.length * fitDst.length) + " 组 fit 矩形一致", fitBad.length === 0, fitBad.slice(0, 5).join("\n        "));
+
+/* ── 6. 字符网格贴合 fit_cells（字符空间比例，替代像素空间 letterbox） ── */
+console.log("\n[6] fit_cells 字符网格贴合（源比例 → cols×rows）");
+let cellCount = 0, cellBad = [];
+for (const [sw, sh] of input.cellSrc) {
+  for (const [tw, th] of input.cellDst) {
+    const key = sw + "x" + sh + ">" + tw + "x" + th;
+    const c = TR.fitCells(sw, sh, tw, th);
+    const got = [c.w, c.h];
+    if (JSON.stringify(got) === JSON.stringify(py.fitCells[key])) cellCount++;
+    else cellBad.push(key + " py=" + JSON.stringify(py.fitCells[key]) + " js=" + JSON.stringify(got));
+  }
+}
+check("全部 " + cellCount + " 组 fit_cells 一致", cellBad.length === 0, cellBad.slice(0, 5).join("\n        "));
 
 console.log("\n==== 结果: " + pass + " PASS, " + fail + " FAIL ====");
 process.exit(fail ? 1 : 0);

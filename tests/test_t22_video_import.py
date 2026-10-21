@@ -223,3 +223,57 @@ def test_extract_frames_out_dir_caller_owned(tmp_path):
     assert os.path.isdir(out_dir)
     assert len([f for f in os.listdir(out_dir) if f.endswith(".png")]) >= 5
     assert fps > 0
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg 未安装")
+def test_convert_video_file_fits_16x9_in_character_space(tmp_path):
+    """16:9 素材必须在字符空间贴合，而不是在像素空间垫黑边。
+
+    旧实现 scale_frame(img, 80, 24) 走等比 letterbox：16:9 源被压成
+    两侧黑边 + 24 行全高（黑边被字符化成 "@" 实心块）。贴合后的期望是
+    整幅宽度用满、行数按 0.6:1.3 字符格收成 ~21 行、上下补空白行。
+    """
+    import subprocess
+
+    video_path = tmp_path / "wide.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+         "-i", "testsrc=duration=1:size=320x180:rate=10",
+         "-pix_fmt", "yuv420p", str(video_path)],
+        check=True, capture_output=True,
+    )
+    seq = convert_video_file(str(video_path), charset="ascii", width=80, height=24)
+    frame = seq.lines_per_frame[0]
+    assert len(frame) == 24 and len(frame[0]) == 80
+
+    cols_used = [c for c in range(80) if any(ln[c] != " " for ln in frame)]
+    rows_used = [i for i, ln in enumerate(frame) if ln.strip()]
+    # 宽度用满（旧实现只有中间 ~43 列，两侧是黑边压成的实心块）
+    assert len(cols_used) == 80
+    # 80 列 × (180/320) × 0.6/1.3 ≈ 21 行，上下补空白而非实心黑边
+    assert 19 <= len(rows_used) <= 23
+    assert frame[0].strip() == "" and frame[-1].strip() == ""
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="ffmpeg 未安装")
+def test_upload_video_reports_source_frame_size(client, tmp_path):
+    """上传视频后要回报源帧尺寸，前端才能按素材比例推导行数。"""
+    import subprocess
+
+    video_path = tmp_path / "wide.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+         "-i", "testsrc=duration=1:size=160x90:rate=10",
+         "-pix_fmt", "yuv420p", str(video_path)],
+        check=True, capture_output=True,
+    )
+    with open(video_path, "rb") as fh:
+        resp = client.post("/api/upload-video",
+                           data={"file": (fh, "wide.mp4")},
+                           content_type="multipart/form-data")
+    assert resp.status_code == 200, resp.data[:300]
+    body = json.loads(resp.data)
+    assert body["original_size"] == {"type": "video", "frame_count": 10,
+                                     "width": 160, "height": 90}
+    assert body["target_size"] == {"width": 80, "height": 24}
+

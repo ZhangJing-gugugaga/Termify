@@ -19,6 +19,8 @@
        返回码点数组；空梯返回 []（调用方据此报错，服务端同场景为 400/500）。
    - TermifyRender.fitRect(srcW, srcH, dstW, dstH) -> {w,h,x,y}
        Python scale_frame 的 fit 矩形（等比 + round 取偶 + 黑底居中偏移）。
+   - TermifyRender.fitCells(srcW, srcH, width, height) -> {w,h}
+       Python frames.fit_cells 的字符网格贴合（源比例落到 cols×rows 上）。
    - TermifyRender.pyRound(x)
        CPython round() 兼容的银行家舍入（.5 取偶），灰度/LUT/缩放共用。
 */
@@ -358,6 +360,41 @@
     return { w: width, h: height };
   }
 
+  /* ── 字符网格贴合（镜像 Python frames.fit_cells） ──
+     字符格为 0.6:1.3 em，所以源比例必须先折算到字符空间，像素层不能再
+     等比 letterbox——否则 16:9 素材落进 80×24 的方形网格就被压扁。 */
+  var CELL_W_EM = 0.6;
+  var CELL_H_EM = 1.3;
+
+  function fitCells(srcW, srcH, width, height) {
+    if (!(srcW > 0) || !(srcH > 0) || !(width > 0) || !(height > 0)) {
+      return { w: Math.max(1, width || 0), h: Math.max(1, height || 0) };
+    }
+    var colsPerRow = (CELL_H_EM * srcW) / (CELL_W_EM * srcH);
+    var fh = Math.min(height, Math.max(1, pyRound(width / colsPerRow)));
+    var fw = Math.min(width, Math.max(1, pyRound(fh * colsPerRow)));
+    return { w: Math.max(1, fw), h: Math.max(1, fh) };
+  }
+
+  /* ── 字符空间补齐（镜像 Python engine._pad_frame / video._pad_frame_lines） ──
+     缺的部分必须是空格而不是最暗字符：像素层垫黑会被字符化成实心色块。 */
+  function padFrame(lines, width, height) {
+    var blank = new Array(width + 1).join(" ");
+    var out = [];
+    var rowPad = Math.max(0, height - lines.length);
+    var top = Math.floor(rowPad / 2);
+    var i;
+    for (i = 0; i < top; i++) out.push(blank);
+    for (i = 0; i < lines.length; i++) {
+      var ln = lines[i];
+      var lead = Math.max(0, Math.floor((width - ln.length) / 2));
+      out.push(blank.slice(0, lead) + ln + blank.slice(0, Math.max(0, width - ln.length - lead)));
+    }
+    var bottom = height - top - lines.length;
+    for (i = 0; i < bottom; i++) out.push(blank);
+    return out;
+  }
+
   /* ── 单帧核心：已缩放 RGBA 像素 → ANSI 行（renderFrames 每帧路径，
         也是 TermifyRender.renderRaw 的实现，供一致性比对） ── */
   function renderRaw(data, w, h, charset, opts) {
@@ -404,7 +441,12 @@
     var bg = opts.bg || null;
     var sourceMode = opts.colorMode === "source";
     var cache = opts.cache || null;
-    var dims = scaleDims(charset, width, height);
+    // 网格按「源比例 → 字符空间」贴合后再决定像素画布尺寸（镜像
+    // Python fit_cells + scaleDims），行数不足 target 的部分在字符空间补空行。
+    var src0W = (sources[0] && sources[0].width) || width;
+    var src0H = (sources[0] && sources[0].height) || height;
+    var fit = fitCells(src0W, src0H, width, height);
+    var dims = scaleDims(charset, fit.w, fit.h);
     var work = document.createElement("canvas");
     work.width = dims.w;
     work.height = dims.h;
@@ -416,7 +458,7 @@
       if (!customRamp.length) customRamp = RAMP_ARRAYS.ascii;
     }
 
-    // 等比缩放 + 黑底居中画进工作画布（镜像 Python scale_frame，绝不拉伸），
+    // 整幅铺到贴合后的像素画布（镜像 Python scale_frame(keep_aspect=False)），
     // 返回原始 RGBA；命中缓存时跳过 drawImage + getImageData。
     // blocks 与原色模式都缓存 RGBA（原色下各风格互切共享同一份像素）。
     function scaledData(i) {
@@ -427,14 +469,9 @@
       var cacheData = charset === "blocks" || sourceMode;
       var hit = cacheData ? cacheGet(cache, key) : null;
       if (hit) return hit;
-      var srcW = sources[i].width || dims.w;
-      var srcH = sources[i].height || dims.h;
-      var fit = fitRect(srcW, srcH, dims.w, dims.h);
-      wctx.fillStyle = "#000";
-      wctx.fillRect(0, 0, dims.w, dims.h);
       wctx.imageSmoothingEnabled = true;
       wctx.imageSmoothingQuality = "high";
-      wctx.drawImage(sources[i], fit.x, fit.y, fit.w, fit.h);
+      wctx.drawImage(sources[i], 0, 0, dims.w, dims.h);
       var idata = wctx.getImageData(0, 0, dims.w, dims.h);
       if (cacheData) cachePut(cache, key, idata.data, dims.w * dims.h * 4);
       return idata.data;
@@ -471,7 +508,7 @@
         try {
           var deadline = performance.now() + 24;  // 每批 ≤24ms 后让出主线程
           while (i < sources.length && performance.now() - deadline < 24) {
-            frames.push(renderOne(i));
+            frames.push(padFrame(renderOne(i), width, height));
             i++;
           }
         } catch (e) { reject(e); return; }
@@ -493,6 +530,7 @@
     scaleFrame: scaleFrame,
     scaleDims: scaleDims,
     fitRect: fitRect,
+    fitCells: fitCells,
     pyRound: pyRound,
   };
 })();

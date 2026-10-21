@@ -394,6 +394,19 @@ def _original_size(path: str) -> dict:
     return {"width": w, "height": h}
 
 
+def _video_original_size(frames_dir: str, frame_count: int) -> dict:
+    """Source frame size for a video task, so the client can derive rows."""
+    from termify.video import frames_dir_to_images
+
+    size = {"type": "video", "frame_count": frame_count}
+    if not os.path.isdir(frames_dir):
+        return size
+    frames = frames_dir_to_images(frames_dir)
+    if frames:
+        size.update(_original_size(frames[0]))
+    return size
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -496,7 +509,8 @@ def upload_batch():
             errors.append({"filename": file.filename, "error": str(exc)})
             continue
 
-        original_size = {"width": seq.width, "height": seq.height}
+        # 源尺寸（不是 80x24 网格）：前端按它推导行数
+        original_size = _original_size(save_path)
         target_size = {"width": seq.width, "height": seq.height}
         _task_put(
             task_id,
@@ -582,6 +596,9 @@ def upload_video():
             seq = convert_video_file(video_tmp, charset=charset, width=width,
                                      height=height, delete_source=True,
                                      frames_out_dir=frames_dir)
+            # Report the source frame size so the client can derive its
+            # own row count instead of assuming 80x24.
+            original_size = _video_original_size(frames_dir, len(seq.lines_per_frame))
         except VideoError as exc:
             return jsonify({"error": str(exc)}), 422
         except Exception as exc:  # noqa: BLE001
@@ -594,7 +611,7 @@ def upload_video():
     _task_put(
         task_id,
         filepath=frames_dir,  # persisted frames dir → charset/size switchable
-        original_size=None,
+        original_size=original_size,
         target_size=target_size,
         frames_count=len(seq.lines_per_frame),
         interval=seq.interval,
@@ -607,7 +624,7 @@ def upload_video():
         "frames_count": len(seq.lines_per_frame),
         "interval": seq.interval,
         "has_audio": bool(audio_file),
-        "original_size": {"type": "video", "frame_count": len(seq.lines_per_frame)},
+        "original_size": original_size,
         "target_size": target_size,
     })
 
@@ -830,6 +847,7 @@ def fetch_video_url():
                                      height=24, delete_source=True,
                                      frames_out_dir=frames_dir)
             frames_count = len(seq.lines_per_frame)
+            original_size = _video_original_size(frames_dir, frames_count)
         except VideoError as exc:
             return jsonify({"error": str(exc)}), 422
         except Exception as exc:  # noqa: BLE001
@@ -841,7 +859,7 @@ def fetch_video_url():
     _task_put(
         task_id,
         filepath=frames_dir,  # persisted frames dir → charset/size switchable
-        original_size=None,
+        original_size=original_size,
         target_size={"width": seq.width, "height": seq.height},
         frames_count=frames_count,
         interval=seq.interval,
@@ -854,7 +872,7 @@ def fetch_video_url():
         "frames_count": frames_count,
         "interval": seq.interval,
         "has_audio": bool(audio_file),
-        "original_size": {"type": "video", "frame_count": frames_count},
+        "original_size": original_size,
         "target_size": {"width": seq.width, "height": seq.height},
     })
 
@@ -894,11 +912,12 @@ def fetch_url():
         return jsonify({"error": "转换失败，远端文件可能已损坏或格式不受支持 / "
                                  "Conversion failed: the remote file may be corrupted or unsupported"}), 400
 
+    original_size = _original_size(tmp_path)
     target_size = {"width": seq.width, "height": seq.height}
     _task_put(
         task_id,
         filepath=tmp_path,
-        original_size=target_size,
+        original_size=original_size,
         target_size=target_size,
         frames_count=len(seq.lines_per_frame),
         interval=seq.interval,
@@ -909,7 +928,7 @@ def fetch_url():
         "task_id": task_id,
         "filename": os.path.basename(tmp_path),
         "frames_count": len(seq.lines_per_frame),
-        "original_size": target_size,
+        "original_size": original_size,
         "target_size": target_size,
     })
 

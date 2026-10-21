@@ -474,6 +474,8 @@
     S.charset = f.charset || "ascii";
     S.width = f.width || 80;
     S.height = f.height || 24;
+    S.srcW = f.srcW || 0;
+    S.srcH = f.srcH || 0;
     applyColumns(S.width, false);  // 同步滑杆/行数 UI（不重渲染）
     S.totalFrames = f.frames_count;
     S.wasPlaying = true;
@@ -666,6 +668,8 @@
     var vf = {
       task_id: lv.id, filename: file.name,
       frames_count: bitmaps.length, charset: "ascii", width: 80, height: 24,
+      srcW: (bitmaps[0] && bitmaps[0].width) || 0,
+      srcH: (bitmaps[0] && bitmaps[0].height) || 0,
       kind: "video", interval: interval, sourceFile: file,
       local: true, localVideo: lv
     };
@@ -892,8 +896,11 @@
         }
         if (d.task_ids && d.task_ids.length) {
           var newFiles = d.task_ids.map(function (t) {
+            var os = t.original_size || {};
+            var ts = t.target_size || {};
             return { task_id: t.task_id, filename: t.filename, frames_count: t.frames_count,
-                     charset: "ascii", width: 80, height: 24 };
+                     charset: "ascii", width: ts.width || 80, height: ts.height || 24,
+                     srcW: os.width || 0, srcH: os.height || 0 };
           });
           S.fileList = S.fileList.concat(newFiles);
           S.selIdx = S.fileList.length - newFiles.length;
@@ -953,8 +960,12 @@
         toast((d && d.error) || "视频转换失败 (HTTP " + xhr.status + ")");
         return;
       }
+      var os = d.original_size || {};
+      var ts = d.target_size || {};
       var vf = { task_id: d.task_id, filename: d.filename || file.name,
-                 frames_count: d.frames_count, charset: "ascii", width: 80, height: 24,
+                 frames_count: d.frames_count, charset: "ascii",
+                 width: ts.width || 80, height: ts.height || 24,
+                 srcW: os.width || 0, srcH: os.height || 0,
                  kind: "video", interval: d.interval || 0.1, sourceFile: file };
       S.fileList = S.fileList.concat([vf]);
       S.selIdx = S.fileList.length - 1;
@@ -1308,11 +1319,12 @@
 
 
   /* ══════════ 分辨率：列数滑杆 + 行高按素材比例自动推导 ══════════
-     服务端宽高钳制 1-400；行数 = 列数 × 素材高宽比 ÷ 2（字符格 1:2），
-     钳到 8-240。无源尺寸信息时按 2:1 网格退化（rows ≈ cols/2）。 */
+     与 termify/frames.py:fit_cells 等价：字符格 0.6:1.3 em，所以
+     行数 = 列数 × 源高宽比 × 0.6/1.3，钳到 8-240。无源尺寸信息时按
+     2:1 网格退化（rows ≈ cols × 0.5 × 0.6/1.3）。 */
   function rowsForCols(cols) {
     var ar = (S.srcW && S.srcH) ? (S.srcH / S.srcW) : 0.5;
-    var rows = TermifyRender.pyRound(cols * ar / 2);
+    var rows = TermifyRender.pyRound(cols * ar * (0.6 / 1.3));
     return Math.max(8, Math.min(240, rows));
   }
 
@@ -1427,8 +1439,12 @@
       return fams.some(function (f) { return host === f || host.indexOf("." + f) !== -1; });
     }
     function finishVideoTask(d) {
+      var os = d.original_size || {};
+      var ts = d.target_size || {};
       var vf = { task_id: d.task_id, filename: d.filename || "video-link",
-                 frames_count: d.frames_count, charset: "ascii", width: 80, height: 24,
+                 frames_count: d.frames_count, charset: "ascii",
+                 width: ts.width || 80, height: ts.height || 24,
+                 srcW: os.width || 0, srcH: os.height || 0,
                  kind: "video", interval: d.interval || 0.1 };
       S.fileList = S.fileList.concat([vf]);
       S.selIdx = S.fileList.length - 1;
@@ -1465,8 +1481,12 @@
       }).then(function (r) { return r.json(); }).then(function (d) {
         urlBtn.disabled = false; urlBtn.textContent = "下载 / Fetch";
         if (d.error) { toast(d.error); return; }
+        var os = d.original_size || {};
+        var ts = d.target_size || {};
         S.fileList = [{ task_id: d.task_id, filename: d.filename || "url-image",
-                        frames_count: d.frames_count, charset: "ascii", width: 80, height: 24 }];
+                        frames_count: d.frames_count, charset: "ascii",
+                        width: ts.width || 80, height: ts.height || 24,
+                        srcW: os.width || 0, srcH: os.height || 0 }];
         S.selIdx = 0; selectFile(0); renderFileList();
         var stylesSection = byId("styles");
         if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
