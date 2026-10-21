@@ -64,7 +64,7 @@ from termify.taskstore import (
 )
 
 VALID_EXT = {".gif", ".png", ".jpg", ".jpeg"}
-VALID_FORMATS = {"python", "html", "mp4"}
+VALID_FORMATS = {"python", "html", "mp4", "embed"}
 
 # Video import/export: cap concurrent ffmpeg work so public-demo CPU stays
 # responsive under load (负载限速).
@@ -2034,11 +2034,16 @@ def generate():
     elif color_mode == "source256":
         color_tag = "_src256"
     ext = "py" if fmt == "python" else "html"
-    filename = f"{task_id}_{charset}{color_tag}.{ext}"
     if charset == "custom":
         # Different ramps must not overwrite each other's artifacts.
         digest = hashlib.sha256((charset_ramp or "").encode("utf-8")).hexdigest()[:8]
-        filename = f"{task_id}_custom_{digest}{color_tag}.{ext}"
+        stem = f"{task_id}_custom_{digest}{color_tag}"
+    else:
+        stem = f"{task_id}_{charset}{color_tag}"
+    if fmt == "embed":
+        # 一行嵌入是另一种产物形态：与整页 HTML 分开命名，互不覆盖
+        stem = f"{stem}_embed"
+    filename = f"{stem}.{ext}"
     out_path = _tmp_out_path(filename)
     Path(out_path).write_text(content, encoding="utf-8")
 
@@ -2048,10 +2053,15 @@ def generate():
     else:
         file_size = f"{size_bytes}B"
 
-    return jsonify({
+    payload = {
         "download_url": f"/api/download/{filename}",
         "file_size": file_size,
-    })
+    }
+    if fmt == "embed":
+        # 片段随响应直接给出（前端一键复制），同一份内容也已落盘可下载
+        payload["format"] = "embed"
+        payload["snippet"] = content
+    return jsonify(payload)
 
 
 def _generate_video(task_id, charset, width, height, fg_color, bg_color,
@@ -2817,6 +2827,132 @@ def _export_budget_reject(width: int, height: int, frames: int):
     }), 400
 
 
+@gallery_route("/api/gallery/embed-frames/<work_id>", methods=["GET"])
+def gallery_embed_frames(work_id):
+    """Frames JSON for the one-line embed runtime (contract B).
+
+    Same charset/size/color query params as /api/gallery/preview; the body is
+    termify.output.embed.frames_payload(seq) -- plain text rows, ANSI
+    stripped -- for <termify-play src="..."> to fetch. 页面里嵌的作品
+    不该每次滚动都回源重渲染，所以带 24h 公共缓存头（URL 完全标识内容）。
+    """
+    work = GALLERY_DB.get_work(work_id)
+    if not work:
+        return jsonify({"error": "Work not found"}), 404
+    original = json.loads(work["params_json"]) if work["params_json"] else {}
+    charset = request.args.get("charset", original.get("charset", "blocks")).strip().lower()
+    charset_ramp = None
+    if charset == "custom":
+        raw_ramp = request.args.get("chars", "")
+        if not isinstance(raw_ramp, str) or not raw_ramp.strip():
+            return jsonify({"error": "custom charset requires a 'chars' ramp"}), 400
+        try:
+            charset_ramp = _sanitize_ramp(raw_ramp)
+        except ValueError:
+            return jsonify({"error": "custom charset ramp is empty after "
+                                     "cleaning / 自定义字符为空"}), 400
+    elif charset not in CHARSETS:
+        return jsonify({"error": f"Invalid charset: {charset}"}), 400
+    try:
+        width = int(request.args.get("width", original.get("width", 80)))
+        height = int(request.args.get("height", original.get("height", 24)))
+    except (TypeError, ValueError):
+        return jsonify({"error": "width/height must be integers"}), 400
+    width = max(1, min(400, width))
+    height = max(1, min(400, height))
+
+    color_mode, err = _parse_color_mode(
+        request.args.get("color", original.get("color")))
+    if err:
+        return jsonify({"error": err}), 400
+    fg_color = _rgb_or_none(request.args.get("fg", original.get("fg")))
+    bg_color = _rgb_or_none(request.args.get("bg", original.get("bg")))
+
+    # 公开只读端点：与预览同一条限频闸，防止被当成免费渲染 API 刷
+    allowed, _reason = _rate_check(_client_ip(), "gallery-embed-frames",
+                                   per_minute=30)
+    if not allowed:
+        return jsonify({"error": "操作太频繁，请稍后再试 / Too many requests, "
+                                 "please try again later"}), 429
+
+    from termify import convert
+    # 与预览同款渲染前封顶：格 × 帧有界，先算再渲染（事后 413 已太晚）
+    rows = height * 2 if charset == "blocks" else height
+    if charset == "braille":
+        rows = height * 4
+    cell_budget = max(1, PREVIEW_CELL_BUDGET // max(1, width * rows))
+    frame_cap = _preview_max_frames(width, height, charset, color_mode)
+
+    def _cap(total):
+        return max(1, min(cell_budget, frame_cap, total))
+
+    src_total = 0
+
+    if original.get("kind") == "piece":
+        from termify import pieces as pieces_mod
+        data = pieces_mod.read_piece(original.get("piece") or "")
+        if not data:
+            return jsonify({"error": "Piece data missing"}), 410
+        src_total = len(data["frames"])
+        try:
+            seq = pieces_mod.sequence(
+                data, charset, width, height,
+                interval=original.get("interval") or pieces_mod.DEFAULT_INTERVAL,
+                color_mode=color_mode,
+                fg_color=fg_color, bg_color=bg_color,
+                charset_ramp=charset_ramp,
+                max_frames=_cap(src_total))
+        except Exception as exc:  # noqa: BLE001
+            app.logger.warning("embed piece conversion failed: %s", exc)
+            return jsonify({"error": "转换失败 / Conversion failed"}), 400
+    elif original.get("kind") == "video":
+        from termify.video import frames_dir_to_images, sequence_from_frames_dir
+        fd = original.get("frames_dir") or ""
+        if not fd or not os.path.isdir(fd):
+            return jsonify({"error": "Video frames missing"}), 410
+        try:
+            src_total = len(frames_dir_to_images(fd))
+        except Exception:  # noqa: BLE001
+            src_total = 0
+        try:
+            seq = sequence_from_frames_dir(fd, charset, width, height,
+                                           interval=original.get("interval") or 0.1,
+                                           color_mode=color_mode,
+                                           fg_color=fg_color, bg_color=bg_color,
+                                           charset_ramp=charset_ramp,
+                                           max_frames=_cap(src_total or frame_cap))
+        except Exception as exc:  # noqa: BLE001
+            app.logger.warning("embed gallery conversion failed: %s", exc)
+            return jsonify({"error": "转换失败 / Conversion failed"}), 400
+    else:
+        try:
+            src_total = _source_frame_count(work["source_path"])
+        except Exception:  # noqa: BLE001
+            src_total = 0
+        try:
+            seq = convert(work["source_path"], charset, width, height,
+                          fg_color=fg_color, bg_color=bg_color,
+                          color_mode=color_mode, charset_ramp=charset_ramp,
+                          max_frames=_cap(src_total or frame_cap))
+        except Exception as exc:  # noqa: BLE001
+            app.logger.warning("embed gallery conversion failed: %s", exc)
+            return jsonify({"error": "转换失败 / Conversion failed"}), 400
+
+    # 帧数已被 max_frames 封在体积预算内，只剩"单帧自己就超预算"这一种
+    # 情况会超载（与 /api/gallery/preview 的判据一致）
+    if _preview_payload_too_large(1, seq.width, seq.height, charset, color_mode):
+        return jsonify({
+            "error": "单帧数据过大，请调小列数 / Single frame too large, "
+                     "try fewer columns",
+        }), 413
+
+    from termify.output import embed as embed_mod
+    resp = app.response_class(embed_mod.frames_payload(seq),
+                              mimetype="application/json")
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
+
+
 @gallery_route("/api/gallery/download/<work_id>", methods=["GET"])
 def gallery_download(work_id):
     """Generate + serve a .py, .html or .mp4 download for a gallery work.
@@ -2824,7 +2960,8 @@ def gallery_download(work_id):
     Query params:
       charset = ascii|blocks|braille|geometric|binary|shades (default: work's original)
       width, height = int (default: work's original)
-      format  = python|html|mp4 (required)
+      format  = python|html|mp4|embed (required)
+      as      = json (embed only: return {snippet, download_url} instead of the file)
     Increments download_count once per IP per 24h.
     """
     work = GALLERY_DB.get_work(work_id)
@@ -2832,7 +2969,8 @@ def gallery_download(work_id):
         return jsonify({"error": "Work not found"}), 404
     fmt = request.args.get("format", "").lower().strip()
     if fmt not in VALID_FORMATS:
-        return jsonify({"error": f"Invalid format: {fmt!r} (expected python or html)"}), 400
+        return jsonify({"error": f"Invalid format: {fmt!r} "
+                                  f"(expected python, html, mp4 or embed)"}), 400
     original = json.loads(work["params_json"]) if work["params_json"] else {}
     charset = request.args.get("charset", original.get("charset", "blocks")).strip().lower()
     charset_ramp = None
@@ -2898,6 +3036,34 @@ def gallery_download(work_id):
                       color_mode=color_mode, charset_ramp=charset_ramp)
     tmp_dir = paths.tmp_dir()
     os.makedirs(tmp_dir, exist_ok=True)
+
+    if fmt == "embed":
+        # 引用形态片段：片段本身只指向上面的 embed-frames 端点 —— README 里
+        # 贴 data URI 会撑爆仓库、也会被渲染器吞掉，帧交给宿主页面按需取。
+        from urllib.parse import urlencode
+
+        from termify.output import embed as embed_mod
+
+        keep = ("charset", "width", "height", "color", "fg", "bg", "chars")
+        src_query = urlencode([(k, v) for k, v in request.args.items(multi=True)
+                               if k in keep])
+        src_url = f"{request.host_url}api/gallery/embed-frames/{work_id}"
+        if src_query:
+            src_url += "?" + src_query
+        snippet = embed_mod.render_reference(seq, src_url)
+        if request.args.get("as", "").strip().lower() == "json":
+            # 前端要"同一条附件 URL"：原样去掉 as=json 即可
+            dl_query = urlencode([(k, v) for k, v in request.args.items(multi=True)
+                                  if k != "as"])
+            return jsonify({
+                "snippet": snippet,
+                "download_url": f"/api/gallery/download/{work_id}?{dl_query}",
+            })
+        filename = f"gallery_{work_id}_{charset}{color_tag}_embed.html"
+        out_path = _tmp_out_path(filename, root=tmp_dir)
+        Path(out_path).write_text(snippet, encoding="utf-8")
+        _record_download(work_id, _client_ip())
+        return send_file(out_path, as_attachment=True, download_name=filename)
 
     if fmt == "mp4":
         # 视频版下载：同步编码，走并发槽位 + 限频

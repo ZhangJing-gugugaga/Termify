@@ -1126,6 +1126,54 @@
     runExport(fmt);
   });
 
+  /* ── 一行嵌入（embed）：片段浮层复制 / 下载 .html ── */
+  function showEmbedSnippet(snippet, downloadUrl) {
+    var box = byId("embedSnippetText");
+    var backdrop = byId("embedSnippetBackdrop");
+    if (!box || !backdrop) {  // 浮层缺失时兜底直出 .html 文件
+      if (downloadUrl) window.location.href = downloadUrl;
+      return;
+    }
+    box.value = snippet || "";
+    var dl = byId("embedSnippetDownload");
+    if (dl) dl.setAttribute("data-download-url", downloadUrl || "");
+    backdrop.hidden = false;
+  }
+  function closeEmbedSnippet() {
+    var backdrop = byId("embedSnippetBackdrop");
+    if (backdrop) backdrop.hidden = true;
+  }
+  /* 复制：clipboard API 在 UC/X5 等 webview 常被拒 → execCommand 回退 */
+  function copyEmbedSnippet() {
+    var box = byId("embedSnippetText");
+    if (!box) return;
+    function legacy() {
+      box.focus();
+      box.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      toast(ok ? "已复制 / Copied" : "复制失败 / Copy failed");
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(box.value).then(function () { toast("已复制 / Copied"); }, legacy);
+    } else {
+      legacy();
+    }
+  }
+  var embedSnippetBackdrop = byId("embedSnippetBackdrop");
+  if (embedSnippetBackdrop) embedSnippetBackdrop.addEventListener("click", function (e) {
+    if (e.target === embedSnippetBackdrop) closeEmbedSnippet();  // 点遮罩关闭
+  });
+  var embedSnippetClose = byId("embedSnippetClose");
+  if (embedSnippetClose) embedSnippetClose.addEventListener("click", closeEmbedSnippet);
+  var embedSnippetCopy = byId("embedSnippetCopy");
+  if (embedSnippetCopy) embedSnippetCopy.addEventListener("click", copyEmbedSnippet);
+  var embedSnippetDownload = byId("embedSnippetDownload");
+  if (embedSnippetDownload) embedSnippetDownload.addEventListener("click", function () {
+    var url = embedSnippetDownload.getAttribute("data-download-url");
+    if (url) window.location.href = url;
+  });
+
   /* ── Export：下载按钮只做校验并弹出格式选择（两步确认），runExport 执行 ── */
   function doDownload() {
     if (!S.taskId && !S.localVideo) { toast("请先上传文件 / Please upload a file first"); return; }
@@ -1164,6 +1212,25 @@
       } else {
         if (S.fg) body.fg = "rgb(" + S.fg[0] + "," + S.fg[1] + "," + S.fg[2] + ")";
         if (S.bg) body.bg = "rgb(" + S.bg[0] + "," + S.bg[1] + "," + S.bg[2] + ")";
+      }
+      if (fmt === "embed") {
+        // 一行嵌入：拿 snippet 填浮层，不跳转下载（python/html/mp4 分支保持不变）
+        showModal("正在生成嵌入片段", "正在生成自包含片段，请稍候…", false, true);
+        startFakeProgress();
+        fetch("/api/generate", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        }).then(function (r) { return r.json(); }).then(function (d) {
+          if (d.error) {
+            showModal("生成失败", d.error, true);
+            return;
+          }
+          hideModal();
+          showEmbedSnippet(d.snippet, d.download_url);
+        }).catch(function (e) {
+          showModal("生成失败", "网络错误: " + e, true);
+        });
+        return;
       }
       if (fmt === "mp4") {
         // 无耗时预估（决策 v3.1 §2）：假进度封顶 90%，完成后自动下载

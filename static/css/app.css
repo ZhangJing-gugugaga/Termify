@@ -2218,6 +2218,35 @@
         }
         .export-confirm:hover { filter: brightness(1.1); }
 
+        /* ── 一行嵌入片段浮层（复用 .export-backdrop/.export-modal 骨架）── */
+        .embed-snippet-hint {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            opacity: 0.78;
+            color: var(--text-secondary, #9aa4b2);
+            margin-bottom: var(--space-3);
+        }
+        .embed-snippet-box {
+            display: block;
+            width: 100%;
+            height: 160px;
+            max-height: 40vh;
+            overflow: auto;
+            resize: vertical;
+            box-sizing: border-box;
+            padding: var(--space-3);
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--border-dim, rgba(255, 255, 255, 0.14));
+            border-radius: var(--radius-sm, 6px);
+            color: var(--text-secondary, #9aa4b2);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .embed-snippet-box:focus { outline: 1px solid var(--border-active, rgba(0, 255, 65, 0.45)); }
+
         /* ANSI 帧统一包进单块容器：flex 列容器会把一行内的多个着色 span /
            空白段拆成独立 item（各占一行），彩色帧会被撕碎成纵向碎片列。
            frame-block 恢复为单一文本流，white-space:pre 保证 \n 换行。 */

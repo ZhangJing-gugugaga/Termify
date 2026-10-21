@@ -291,10 +291,28 @@
                     <span class="export-icon">.mp4</span>
                     <span class="export-label"><b>MP4 视频</b><i>微信/手机直接播放 / Plays anywhere, share-ready</i></span>
                 </button>
+                <button class="export-option" data-format="embed" type="button">
+                    <span class="export-icon">&lt;/&gt;</span>
+                    <span class="export-label"><b>一行嵌入</b><i>粘进 README/博客即播 / Paste into README or blog</i></span>
+                </button>
             </div>
             <div class="export-modal-actions">
                 <button class="export-cancel" id="exportCancelBtn" type="button">取消 / Cancel</button>
                 <button class="export-confirm" id="exportConfirmBtn" type="button">开始导出 / Start export</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ 一行嵌入片段浮层（复制 / 下载 .html） ═══════════ -->
+    <div class="export-backdrop" id="embedSnippetBackdrop" hidden>
+        <div class="export-modal" role="dialog" aria-modal="true" aria-labelledby="embedSnippetTitle">
+            <div class="export-modal-title" id="embedSnippetTitle">一行嵌入 / One-line embed</div>
+            <div class="embed-snippet-hint">复制下面这段，粘进 README / 博客 / 任意 HTML 即播 / Copy &amp; paste anywhere</div>
+            <textarea class="embed-snippet-box" id="embedSnippetText" readonly rows="8" spellcheck="false"></textarea>
+            <div class="export-modal-actions">
+                <button class="export-cancel" id="embedSnippetClose" type="button">关闭 / Close</button>
+                <button class="export-cancel" id="embedSnippetDownload" type="button">下载 .html</button>
+                <button class="export-confirm" id="embedSnippetCopy" type="button">复制 / Copy</button>
             </div>
         </div>
     </div>
@@ -994,6 +1012,18 @@
 
             function doDownloadNow(fmt) {
                 var url = "/api/gallery/download/" + WORK_ID + "?charset=" + curCharset + "&width=" + curWidth + "&height=" + curHeight + "&format=" + fmt + exportColorsQuery();
+                if (fmt === "embed") {
+                    // 一行嵌入：as=json 取片段全文，浮层里复制 / 下载 .html（download_url 即不带 as=json 的那条）
+                    fetch(url + "&as=json").then(function (r) {
+                        if (!r.ok) { return r.json().then(function (d) { throw new Error((d && d.error) || "HTTP " + r.status); }); }
+                        return r.json();
+                    }).then(function (d) {
+                        showEmbedSnippet(d.snippet, d.download_url);
+                    }).catch(function (e) {
+                        toast("生成失败 / Failed: " + e.message);
+                    });
+                    return;
+                }
                 var btn = fmt === "mp4" ? document.getElementById("exportAnimBtn") : null;
                 if (fmt === "mp4" && btn) {
                     // 视频编码耗时较长：按钮进入等待态；无耗时预估（决策 v3.1 §2）
@@ -1022,6 +1052,53 @@
                 }
                 window.location.href = url;
             }
+
+            // ── 一行嵌入片段浮层：复制 / 下载 .html（与主页同一套结构） ──
+            function showEmbedSnippet(snippet, downloadUrl) {
+                var box = document.getElementById("embedSnippetText");
+                var backdrop = document.getElementById("embedSnippetBackdrop");
+                if (!box || !backdrop) {
+                    if (downloadUrl) window.location.href = downloadUrl;
+                    return;
+                }
+                box.value = snippet || "";
+                var dl = document.getElementById("embedSnippetDownload");
+                if (dl) dl.setAttribute("data-download-url", downloadUrl || "");
+                backdrop.hidden = false;
+            }
+            function closeEmbedSnippet() {
+                var backdrop = document.getElementById("embedSnippetBackdrop");
+                if (backdrop) backdrop.hidden = true;
+            }
+            function copyEmbedSnippet() {
+                var box = document.getElementById("embedSnippetText");
+                if (!box) return;
+                function legacy() {
+                    box.focus();
+                    box.select();
+                    var ok = false;
+                    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+                    toast(ok ? "已复制 / Copied" : "复制失败 / Copy failed");
+                }
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(box.value).then(function () { toast("已复制 / Copied"); }, legacy);
+                } else {
+                    legacy();
+                }
+            }
+            var _embedBackdrop = document.getElementById("embedSnippetBackdrop");
+            if (_embedBackdrop) _embedBackdrop.addEventListener("click", function (e) {
+                if (e.target === _embedBackdrop) closeEmbedSnippet();
+            });
+            var _embedClose = document.getElementById("embedSnippetClose");
+            if (_embedClose) _embedClose.addEventListener("click", closeEmbedSnippet);
+            var _embedCopy = document.getElementById("embedSnippetCopy");
+            if (_embedCopy) _embedCopy.addEventListener("click", copyEmbedSnippet);
+            var _embedDl = document.getElementById("embedSnippetDownload");
+            if (_embedDl) _embedDl.addEventListener("click", function () {
+                var url = _embedDl.getAttribute("data-download-url");
+                if (url) window.location.href = url;
+            });
             var _exportBtn = document.getElementById("exportAnimBtn");
             if (_exportBtn) _exportBtn.addEventListener("click", function () { openExportModal(null); });
 
