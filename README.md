@@ -126,9 +126,11 @@ python app.py
 | **几何图形** | `■●◆▪▫◇○` | 设计感、现代 |
 | **极简二值** | `█ ` | 复古报纸印刷感 |
 | **明暗渐变块** | `█▓▒░ ` | 平滑灰度渐变，比标点更有质感 |
+| **网点印刷** | ` ░▒▓█`（Bayer 4×4） | 报纸网点质感，暗部呈规则点阵 |
+| **抖动噪点** | Floyd–Steinberg 扩散 | 颗粒噪点里保住细节，适合照片
 | **自定义字符** | 你说了算 | 在 Tweaks 面板填任意字符序列（密→疏） |
 
-> 🎨 **8 种风格全部支持配色**：配色面板的黑白 / 磷光绿 / 琥珀橘 / 冰蓝 / 自定义（单色着色）与**原色**（逐字符取源像素真彩色）对所有风格生效；「Unicode 色块」本身即逐字符真彩，不受配色单色影响。
+> 🎨 **10 种风格全部支持配色**：配色面板的黑白 / 磷光绿 / 琥珀橘 / 冰蓝 / 自定义（单色着色）与**原色**（逐字符取源像素真彩色）对所有风格生效；「Unicode 色块」本身即逐字符真彩，不受配色单色影响。
 
 **我的第一张动画选什么？** 不确定就选 **Unicode 色块** —— 它的画质最接近原图，一眼就能看出效果。
 
@@ -216,7 +218,7 @@ python app.py
 |------|------|
 | **配色** | 终端绿 / 青 / 琥珀 / 品红 / 红 / 白 六色圆点 + **原色**（逐字符取源像素真彩色） |
 | **字符宽高** | 列数 20-400、行数 10-400 自由调整 |
-| **使用字符** | 默认字符 / 盲文 / 明暗渐变块 / 几何图形 / 极简二值 / 自定义字符 |
+| **使用字符** | 默认字符 / 盲文 / 明暗渐变块 / 网点印刷 / 抖动噪点 / 几何图形 / 极简二值 / 自定义字符 |
 | **翻转** | 水平 / 垂直 / 水平-垂直 |
 
 生成结果直接显示在终端预览区，导出方式与文字模式完全一致（见下）。
@@ -432,7 +434,7 @@ A: Python 未安装或未加入 PATH。请安装 Python 3.10+ 并在安装时勾
 | `GET` | `/api/cjk/ttf/fonts` | 中文点阵字体列表（宋体/黑体/楷体），返回 `fonts:[{name, slug, available}]` |
 | `POST` | `/api/text/convert` | 文字 → 艺术字，自动分流：含中文走点阵（`height` 10-40 行），纯 ASCII 走 FIGlet（`font` slug、`width`）。返回 `art`/`rows`/`cols`/`mode`。限 120 次/分钟 |
 | `POST` | `/api/text/fontwall` | 字体墙：一次输入 → 全部字体预览。入参 `text`。限 60 次/分钟 |
-| `POST` | `/api/text/imgascii` | 图片艺术化：multipart 上传 `file` + `palette`（6 主题色或 `source` 原色）+ `charset`（ascii/braille/shades/geometric/binary/custom）+ `width`/`height`/`flip`，返回字符画文本。动图返回 400 引导去动画工坊。限 20 次/分钟 |
+| `POST` | `/api/text/imgascii` | 图片艺术化：multipart 上传 `file` + `palette`（6 主题色或 `source` 原色）+ `charset`（ascii/braille/shades/halftone/dither/geometric/binary/custom）+ `width`/`height`/`flip`，返回字符画文本。动图返回 400 引导去动画工坊。限 20 次/分钟 |
 | `POST` | `/api/text/export-png` | 导出 PNG。入参 `art`、`theme`（6 主题，缺省 `green`）、`fg`、`name` |
 | `POST` | `/api/text/export-ansi` | 导出 ANSI 彩色文本。入参 `art`、`theme` |
 | `POST` | `/api/text/export-html` | 导出单文件 HTML。入参 `art`、`theme`、`name` |
@@ -558,7 +560,7 @@ Termify/
 ├── demo.py                 # CLI：图片/视频转换 / text 字符艺术
 ├── requirements.txt        # flask / pillow / pyfiglet / pytest / beautifulsoup4 / yt-dlp
 ├── termify/                # 后端转换引擎（纯 Python 库）
-│   ├── charset.py          # 8 种字符集（含 shades/custom）+ 像素→字符映射
+│   ├── charset.py          # 10 种字符集（含 shades/halftone/dither/custom）+ 像素→字符映射
 │   ├── frames.py           # GIF 抽帧 + 等比缩放
 │   ├── engine.py           # convert() → FrameSequence
 │   ├── ansi_to_html.py     # ANSI → HTML 颜色转换

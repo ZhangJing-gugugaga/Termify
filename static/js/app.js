@@ -467,7 +467,7 @@
   }
 
   /* 可对应到风格卡的字符集（custom 走 input，不在此列） */
-  var CHARSET_KEYS = ["ascii", "ascii-lite", "blocks", "braille", "geometric", "binary", "shades"];
+  var CHARSET_KEYS = ["ascii", "ascii-lite", "blocks", "braille", "geometric", "binary", "shades", "halftone", "dither"];
 
   function selectFile(idx) {
     if (idx < 0 || idx >= S.fileList.length) return;

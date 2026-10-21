@@ -50,6 +50,18 @@ CHARSETS: dict[str, dict] = {
         "color": False,
         "description": "块状明暗字符的平滑灰度渐变，比标点更有质感",
     },
+    "halftone": {
+        "name": "网点印刷",
+        "chars": " ░▒▓█",
+        "color": False,
+        "description": "报纸网点印刷质感，暗部呈规则点阵",
+    },
+    "dither": {
+        "name": "抖动噪点",
+        "chars": None,
+        "color": False,
+        "description": "Floyd-Steinberg 误差扩散，颗粒噪点里保住细节",
+    },
     "custom": {
         "name": "自定义字符集",
         "chars": None,  # per-request ramp, see charset_ramp in render_frame()
@@ -404,6 +416,113 @@ def _render_shades(img, width, height, fg=None, bg=None, color_mode="mono"):
                         color_mode)
 
 
+# 4x4 Bayer matrix: the classic ordered-dither threshold map. Each cell holds
+# a rank 0-15, so a pixel's darkness decides how many dots in its neighbourhood
+# get inked -> the regular dot grid of newspaper halftone.
+_BAYER4 = (
+    (0, 8, 2, 10),
+    (12, 4, 14, 6),
+    (3, 11, 1, 9),
+    (15, 7, 13, 5),
+)
+
+
+def _render_halftone(img, width, height, fg=None, bg=None, color_mode="mono"):
+    """Ordered-dither (Bayer 4x4) halftone: dark areas become a dot lattice."""
+    chars = CHARSETS["halftone"]["chars"]  # " ░▒▓█", sparse -> dense
+    n = len(chars) - 1
+    lums = _luminance_array(img)
+    # Ordered dither: add the Bayer phase's own offset (rank spread evenly
+    # over one quantisation step) to the darkness, then quantise. A flat grey
+    # therefore lands on different ramp levels in different phases -- that
+    # interleaving IS the printing screen; quantising the raw grey would
+    # paint every cell identical and lose the lattice entirely.
+    step = 255.0 / n
+    cell = []
+    for rank in range(16):
+        offset = (rank + 0.5) / 16.0 * step
+        row = []
+        for g in range(256):
+            level = int((255 - g + offset) // step)
+            row.append(chars[level if level < n else n])
+        cell.append(row)
+    if color_mode in ("source", "source256"):
+        depth = "256" if color_mode == "source256" else "truecolor"
+        buf, step = _rgb_bytes(img)
+        lines = []
+        pos = 0
+        for y in range(height):
+            row_bayer = _BAYER4[y & 3]
+            cells = [cell[row_bayer[x & 3]][lums[pos + x]] for x in range(width)]
+            lines.append(_colorize_row(cells, buf, step, pos, width, depth))
+            pos += width
+        return lines
+    colorize = fg is not None or bg is not None
+    lines = []
+    pos = 0
+    for y in range(height):
+        row_bayer = _BAYER4[y & 3]
+        if colorize:
+            row = [_emit(cell[row_bayer[x & 3]][lums[pos + x]], fg, bg)
+                   for x in range(width)]
+            row.append("\x1b[0m")
+        else:
+            row = [cell[row_bayer[x & 3]][lums[pos + x]] for x in range(width)]
+        pos += width
+        lines.append("".join(row))
+    return lines
+
+
+def _render_dither(img, width, height, fg=None, bg=None, color_mode="mono"):
+    """Floyd-Steinberg error diffusion onto a 5-level shade ramp."""
+    chars = " ░▒▓█"  # sparse -> dense, same ladder the halftone screen uses
+    n = len(chars) - 1
+    lums = _luminance_array(img)
+    # Work on a float canvas so quantisation error can be pushed forward.
+    buf = [float(v) for v in lums]
+    idx = [0] * (width * height)
+    for y in range(height):
+        row = y * width
+        for x in range(width):
+            i = row + x
+            old = buf[i]
+            level = 0 if old < 0 else (n if old > 255 else int(old * n + 127) // 255)
+            idx[i] = level
+            err = old - level * 255 / n
+            if x + 1 < width:
+                buf[i + 1] += err * 7 / 16
+            if y + 1 < height:
+                nxt = i + width
+                if x > 0:
+                    buf[nxt - 1] += err * 3 / 16
+                buf[nxt] += err * 5 / 16
+                if x + 1 < width:
+                    buf[nxt + 1] += err * 1 / 16
+    cell = [chars[v] for v in idx]
+    if color_mode in ("source", "source256"):
+        depth = "256" if color_mode == "source256" else "truecolor"
+        rbuf, step = _rgb_bytes(img)
+        lines = []
+        pos = 0
+        for _y in range(height):
+            lines.append(_colorize_row(cell[pos:pos + width], rbuf, step, pos,
+                                       width, depth))
+            pos += width
+        return lines
+    colorize = fg is not None or bg is not None
+    lines = []
+    pos = 0
+    for _y in range(height):
+        if colorize:
+            row_out = [_emit(v, fg, bg) for v in cell[pos:pos + width]]
+            row_out.append("\x1b[0m")
+        else:
+            row_out = cell[pos:pos + width]
+        pos += width
+        lines.append("".join(row_out))
+    return lines
+
+
 def _render_blocks(img, width, height):
     if img.mode != "RGB":
         img = img.convert("RGB")
@@ -600,6 +719,8 @@ _RENDERERS = {
     "geometric": _render_geometric,
     "binary": _render_binary,
     "shades": _render_shades,
+    "halftone": _render_halftone,
+    "dither": _render_dither,
 }
 
 

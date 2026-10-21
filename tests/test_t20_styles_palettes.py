@@ -19,6 +19,8 @@ from PIL import Image
 from termify.charset import (
     CHARSETS,
     CUSTOM_RAMP_MAX_LEN,
+    _render_dither,
+    _render_halftone,
     _render_shades,
     render_frame,
     sanitize_ramp,
@@ -89,6 +91,68 @@ def test_shades_differs_from_ascii_on_gradient():
 
 
 # --- sanitize_ramp ------------------------------------------------------------
+
+# --- halftone / dither --------------------------------------------------------
+
+def test_halftone_and_dither_registered():
+    assert CHARSETS["halftone"]["chars"] == " ░▒▓█"
+    assert CHARSETS["dither"]["chars"] is None
+    assert CHARSETS["dither"]["color"] is False
+
+
+def test_halftone_line_shape():
+    w, h = 12, 6
+    lines = _render_halftone(_gradient(w, h), w, h)
+    assert len(lines) == h
+    assert all(len(ln) == w for ln in lines)
+
+
+def test_dither_line_shape():
+    w, h = 12, 6
+    lines = _render_dither(_gradient(w, h), w, h)
+    assert len(lines) == h
+    assert all(len(ln) == w for ln in lines)
+
+
+def test_halftone_uniform_grey_forms_bayer_lattice():
+    # Flat grey must not quantise to one character everywhere: the Bayer phase
+    # offsets are what turn a solid tone into a printing screen.
+    img = Image.new("RGB", (8, 8), (150, 150, 150))
+    joined = "".join(_render_halftone(img, 8, 8))
+    assert len(set(joined)) >= 2
+
+
+def test_halftone_dark_vs_light():
+    dark = "".join("".join(r) for r in
+                   _render_halftone(Image.new("RGB", (8, 8), (10, 10, 10)), 8, 8))
+    light = "".join("".join(r) for r in
+                    _render_halftone(Image.new("RGB", (8, 8), (245, 245, 245)), 8, 8))
+    assert set(dark) <= set("▓█")
+    assert set(light) <= set(" ░")
+
+
+def test_dither_uniform_grey_is_uniform():
+    # Error diffusion on a flat field has no error to spread -> one level.
+    joined = "".join(_render_dither(Image.new("RGB", (8, 8), (128, 128, 128)), 8, 8))
+    assert len(set(joined)) == 1
+
+
+def test_dither_gradient_spans_levels():
+    joined = "".join("".join(r) for r in _render_dither(_gradient(24, 6), 24, 6))
+    assert len(set(joined)) >= 3
+
+
+def test_halftone_dither_fg_bg_wrapping():
+    for fn in (_render_halftone, _render_dither):
+        joined = "".join(fn(_gradient(8, 4), 8, 4, fg=(255, 0, 0), bg=(0, 0, 255)))
+        assert "\x1b[38;2;255;0;0m" in joined
+        assert "\x1b[48;2;0;0;255m" in joined
+
+
+def test_halftone_dither_source_color():
+    for name in ("halftone", "dither"):
+        lines = render_frame(_gradient(8, 4), name, 8, 4, color_mode="source")
+        assert "\x1b[38;2;" in "".join(lines)
 
 def test_sanitize_ramp_dedupes_preserving_order():
     assert sanitize_ramp("aabbcc") == "abc"
@@ -181,6 +245,17 @@ def _upload(client):
                        content_type="multipart/form-data")
     assert resp.status_code == 200
     return json.loads(resp.data)["task_id"]
+
+
+def test_preview_halftone_and_dither(client):
+    # End-to-end: the new charsets must survive the HTTP preview path, not just
+    # render_frame (a registry entry alone would not prove the route accepts it).
+    task_id = _upload(client)
+    for name in ("halftone", "dither"):
+        resp = client.get(f"/api/preview/{task_id}?charset={name}&frame=0")
+        assert resp.status_code == 200, resp.data[:200]
+        body = json.loads(resp.data)
+        assert body["lines"]
 
 
 def test_preview_custom_without_chars_rejected(client):

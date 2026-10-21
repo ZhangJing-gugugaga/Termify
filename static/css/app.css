@@ -612,6 +612,18 @@
             white-space: pre;
         }
 
+        /* Halftone style preview: dot-screen lattice, so it gets its own hue */
+        .style-preview.halftone {
+            color: var(--red);
+            white-space: pre;
+        }
+
+        /* Dither style preview */
+        .style-preview.dither {
+            color: var(--green);
+            white-space: pre;
+        }
+
         .style-info {
             padding: var(--space-3) var(--space-4);
             border-top: 1px solid var(--border-dim);
