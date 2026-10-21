@@ -466,6 +466,9 @@
     });
   }
 
+  /* 可对应到风格卡的字符集（custom 走 input，不在此列） */
+  var CHARSET_KEYS = ["ascii", "ascii-lite", "blocks", "braille", "geometric", "binary", "shades"];
+
   function selectFile(idx) {
     if (idx < 0 || idx >= S.fileList.length) return;
     S.selIdx = idx;
@@ -1889,4 +1892,28 @@
 
   initMusicUI();
   updateMusicCard();
+
+  /* ── fork 落地：作品页「用它做一版」带 ?fork=<workId>&charset=&width=&height=&color= ──
+     只预填编辑器的风格/尺寸/配色，素材仍需用户自己选——Termify 的渲染
+     管线是输入驱动的，作品库的帧数据不进编辑器闭环。 */
+  (function applyForkParams() {
+    if (!window.location.search) return;
+    var q = new URLSearchParams(window.location.search);
+    var fork = q.get("fork");
+    if (!fork) return;
+    var charset = q.get("charset");
+    var width = parseInt(q.get("width"), 10);
+    var height = parseInt(q.get("height"), 10);
+    var color = q.get("color");
+    if (charset && CHARSET_KEYS.indexOf(charset) >= 0) {
+      S.charset = charset;
+      markSelected(".style-card", '[data-style="' + charset + '"]');
+    }
+    if (width > 0) {
+      applyColumns(width, false);  // 行数仍按素材比例推导，只对齐列数
+    }
+    if (color === "source") applyPalette("source", false);
+    showStyleDemo(S.charset);
+    toast("已载入作品 " + fork + " 的风格，上传素材即可开始");
+  })();
 })();

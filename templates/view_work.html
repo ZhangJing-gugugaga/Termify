@@ -51,6 +51,7 @@
             </div>
             <div class="view-banner-actions">
                 <button class="view-action-btn view-action-like" id="likeBtn">❤ 点赞</button>
+                <button class="view-action-btn" id="forkBtn">✨ 用它做一版</button>
                 <button class="view-action-btn" id="copyLinkBtn">📋 复制链接</button>
                 <button class="view-action-btn view-action-report" id="reportBtn">🚩 举报</button>
             </div>
@@ -318,6 +319,11 @@
             // 文字作品（kind=text）：艺术字存 params.frames（单帧），无动画/
             // 风格/尺寸切换，预览直接回放 + 单色配色（params.fg）。
             var IS_TEXT = params.kind === "text";
+            // 作品库（kind=piece）：服务端按字符网格重渲染，网格本身就是
+            // 原始作品的 cols×rows，换字符集时行数要跟着原比例走。
+            var IS_PIECE = params.kind === "piece";
+            var PIECE_AR = (params.width && params.height)
+                ? (params.height / params.width) : 0;
             var curCharset = params.charset || "blocks";
             var curWidth = params.width || 80;
             var curHeight = params.height || 24;
@@ -468,6 +474,27 @@
                 }
                 return frameCanvas;
             }
+            // 盲文点阵：与 termify/output/video.py:_draw_braille_cell 同样的
+            // (col,row,mask) 表，按 2x4 子格画矩形。
+            var BRAILLE_DOTS = [
+                [0, 0, 0x01], [0, 1, 0x02], [0, 2, 0x04],
+                [1, 0, 0x08], [1, 1, 0x10], [1, 2, 0x20],
+                [0, 3, 0x40], [1, 3, 0x80]
+            ];
+            function isBrailleChar(ch) {
+                return ch >= "\u2800" && ch <= "\u28ff";
+            }
+            function drawBrailleCell(ctx, ch, x, y, w, h, color) {
+                var bits = ch.charCodeAt(0) - 0x2800;
+                if (!bits) return;
+                var dotW = w / 2, dotH = h / 4;
+                ctx.fillStyle = color;
+                for (var i = 0; i < BRAILLE_DOTS.length; i++) {
+                    if (!(bits & BRAILLE_DOTS[i][2])) continue;
+                    ctx.fillRect(x + BRAILLE_DOTS[i][0] * dotW,
+                                 y + BRAILLE_DOTS[i][1] * dotH, dotW, dotH);
+                }
+            }
             function paintAnsiFrame(lines) {
                 var cv = ensureFrameCanvas();
                 var ctx = cv.getContext("2d");
@@ -505,6 +532,11 @@
                                     if (fg) { ctx.fillStyle = fg; ctx.fillRect(x * CELL_W, y * CELL_H + CELL_H / 2, CELL_W, CELL_H / 2); }
                                 } else if (chr === "█") {
                                     if (fg) { ctx.fillStyle = fg; ctx.fillRect(x * CELL_W, y * CELL_H, CELL_W, CELL_H); }
+                                } else if (isBrailleChar(chr)) {
+                                    // 盲文无内置 Web 字体（JetBrains Mono / DejaVu 都缺
+                                    // U+2800-28FF）：交给字体就是整屏豆腐块，改矢量画点。
+                                    drawBrailleCell(ctx, chr, x * CELL_W, y * CELL_H,
+                                        CELL_W, CELL_H, fg || defFg);
                                 } else {
                                     ctx.fillStyle = fg || defFg;
                                     ctx.fillText(chr, x * CELL_W, y * CELL_H + 2);
@@ -554,6 +586,7 @@
             function startPlayer() {
                 if (playing || frames.length < 2) return;
                 playing = true;
+                if (IS_PIECE) setRenderChip(null);  // 作品库循环播放中不再留渲染提示
                 if (playBtn) playBtn.classList.add("active");
                 if (pauseBtn) pauseBtn.classList.remove("active");
                 playStartTs = performance.now() - currentFrame * interval * 1000;
@@ -793,7 +826,9 @@
                     }
                     fitViewFontSize();
                     renderFrame(0);
+                    // 作品库一直在播放：换字符集/尺寸后接着放，不停在首帧
                     if (frames.length >= 2) startPlayer();
+                    else setRenderChip(null);
                 }).catch(function () {
                     if (myId !== latestReq) return;
                     setRenderChip(null);
@@ -842,6 +877,9 @@
                     ? (params.height / params.width) : 0.5;
                 function rowsForCols(cols) {
                     var rows = TermifyRender.pyRound(cols * savedAr);
+                    // 作品库按原作字符网格等比缩放：不套 8-240 的行数钳制，
+                    // 否则 96x3 这类超宽横幅会被强行补到 8 行、比例失真。
+                    if (IS_PIECE) return Math.max(1, Math.min(400, rows));
                     return Math.max(8, Math.min(240, rows));
                 }
                 function syncMeta(cols) {
@@ -964,6 +1002,24 @@
             }
             var _exportBtn = document.getElementById("exportAnimBtn");
             if (_exportBtn) _exportBtn.addEventListener("click", function () { openExportModal(null); });
+
+            // ── fork：带着当前风格/尺寸/配色回到编辑器，用户换自己的素材再渲染 ──
+            var _forkBtn = document.getElementById("forkBtn");
+            if (_forkBtn) _forkBtn.addEventListener("click", function () {
+                if (IS_TEXT || params.font) {
+                    window.location.href = "/text-art";  // 文字作品回艺术字页
+                    return;
+                }
+                var q = "?fork=" + encodeURIComponent(WORK_ID) +
+                    "&charset=" + encodeURIComponent(curCharset) +
+                    "&width=" + curWidth + "&height=" + curHeight;
+                if (curTheme !== "saved" && THEME_COLORS[curTheme]) {
+                    q += "&color=mono";
+                } else if (params.color === "source" || params.color === "source256") {
+                    q += "&color=source";
+                }
+                window.location.href = "/" + q;
+            });
 
             // ── play / pause ──
             if (playBtn) playBtn.addEventListener("click", startPlayer);

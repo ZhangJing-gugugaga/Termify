@@ -98,6 +98,13 @@ _test_*.png
 test_bright.png
 test_dark.png
 *.json
+# …但烘焙作品库的 manifest 与字形墨量表要随仓库走（.json.gz 的
+# 否定规则不需要：*.json 不匹配 *​.json.gz）
+!static/anim/manifest.json
+!static/anim/ink.json
+
+# meow-memory 本地记忆库（可能含会话私密内容，绝不入库）
+.dsh-meow/
 
 # PyInstaller artifacts
 build/

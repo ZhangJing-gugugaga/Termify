@@ -306,7 +306,7 @@ _COLOR_MODES = ("mono", "source", "source256")
 # font/frames 仅字符作品（kind=text）携带：frames 是艺术字文本本身，
 # 经 tojson 转义进页面，与其他用户内容同责渲染端转义。
 _VIEW_PARAM_KEYS = ("charset", "width", "height", "color", "kind", "interval",
-                    "fg", "bg", "audio_file", "font", "frames")
+                    "fg", "bg", "audio_file", "font", "frames", "piece")
 
 
 def _rgb_or_none(value):
@@ -2724,7 +2724,24 @@ def gallery_preview(work_id):
 
     src_total = 0
 
-    if original.get("kind") == "video":
+    if original.get("kind") == "piece":
+        from termify import pieces as pieces_mod
+        data = pieces_mod.read_piece(original.get("piece") or "")
+        if not data:
+            return jsonify({"error": "Piece data missing"}), 410
+        src_total = len(data["frames"])
+        try:
+            seq = pieces_mod.sequence(
+                data, charset, width, height,
+                interval=original.get("interval") or pieces_mod.DEFAULT_INTERVAL,
+                color_mode=color_mode,
+                fg_color=fg_color, bg_color=bg_color,
+                charset_ramp=charset_ramp,
+                max_frames=_cap(src_total))
+        except Exception as exc:  # noqa: BLE001
+            app.logger.warning("piece conversion failed: %s", exc)
+            return jsonify({"error": "转换失败 / Conversion failed"}), 400
+    elif original.get("kind") == "video":
         from termify.video import frames_dir_to_images, sequence_from_frames_dir
         fd = original.get("frames_dir") or ""
         if not fd or not os.path.isdir(fd):
@@ -2854,7 +2871,18 @@ def gallery_download(work_id):
 
     from termify import convert
     from termify.output import render
-    if original.get("kind") == "video":
+    if original.get("kind") == "piece":
+        from termify import pieces as pieces_mod
+        data = pieces_mod.read_piece(original.get("piece") or "")
+        if not data:
+            return jsonify({"error": "Piece data missing"}), 410
+        seq = pieces_mod.sequence(
+            data, charset, width, height,
+            interval=original.get("interval") or pieces_mod.DEFAULT_INTERVAL,
+            color_mode=color_mode,
+            fg_color=fg_color, bg_color=bg_color,
+            charset_ramp=charset_ramp)
+    elif original.get("kind") == "video":
         from termify.video import sequence_from_frames_dir
         fd = original.get("frames_dir") or ""
         if not fd or not os.path.isdir(fd):
