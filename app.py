@@ -96,10 +96,55 @@ def _not_found(_e):
     return render_template("404.html"), 404
 
 
+@app.errorhandler(405)
+def _method_not_allowed(e):
+    """405 落到站点风格页面；API 路径返回 JSON。
+
+    此前没有 405 handler，方法不允许时漏到 Flask 默认英文页（无导航、
+    无中文、无返回入口），/api/ 下还会把 HTML 塞给拿 JSON 的调用方。
+    allowed 取自 Werkzeug 的 routing 判定，同时回填 Allow 头
+    （RFC 9110 §15.5.6 要求 405 必须带 Allow）。
+    """
+    allowed = sorted(getattr(e, "valid_methods", None) or [])
+    if request.path == "/api" or request.path.startswith("/api/"):
+        resp = make_response(jsonify({
+            "error": "方法不允许 / Method not allowed",
+            "method": request.method,
+            "allowed": allowed,
+        }), 405)
+    else:
+        resp = make_response(render_template("405.html", allowed=allowed), 405)
+    if allowed:
+        resp.headers["Allow"] = ", ".join(allowed)
+    return resp
+
+
 @app.errorhandler(413)
 def _request_entity_too_large(_e):
     """请求体超过 MAX_CONTENT_LENGTH 时返回 JSON（而非 Flask 默认 HTML 页）。"""
     return jsonify({"error": "文件过大（上限 20MB） / File too large (max 20MB)"}), 413
+
+_ABS_PATH_RE = re.compile(
+    r"(?:[A-Za-z]:[\\/]|\\\\[^\\\s]+\\|/(?:home|root|usr|var|opt|srv|tmp|mnt|Users|private)/)"
+    r"[^\s'\"<>|;]*"
+)
+
+
+def _public_error_text(exc) -> str:
+    """面向客户端的异常文案：先抹掉服务器绝对路径再回显。
+
+    下游异常会把服务器路径写进 message（PIL 的
+    "cannot identify image file 'C:\\...\\uploads\\x.png'"，ffmpeg 的
+    stderr 里也带输入路径）。这些是内部布局信息，不该出现在响应里；
+    完整原文保留在日志，客户端只拿到去掉路径的说明。
+    """
+    text = str(exc).strip()
+    cleaned = _ABS_PATH_RE.sub("<path>", text)
+    if cleaned != text:
+        app.logger.warning(
+            "client-facing error text had server paths removed: %s", text)
+    return cleaned or "请求失败 / Request failed"
+
 
 # --- T1.9 Task metadata store ------------------------------------------------
 # Production bug fix (L1): under gunicorn 4 workers, a module-level TASKS dict
@@ -501,7 +546,7 @@ def upload():
         seq = convert(save_path, "ascii", 80, 24)
     except Exception as exc:  # noqa: BLE001 — 不向客户端回显异常详情（含服务器路径）
         os.remove(save_path)
-        app.logger.warning("upload conversion failed: %s", exc)
+        app.logger.warning("upload conversion failed: %s", exc, exc_info=True)
         return jsonify({"error": "转换失败，文件可能已损坏或格式不受支持 / "
                                  "Conversion failed: the file may be corrupted or unsupported"}), 400
 
@@ -556,9 +601,16 @@ def upload_batch():
 
         try:
             seq = convert(save_path, "ascii", 80, 24)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — 不向客户端回显异常详情（含服务器路径）
             os.remove(save_path)
-            errors.append({"filename": file.filename, "error": str(exc)})
+            # 与 /api/upload 同一句泛化文案：PIL/ffmpeg 的原文里带
+            # "C:\...\uploads\<id>.png" 这类服务器绝对路径。
+            app.logger.warning("batch upload conversion failed: filename=%s %s",
+                               file.filename, exc, exc_info=True)
+            errors.append({"filename": file.filename,
+                           "error": "转换失败，文件可能已损坏或格式不受支持 / "
+                                    "Conversion failed: the file may be "
+                                    "corrupted or unsupported"})
             continue
 
         # 源尺寸（不是 80x24 网格）：前端按它推导行数
@@ -614,14 +666,14 @@ def upload_video():
     try:
         video_tmp = _video_tmp_path(ext)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
     file.save(video_tmp)
 
     try:
         validate_video(video_tmp)
     except VideoError as exc:
         os.remove(video_tmp)
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
 
     # Grab the audio track before frame extraction deletes the source.
     task_id = uuid.uuid4().hex[:12]
@@ -652,7 +704,7 @@ def upload_video():
             # own row count instead of assuming 80x24.
             original_size = _video_original_size(frames_dir, len(seq.lines_per_frame))
         except VideoError as exc:
-            return jsonify({"error": str(exc)}), 422
+            return jsonify({"error": _public_error_text(exc)}), 422
         except Exception as exc:  # noqa: BLE001
             app.logger.warning("frame conversion failed: %s", exc)
             return jsonify({"error": "帧转换失败 / Frame conversion failed"}), 500
@@ -875,11 +927,11 @@ def fetch_video_url():
     try:
         downloaded_name = download_video(url, dest_dir=paths.uploads_dir())
     except VideoFetchError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
     try:
         video_tmp = _safe_uploads_path(downloaded_name)
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
 
     if not _VIDEO_IMPORT_SLOTS.acquire(blocking=False):
         return jsonify({"error": "当前任务较多，请稍后再试"}), 429
@@ -901,7 +953,7 @@ def fetch_video_url():
             frames_count = len(seq.lines_per_frame)
             original_size = _video_original_size(frames_dir, frames_count)
         except VideoError as exc:
-            return jsonify({"error": str(exc)}), 422
+            return jsonify({"error": _public_error_text(exc)}), 422
         except Exception as exc:  # noqa: BLE001
             app.logger.warning("frame conversion failed: %s", exc)
             return jsonify({"error": "帧转换失败 / Frame conversion failed"}), 500
@@ -953,7 +1005,7 @@ def fetch_url():
     try:
         tmp_path = fetch_url_to_temp(url)
     except URLFetchError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
 
     try:
         task_id = uuid.uuid4().hex[:12]
@@ -1022,7 +1074,7 @@ def text_convert():
                 data.get("text"), data.get("font"), cjk_height,
                 data.get("charset"))
         except _textart_mod.TextArtError as exc:
-            return jsonify({"error": str(exc)}), 400
+            return jsonify({"error": _public_error_text(exc)}), 400
         cols, rows = _textart_mod.art_dims(art)
         clean_len = len(_textart_mod.filter_cjk_text(data.get("text")))
         avail = {f["slug"] for f in _textart_mod.cjk_available_fonts()
@@ -1042,7 +1094,7 @@ def text_convert():
         art = _textart_mod.render_figlet(
             data.get("text"), data.get("font"), data.get("width"))
     except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
     cols, rows = _textart_mod.art_dims(art)
     return jsonify({"ok": True, "mode": "figlet", "art": art, "cols": cols,
                     "rows": rows,
@@ -1063,7 +1115,7 @@ def text_fontwall():
     try:
         previews = _textart_mod.render_font_previews(data.get("text"))
     except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
     return jsonify({"ok": True, "fonts": previews})
 
 
@@ -1096,7 +1148,7 @@ def text_export_png():
     try:
         art = _textart_mod.validate_stored_art(data.get("art"))
     except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
     # 优先 theme 映射；兼容直接传 fg 数组（画廊入库路径）
     fg = _rgb_or_none(data.get("fg")) or _textart_mod._theme_fg(
         data.get("theme", _textart_mod.DEFAULT_THEME))
@@ -1132,7 +1184,7 @@ def text_export_ansi():
     try:
         art = _textart_mod.validate_stored_art(data.get("art"))
     except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
     ansi = _textart_mod.render_ansi_art(art, data.get("theme", "green"))
     return jsonify({"ok": True, "ansi": ansi})
 
@@ -1153,7 +1205,7 @@ def text_export_html():
     try:
         art = _textart_mod.validate_stored_art(data.get("art"))
     except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
     html = _textart_mod.render_standalone_html(art, data.get("theme", "green"))
     name = _gallery_mod.sanitize(data.get("name"),
                                  40).replace(" ", "_") or "textart"
@@ -1190,7 +1242,7 @@ def cjk_ttf_fontwall():
         previews = _textart_mod.render_cjk_charset_previews(
             data.get("text"), font=data.get("font"))
     except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
     return jsonify({"ok": True, "charsets": previews})
 
 
@@ -1209,7 +1261,7 @@ def cjk_ttf_render():
         art = _textart_mod.render_cjk_ttf(
             data.get("text"), data.get("font"), data.get("height"), charset)
     except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
     cols, rows = _textart_mod.art_dims(art)
     font_slug = data.get("font")
     if not isinstance(font_slug, str) or not any(
@@ -1402,7 +1454,7 @@ def text_imgascii():
                                  " / Animated image detected: use the "
                                  "Animation Lab", "redirect": "/"}), 400
     except ValueError as exc:
-        return jsonify({"error": str(exc)[:200]}), 400
+        return jsonify({"error": _public_error_text(exc)[:200]}), 400
     except Exception as exc:  # noqa: BLE001
         app.logger.warning("imgascii failed: %s", exc)
         return jsonify({"error": "转换失败，图片可能已损坏 / Conversion failed"}), 400
@@ -1497,7 +1549,7 @@ def text_export_txt():
     try:
         art = _textart_mod.validate_stored_art(data.get("art"))
     except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
     name = _gallery_mod.sanitize(data.get("name"),
                                  40).replace(" ", "_") or "textart"
     resp = make_response(art)
@@ -1525,7 +1577,7 @@ def text_terminal_command():
         # keep_ansi：原色 art 自带 SGR 转义，不能剥
         art = _textart_mod.validate_stored_art(data.get("art"), keep_ansi=True)
     except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
     theme = data.get("theme")
     if theme is not None and (not isinstance(theme, str)
                               or theme not in _textart_mod.ART_THEMES):
@@ -1558,7 +1610,7 @@ def text_export_py():
         # keep_ansi：原色 art 自带 SGR 转义，不能剥
         art = _textart_mod.validate_stored_art(data.get("art"), keep_ansi=True)
     except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
     theme = data.get("theme")
     if theme is not None and (not isinstance(theme, str)
                               or theme not in _textart_mod.ART_THEMES):
@@ -1596,7 +1648,7 @@ def gallery_upload_text():
         art = _textart_mod.validate_stored_art(
             data.get("art"), keep_ansi=is_source)
     except _textart_mod.TextArtError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": _public_error_text(exc)}), 400
     cols, rows = _textart_mod.art_dims(
         re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", art) if is_source else art)
     font = data.get("font") if _textart_mod.known_font(data.get("font")) \
@@ -2006,7 +2058,7 @@ def preview(task_id):
         try:
             charset_ramp = _request_charset_ramp()
         except ValueError as e:
-            return jsonify({"error": str(e)}), 400
+            return jsonify({"error": _public_error_text(e)}), 400
         if not charset_ramp:
             return jsonify({"error": "custom charset requires a 'chars' ramp"}), 400
 
@@ -2360,7 +2412,8 @@ def _generate_video(task_id, charset, width, height, fg_color, bg_color,
         video_mod.encode_mp4(seq, out_path,
                              audio_path=_task_audio_source(task_id))
     except video_mod.VideoEncodeError as e:
-        return jsonify({"error": f"视频编码失败: {e}"}), 500
+        app.logger.warning("video encode failed: %s", e, exc_info=True)
+        return jsonify({"error": f"视频编码失败: {_public_error_text(e)}"}), 500
     finally:
         _VIDEO_PROC_SLOTS.release()
 
@@ -2545,7 +2598,7 @@ def gallery_upload():
             validate_video(source_path)
         except VideoError as exc:
             os.remove(source_path)
-            return jsonify({"error": str(exc)}), 400
+            return jsonify({"error": _public_error_text(exc)}), 400
         if not _VIDEO_IMPORT_SLOTS.acquire(blocking=False):
             os.remove(source_path)
             return jsonify({"error": "当前任务较多，请稍后再试"}), 429
@@ -2564,7 +2617,7 @@ def gallery_upload():
                                           height=24, delete_source=True,
                                           frames_out_dir=frames_dir)
             except VideoError as exc:
-                return jsonify({"error": str(exc)}), 422
+                return jsonify({"error": _public_error_text(exc)}), 422
             except Exception as exc:  # noqa: BLE001
                 app.logger.warning("frame conversion failed: %s", exc)
                 return jsonify({"error": "帧转换失败 / Frame conversion failed"}), 500
@@ -2599,7 +2652,9 @@ def gallery_upload():
         for p in (source_path, thumb_path, og_path):
             if os.path.isfile(p):
                 os.remove(p)
-        return jsonify({"error": f"Thumbnail generation failed: {exc}"}), 500
+        app.logger.warning("gallery thumbnail failed: %s", exc, exc_info=True)
+        return jsonify({"error": "Thumbnail generation failed: "
+                                 f"{_public_error_text(exc)}"}), 500
 
     if is_video and frames_dir:
         params["kind"] = "video"
@@ -3142,6 +3197,17 @@ def gallery_embed_frames(work_id):
     if not work:
         return jsonify({"error": "Work not found"}), 404
     original = json.loads(work["params_json"]) if work["params_json"] else {}
+    if original.get("kind") == "text":
+        # 文字作品没有帧序列：艺术字已渲染进 params.frames（单帧静态画面），
+        # 本端点的职责是"把作品重渲染成可播放的帧"，对它无意义。此前这里
+        # 拿作品的 charset="text" 去校验字符集，回的是 400 "Invalid charset:
+        # text" —— 把一个"作品类型不支持"的语义错误地塞进"参数写错了"的通道，
+        # 调用方只会去翻参数文档。404 才说得清"这个资源没有帧"。
+        return jsonify({
+            "error": "文字作品没有帧序列 / Text works have no frame sequence",
+            "reason": "no_frame_sequence",
+            "kind": "text",
+        }), 404
     charset = request.args.get("charset", original.get("charset", "blocks")).strip().lower()
     charset_ramp = None
     if charset == "custom":
@@ -3417,7 +3483,9 @@ def gallery_download(work_id):
         try:
             video_mod.encode_mp4(seq, out_path, audio_path=work_audio)
         except video_mod.VideoEncodeError as exc:
-            return jsonify({"error": f"视频编码失败: {exc}"}), 500
+            app.logger.warning("video encode failed: %s", exc, exc_info=True)
+            return jsonify({"error": "视频编码失败: "
+                                     f"{_public_error_text(exc)}"}), 500
         finally:
             _VIDEO_PROC_SLOTS.release()
         _record_download(work_id, _client_ip())
