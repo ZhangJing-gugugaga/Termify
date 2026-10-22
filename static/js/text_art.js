@@ -834,31 +834,50 @@
     }).then(function (r) { return r.json(); });
   }
 
+  /* 字体墙内容键：墙里的字形只由「端点 + 输入文本（+ 字体）」决定。
+     键与上一次渲染一致就没有新内容可出——复用已有 DOM、零请求
+     （与图片字符集墙 imgWallKey 同一范式）。原文本进键：服务端渲染前
+     会截断/折叠空白，宁可多重传一次，也不让墙显示上一条文本的字。 */
+  var fwWallKey = null;
+  function fontwallReusable(key) {
+    if (key !== fwWallKey) return false;
+    if (!taFontwall || taFontwall.hidden) return false;
+    // 上一次没成功（仍在 loading / 失败）：没有可复用的卡片
+    return !(taFontwallGrid &&
+             taFontwallGrid.querySelector(".ta-fw-loading"));
+  }
+
   /* 英文 FIGlet 字体墙（首卡=盲文·分享：块字符字体粘到中文字体环境
      会全角/半角错位，见服务端 render_art_braille） */
   function loadFigletWall(text) {
     if (!taFontwall || !text || !text.trim()) return;
+    var key = "figlet|" + text;
+    if (fontwallReusable(key)) return;
+    fwWallKey = key;
     wallLoading();
     postJSON("/api/text/fontwall", { text: text }).then(function (d) {
-      if (!d.ok || !d.fonts) { wallFailed(); return; }
+      if (!d.ok || !d.fonts) { fwWallKey = null; wallFailed(); return; }
       renderFontWall(d.fonts, taFont ? taFont.value : "",
                      "字体墙 · 点击切换（首张「盲文·分享」= 粘贴安全版）",
                      "figlet");
-    }).catch(wallFailed);
+    }).catch(function () { fwWallKey = null; wallFailed(); });
   }
 
   /* 中文字符墙：同一点阵 × 字符集（字块/明暗/圆点/几何/盲文/经典）。
      点卡片换"点亮"字符，作用于当前输入重新渲染。 */
   function loadCJKWall(text) {
     if (!taFontwall) return;
+    var font = taFont ? taFont.value : "";
+    var key = "cjk|" + font + "|" + (text || "");
+    if (fontwallReusable(key)) return;
+    fwWallKey = key;
     wallLoading();
-    postJSON("/api/cjk/ttf/fontwall",
-             { text: text || "", font: taFont ? taFont.value : "" })
+    postJSON("/api/cjk/ttf/fontwall", { text: text || "", font: font })
       .then(function (d) {
-      if (!d.ok || !d.charsets) { wallFailed(); return; }
+      if (!d.ok || !d.charsets) { fwWallKey = null; wallFailed(); return; }
       renderFontWall(d.charsets, taCJKCharset,
                      "字符墙 · 点亮字符 · 点击切换", "cjk");
-    }).catch(wallFailed);
+    }).catch(function () { fwWallKey = null; wallFailed(); });
   }
 
   /* 点卡片：优先本地切换（data-full），否则回到生成按钮重渲染 */

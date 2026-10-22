@@ -501,3 +501,55 @@
 .ta-dot-source:hover { box-shadow: 0 0 8px rgba(255, 255, 255, 0.55); }
 .ta-dot-source.active { border-color: var(--text-primary); }
 #taOutput.has-art span[style] { line-height: 1.1; }
+
+/* ── 触摸目标：本页所有可点元素短边 ≥40px（WCAG 2.5.5 / iOS HIG 40pt）。
+   只撑点击区、不改字号与视觉密度：.ta-theme-dot 的 14px 圆点靠
+   padding + background-clip: content-box 保持原样，按钮盒本身 40×40。 ── */
+.ta-chip,
+.ta-mode-tab {
+    align-items: center;
+    display: inline-flex;
+    justify-content: center;
+    min-height: 40px;
+}
+/* 6 个色点 × 40px 在 375 宽下仍排得下；窄到放不下时换行而不是溢出 */
+.ta-theme-row { flex-wrap: wrap; gap: 4px; }
+.ta-theme-dot {
+    background-clip: content-box;
+    box-sizing: border-box;
+    height: 40px;
+    padding: 11px;   /* 40 - 2×11 - 2×2(border) = 14px 可见圆点 */
+    width: 40px;
+}
+/* .active 原本用 border-color 画选中环：盒子放大后环会离圆点 13px。
+   边框一律透明（选中态靠 :438 的 box-shadow 光晕 + 内缩描边表达），
+   否则聚焦那一瞬选中环会跳成贴着 40px 盒子的外环。 */
+.ta-theme-dot.active { border-color: transparent; }
+/* 内缩描边只在非键盘聚焦时生效：否则 Tab 到 active 色点时，这个 (0,2,0)
+   的 outline 会顶掉 app.css:35 :focus-visible 的全局焦点环。鼠标点按
+   不算键盘焦点，行为不变。 */
+.ta-theme-dot.active:not(:focus-visible) {
+    outline: 2px solid var(--text-primary);
+    outline-offset: -13px;
+}
+/* 导航 / 页脚链接由 app.css 排版（本页不能改那份文件）：min-height 撑到
+   40px，inline-flex / inline-block 保持原有对齐与间距 */
+.page-text-art nav .logo,
+.page-text-art .nav-links a,
+.page-text-art nav .nav-github {
+    align-items: center;
+    display: inline-flex;
+    justify-content: center;
+    min-height: 40px;
+    min-width: 40px;
+}
+.page-text-art footer a {
+    display: inline-block;
+    min-height: 40px;
+    padding: 12px 2px;
+}
+/* 分享弹窗的关闭按钮（也在 /text-art 页内） */
+.page-text-art .termify-modal-close {
+    min-height: 40px;
+    min-width: 40px;
+}
