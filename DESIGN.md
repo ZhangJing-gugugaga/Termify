@@ -377,9 +377,9 @@ token 名跳过 7、9、11、13–15、17–19。这不是遗漏，是 **4 的�
 
 折叠 940 的理由：`.ta-workbench` 的 `340px + var(--space-8) + 弹性` 在 1024px 时只剩 684px 弹性区，仍可用；而在 940 与 1024 之间维持双栏会让右栏窄到放不下一行 13px 等宽文本。折叠 720 的理由同上——768 与 720 之间的 48px 差值不足以支撑一套独立布局决策，两套并存的成本是每次改控件都要写两遍。
 
-**落地纪律**：新写媒体查询只能用 `1024 / 768 / 375` 三个值。存量 `720`、`940` 在触碰对应区块时并入目标档，不做一次性批量替换。
+**落地纪律**：新写媒体查询只能用 `1024 / 768 / 375` 三个值。存量 `720`、`940` 在触碰对应区块时并入目标档——**P2 已完成全量收敛**（`app.css` 原 2491 行的 `720px`→`768px`、`text_art.css:37` 的 `940px`→`1024px`），全库实测只剩 `1024`（4 处）/`768`（4 处）/`375`（1 处）三个宽度值，此后不得再引入第 4 个。
 
-### 5.4 Studio 改两栏（decided，未落地）
+### 5.4 Studio 改两栏（decided，已落地 · 实现细节见附录 C）
 
 **现状**：`.studio-block` 是纵向堆叠的三个区块（上传 → 风格 → 预览），见 `static/css/app.css:2590-2595`，靠 `border-top: 1px solid var(--border-dim)` + `margin-top: var(--space-10)` 分隔。风格卡在 `.style-grid` 里 5 列铺开（`app.css:531-536`），10 张卡即占两行。
 
@@ -392,7 +392,7 @@ token 名跳过 7、9、11、13–15、17–19。这不是遗漏，是 **4 的�
 
 **依据（inferred）**：`grep 'position: sticky' static/css/` 全仓仅 1 处命中（`app.css:81`，`nav`）。也就是说 sticky 这套机制在本项目**尚未被用于任何内容区**。落地时注意三点：`nav` 已是 `sticky; top: 0; z-index: 100`（`app.css:78-85`），右栏 `top` 必须大于导航实际高度，否则会被导航压住；`.container` 有 `z-index: 1`，sticky 元素在容器内层叠正常；`≤1024px` 必须 `position: static`，否则单列移动端会粘住半屏。
 
-### 5.5 Hero 假终端换真动画（decided，未落地）
+### 5.5 Hero 假终端换真动画（decided，已落地 · 实现细节见附录 C）
 
 **现状**：`templates/index.html:43-70` 的 `.hero-terminal` 是**纯静态 HTML**——一段写死的 `$ termify convert cat.gif ...` 命令、四行 `✓` 输出、以及一个 `<span class="terminal-cursor"></span>` 光标（`templates/index.html:65`）。光标有 `animation: blink 1s step-end infinite`（`static/css/app.css:305`），除此之外整块不动。
 
@@ -414,7 +414,9 @@ token 名跳过 7、9、11、13–15、17–19。这不是遗漏，是 **4 的�
 
 `120ms` 与 `200ms` 构成全部交互反馈时长。这与「交互反馈 ≤200ms」的规则天然吻合——**现有 token 已经合规，问题不在时长，在属性**（见 6.2）。
 
-### 6.2 `transition: all` —— 33 处（实测）
+### 6.2 `transition: all` —— 基线 33 处（P0 已全部展开，现为 0）
+
+> **状态（P2 复核）**：`grep -rc 'transition: all' static/css/*.css` 现在三个文件全为 `0`——P0 已把 33 处全部展开成显式属性列表。下面这份普查保留为基线证据，说明当初为什么必须展开，不要再当成待办。
 
 ```
 $ grep -rc 'transition: *all' static/css/*.css
@@ -780,13 +782,48 @@ print(cr('#00ff41', '#111620'))   # 13.27 --green
 | B5 | Space Grotesk 未删（3 处） | §2.1 | 按 §2.1 三步删 |
 | B6 | `--scanline-opacity` 写了没人读 | §1.4 | 接上 CSS 或删控件 |
 | B7 | 4 个死 token（amber-dim / amber-glow / cyan-dim / red-dim） | §3.1 | 从 `tokens.css` 删除 |
-| B8 | `ta-ai-pulse` 死 keyframes + 空守卫 | §6.5 | 补使用点或连空块一起删 |
+| B8 | `ta-ai-pulse` 死 keyframes（**无空守卫**：`text_art.css` 里 3 个 reduced-motion 块都是有效非空守卫，登记时写错了） | §6.5 | 连注释一起删 |
 | B9 | z-index 未 token 化 | §7.2 | 加 13 个 `--z-*`，值不变 |
 | B10 | 8 处 `#00ff41` 硬编码、2 处错值兜底 | §3.2 | 换回 `var(--green)` / 修正兜底值 |
 | B11 | `.gallery-card` hover 位移 `-3px` 分叉 | §8.2 | 统一为 `-2px` |
 | B12 | Studio 仍三区块纵排 | §5.4 | 改两栏 + sticky |
 | B13 | Hero 是静态假终端 | §5.5 | 换真实字符动画 |
 | B14 | 5 个离散断点 | §5.2 / §5.3 | 收敛到 3 个（1024/768/375） |
+| B15 | 375px 下 `.url-fetch-row` 里的 `#urlInput` / `#urlFetchBtn` 撑出横向溢出（`scrollWidth` 503 > 375），被 `body { overflow-x: hidden }` 遮住 | P2 浏览器实测 | 给 `.url-fetch-row` 加 `flex-wrap: wrap`；属独立 token，本单未修 |
+
+**落地进度**（上表登记时都是 confirmed 现状，现按提交回填）：
+- 已于 `b379cec`（P0 + P1）收口：**B1 / B2 / B3 / B5 / B9 / B10**
+- 已于 P2 收口：**B7 / B8 / B11 / B12 / B13 / B14**
+- 仍未动：**B4**（卡片 loading / error / disabled 三态）、**B6**（`--scanline-opacity` 假开关，归 P3 状态语言那一单）、**B15**（375px 溢出）
+
+---
+
+## 附录 C：P2 落地记录（Studio 两栏 / Hero 真动画 / 断点收敛）
+
+```
+$ git rev-parse --short HEAD   # P2 落地前的基线即为 b379cec
+```
+
+**改了哪 5 个文件**：`static/css/app.css`、`static/css/text_art.css`、`static/css/tokens.css`、`static/js/app.js`、`templates/index.html`（+149 / −41，含收尾返工）。
+
+**Studio 两栏**：`#studio > .container` 从纵向堆叠改为
+`grid-template-columns: minmax(0, 1fr) minmax(0, 480px)`、`column-gap: var(--space-8)`、`row-gap: var(--space-10)`、`align-items: start`。
+旧的 `.studio-block { padding-top }` / `.studio-block + .studio-block { border-top; margin-top }` / `.studio-block:first-of-type` 三条整体删除（拆掉而不是覆盖），区块间距改由 `row-gap` 承担。
+左栏 `grid-column: 1`（`#upload` row 2 / `#styles` row 3 / `#output` row 4），右栏 `#preview { grid-column: 2; grid-row: 2 / span 3; position: sticky; top: calc(var(--space-20) + var(--space-8)) }`（=112px，导航实测 80px）。
+`#output` 是**新 id**：配色 / 尺寸 / 导出从 `.animation-layout` 右列搬进左栏底部，`#studio .animation-layout { grid-template-columns: minmax(0, 1fr) }` 让终端独占整栏。
+`#studio .style-grid { repeat(3, 1fr) }`（左栏 640px 里 5 列会挤成细条），`≤768px` 转 2 列。
+`#animPreview` 的祖先链（`.animation-layout > .animation-terminal > .terminal > .terminal-body`）一个字没动，`fitTerminalFontSize()` 不受影响。
+
+**单列（≤1024px）的顺序**：`grid-row: auto` 让 DOM 顺序即视觉顺序，所以 DOM 里 `#preview` 整块排在 `#styles` 之后——单列读下来是 上传 → 风格网格 → 预览 → 导出，与 §5.4「风格网格在预览上方」一致；桌面端靠显式 `grid-column/grid-row` 定位，DOM 顺序不影响两栏布局。
+
+**6 处 scrollIntoView 的降级决策**（原全部 `block: "start"`，会把用户整页拽走）：
+5 处「上传/拉取成功后跳到风格区」（`app.js:685 / 913 / 978 / 1560 / 1598`）→ `block: "nearest"`；第 6 处（点风格卡，`app.js:1418`）→ 桌面**不滚**，改 `flashPreview()` 终端边框脉冲（`app.css:2647`，只动 `border-color`，不动 `.terminal` 自带的 `box-shadow`），`≤1024px` 单列时预览可能被滚出视野才补 `nearest`。
+
+**Hero 真动画**：复用 `static/img/style-preview-blocks.gif`（312×234 / 12 帧，与 `showStyleDemo()` 同一烘焙管线），以 `.hero-demo-art` 塞进 `.hero-terminal` 的 `.terminal-body`；`width:312px; height:auto; aspect-ratio:312/234` + HTML `width/height` 属性双兜底，零 CLS。
+reduced-motion 守卫**只能落 JS**（GIF 由解码器播放，CSS 停不住；挂一条空 `animation: none` 正是 §10 反模式 #8 的假守卫）：`freezeHeroDemo()` 在 `prefers-reduced-motion: reduce` 时把当前帧 `drawImage` 进同尺寸 `<canvas class="hero-demo-art">`（`role="img"` + `aria-label`）。
+作用域独立于测试锁定的 `.animation-terminal .terminal-body .preview-demo-art`（`app.css:740`）——那块一个字没碰。
+
+**帧时长记一笔**：`scripts/bake_style_previews.py:51` 的 `PIECE_INTERVAL = 0.125` 是**源意图 125ms**；GIF 的 `duration` 以厘秒存储，`int(round(0.125 * 1000))`=125 写进去后被量化成 12cs = **实际 120ms/帧**。两个数都对，别再互相"纠正"。
 
 ---
 

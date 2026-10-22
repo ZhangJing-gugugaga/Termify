@@ -7,8 +7,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>动画工坊 · Termify</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261022a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261022a">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261023a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261023a">
 </head>
 <body>
 <div id="toast"></div>
@@ -59,9 +59,16 @@
                             ✓ Rendered with Unicode blocks + TrueColor<br>
                             ✓ Output: cat_termify.py (12.4 KB)<br>
                         </div>
-                        <div class="terminal-line" style="margin-top: 4px;">
+                        <div class="terminal-line hero-cmd-line">
                             <span class="terminal-prompt">$</span>
                             <span class="terminal-cmd">python cat_termify.py</span>
+                        </div>
+                        <img class="hero-demo-art"
+                             src="{{ url_for('static', filename='img/style-preview-blocks.gif') }}"
+                             alt="blocks 风格字符动画：猫在终端里逐帧播放"
+                             width="312" height="234" decoding="async">
+                        <div class="terminal-line hero-cursor-line">
+                            <span class="terminal-prompt">$</span>
                             <span class="terminal-cursor"></span>
                         </div>
                     </div>
@@ -71,7 +78,7 @@
     </section>
 
     <!-- ═══════════ UPLOAD ═══════════ -->
-    <!-- ═══════════ STUDIO（动画工坊：上传 → 风格 → 预览，归一区块）═══════════ -->
+    <!-- ═══════════ STUDIO（动画工坊：左栏 上传 → 风格 → 导出，右栏 终端预览 sticky）═══════════ -->
     <section class="studio-section" id="studio">
         <div class="container">
             <h2 class="section-title">动画工坊 <span class="section-title-en">Studio</span></h2>
@@ -244,16 +251,15 @@
                 </div>
 
                 {% if gallery_enabled %}
-                <p class="style-note">以上 9 张预览是同一件作品（Tethered Spacewalk），只换了字符集 —— 更多作品，去<a href="/gallery">画廊</a>逛逛 →</p>
+                <p class="style-note">以上前 9 张预览是同一件作品（Tethered Spacewalk），只换了字符集；最后一张「自定义字符」是字符拼出的图形 —— 更多作品，去<a href="/gallery">画廊</a>逛逛 →</p>
                 {% endif %}
             </div>
             </div>
 
+            <!-- 右栏：终端预览（桌面 sticky 常驻；≤1024px 转单列时排在风格网格之后） -->
             <div class="studio-block" id="preview">
-                <h3 class="studio-sub">预览 & 下载</h3>
+                <h3 class="studio-sub">终端预览</h3>
                 <div class="animation-layout">
-
-                <!-- Left: Large terminal preview -->
                 <div class="animation-terminal">
                     <div class="terminal">
                         <div class="terminal-header">
@@ -296,8 +302,12 @@
                         </div>
                     </div>
                 </div>
+                </div>
+            </div>
 
-                <!-- Right: Output panel -->
+            <!-- 左栏底部：配色 / 尺寸 / 导出（原 .animation-layout 右列，两栏化后移出） -->
+            <div class="studio-block" id="output">
+                <h3 class="studio-sub">配色 · 尺寸 · 导出</h3>
                 <div class="output-panel">
                     <div class="output-card" id="paletteCard">
                         <div class="output-card-title">配色 / Color scheme</div>
@@ -360,8 +370,6 @@
                     {% if gallery_enabled %}<button class="gallery-share-btn" id="shareToGalleryBtn" style="display:none;">分享到画廊 / Share to gallery</button>{% endif %}
 
                 </div>
-
-            </div>
             </div>
         </div>
     </section>
@@ -579,7 +587,7 @@
         requestAnimationFrame(demoTick);
     </script>
     <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260907a"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20260922a" defer></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20261023a" defer></script>
 
     <!-- Termify 自定义弹窗（替代浏览器原生 alert/confirm） -->
     <div class="termify-modal" id="termifyModal" hidden>

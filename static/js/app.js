@@ -682,7 +682,7 @@
     renderFileList();
     toast("导入完成（" + bitmaps.length + " 帧）· 风格切换零等待");
     var stylesSection = document.getElementById("styles");
-    if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   /* ── T23 JS 渲染已迁移至 static/js/termify-render.js（与画廊作品页共用） ── */
@@ -910,7 +910,7 @@
           selectFile(S.selIdx);
           renderFileList();
           var stylesSection = document.getElementById("styles");
-          if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
+          if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
           if (d.task_ids.length > 1) {
             toast("已上传 " + d.task_ids.length + " 个文件，点击文件名切换");
           }
@@ -975,7 +975,7 @@
       selectFile(S.selIdx);
       renderFileList();
       var stylesSection = document.getElementById("styles");
-      if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
     xhr.addEventListener("error", function () {
       if (uploadZone) uploadZone.classList.remove("uploading");
@@ -1388,6 +1388,18 @@
     }
     setTitleMeta();
   }
+  /* 风格切换后的「已更新」提示：终端边框脉冲一次。
+     两栏化后预览在桌面常驻屏内，滚动比静止更吵，所以用一次脉冲代替。
+     reduced-motion 下由 CSS 降级成静态描边（不闪）。 */
+  function flashPreview() {
+    var termEl = document.querySelector("#preview .terminal");
+    if (!termEl) return;
+    termEl.classList.remove("is-flash");
+    void termEl.offsetWidth;  // 强制重排，连点也能重放动画
+    termEl.classList.add("is-flash");
+    setTimeout(function () { termEl.classList.remove("is-flash"); }, 420);
+  }
+
   qa(".style-card").forEach(function (card) {
     card.addEventListener("click", function () {
       qa(".style-card").forEach(function (c) { c.classList.remove("selected"); });
@@ -1400,7 +1412,14 @@
         requestPreview(s, { silent: !S.taskId });
       }
       var previewEl = document.getElementById("preview");
-      if (previewEl) previewEl.scrollIntoView({ behavior: "instant", block: "start" });
+      // 两栏化后桌面预览常驻屏内：滚过去只会把页面拽飞，改用脉冲提示；单列时才滚到刚好可见
+      if (previewEl) {
+        if (window.matchMedia("(max-width: 1024px)").matches) {
+          previewEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        } else {
+          flashPreview();
+        }
+      }
     });
   });
 
@@ -1538,7 +1557,7 @@
       selectFile(S.selIdx);
       renderFileList();
       var stylesSection = document.getElementById("styles");
-      if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
       urlInput.value = "";
     }
     function doFetchVideoUrl(url) {
@@ -1576,7 +1595,7 @@
                         srcW: os.width || 0, srcH: os.height || 0 }];
         S.selIdx = 0; selectFile(0); renderFileList();
         var stylesSection = byId("styles");
-        if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
         urlInput.value = "";
       }).catch(function (e) {
         urlBtn.disabled = false; urlBtn.textContent = "下载 / Fetch";
@@ -1976,6 +1995,28 @@
 
   initMusicUI();
   updateMusicCard();
+
+  /* ── Hero 动画在 reduced-motion 下只留一帧 ──
+     GIF 的播放归解码器管，CSS 停不住；与其挂一条空的 animation: none 假守卫，
+     不如把当前帧画进 canvas 顶替 <img>：静态、不新增渲染器、不依赖动画。 */
+  (function freezeHeroDemo() {
+    var media = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
+    var img = document.querySelector(".hero-demo-art");
+    if (!img || !media || !media.matches) return;
+    function drawStill() {
+      if (!img.naturalWidth) return;
+      var canvas = document.createElement("canvas");
+      canvas.className = img.className;
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.setAttribute("role", "img");
+      canvas.setAttribute("aria-label", img.getAttribute("alt") || "");
+      canvas.getContext("2d").drawImage(img, 0, 0);
+      if (img.parentNode) img.parentNode.replaceChild(canvas, img);
+    }
+    if (img.complete) drawStill();
+    else img.addEventListener("load", drawStill);
+  })();
 
   /* ── fork 落地：作品页「用它做一版」带 ?fork=<workId>&charset=&width=&height=&color= ──
      只预填编辑器的风格/尺寸/配色，素材仍需用户自己选——Termify 的渲染

@@ -27,14 +27,14 @@
     margin-top: var(--space-2);
 }
 
-/* 工作台：不对称双栏（输入轨 340px + 输出弹性），<940px 折叠单列 */
+/* 工作台：不对称双栏（输入轨 340px + 输出弹性），≤1024px 折叠单列 */
 .ta-workbench {
     display: grid;
     grid-template-columns: 340px minmax(0, 1fr);
     gap: var(--space-8);
     align-items: start;
 }
-@media (max-width: 940px) {
+@media (max-width: 1024px) {
     .ta-workbench { grid-template-columns: 1fr; }
 }
 
@@ -351,12 +351,6 @@
 .ta-input-hint { margin: 6px 0 0; min-height: 1em; }
 .ta-hint-ai { color: var(--green); }
 .ta-hint-warn { color: var(--amber); }
-
-/* 检测到中文时 AI 按钮呼吸提示 */
-@keyframes ta-ai-pulse {
-    0%, 100% { box-shadow: 0 0 0 transparent; }
-    50% { box-shadow: 0 0 14px var(--green-glow); }
-}
 
 /* 字体墙：英文字体 / 中文字体 / 图片字符集三选一，共用同一套卡片。
    卡片等比缩放整幅作品（transform: scale），不截行、不裁字——

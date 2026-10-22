@@ -236,6 +236,23 @@
             text-align: left;
         }
 
+        /* B13：Hero 假终端 → 真动画。素材是烘焙好的 style-preview GIF（312x234 / 12 帧，
+           与工作室「风格演示」同一管线），首帧自带深色底（= --bg-base），落到 .terminal-body
+           上无缝衔接，所以第一眼就是可读的字符画，不会先白后黑。
+           width/height + aspect-ratio 先把高度占住，GIF 解码前也不会把下文顶下来（CLS）。 */
+        .hero-demo-art {
+            display: block;
+            width: 312px;
+            height: auto;
+            max-width: 100%;
+            aspect-ratio: 312 / 234;
+            margin: var(--space-4) auto 0;
+            image-rendering: pixelated;
+        }
+        /* 原来写在下行终端行上的内联 margin-top: 4px，收进样式表 */
+        .hero-cmd-line { margin-top: var(--space-2); }
+        .hero-cursor-line { margin-top: var(--space-3); }
+
         /* ═══════════════════════════════════════════
            TERMINAL WINDOW COMPONENT
            ═══════════════════════════════════════════ */
@@ -345,7 +362,7 @@
         .upload-zone {
             border: 2px dashed var(--border-subtle);
             border-radius: var(--radius-lg);
-            padding: var(--space-16) var(--space-8);
+            padding: var(--space-6) var(--space-8);
             text-align: center;
             cursor: pointer;
             transition: border-color var(--transition-base), background-color var(--transition-base);
@@ -380,9 +397,9 @@
         }
 
         .upload-icon {
-            width: 64px;
-            height: 64px;
-            margin: 0 auto var(--space-6);
+            width: 44px;
+            height: 44px;
+            margin: 0 auto var(--space-3);
             border: 2px solid var(--border-subtle);
             border-radius: var(--radius-md);
             display: flex;
@@ -393,8 +410,8 @@
         }
 
         .upload-icon svg {
-            width: 28px;
-            height: 28px;
+            width: 22px;
+            height: 22px;
             stroke: var(--text-dim);
             transition: stroke var(--transition-fast);
         }
@@ -433,7 +450,7 @@
             display: flex;
             justify-content: center;
             gap: var(--space-3);
-            margin-top: var(--space-6);
+            margin-top: var(--space-3);
             position: relative;
             z-index: var(--z-content);
         }
@@ -1824,7 +1841,7 @@
         }
         .gallery-card:hover {
             border-color: var(--green-dim);
-            transform: translateY(-3px);
+            transform: translateY(-2px);
             box-shadow: 0 8px 32px rgba(0,0,0,0.4);
         }
         .gallery-card-img {
@@ -2488,7 +2505,7 @@
     padding: var(--space-4);
     white-space: pre;
 }
-@media (max-width: 720px) {
+@media (max-width: 768px) {
     .text-art-actions { margin-left: 0; width: 100%; }
     .text-art-select { min-width: 0; width: 100%; }
     .text-art-controls { align-items: stretch; flex-direction: column; }
@@ -2594,12 +2611,64 @@
 
         /* ── 动画工坊区块（主页与字符艺术页共用，原在 text_art.css 导致主页缺失间距） ── */
 .studio-section { padding: var(--space-12) 0 var(--space-16); }
-.studio-block { padding-top: var(--space-10); }
-.studio-block + .studio-block {
-        border-top: 1px solid var(--border-dim);
-        margin-top: var(--space-10);
+
+/* DESIGN §5.4：桌面双栏 —— 左栏 上传 / 风格 / 导出 正常滚动，右栏终端预览 sticky 常驻。
+   区块间距一律交给 grid 的 row-gap，不再靠相邻兄弟的 border-top 硬切。 */
+#studio > .container {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 480px);
+        column-gap: var(--space-8);
+        row-gap: var(--space-10);
+        align-items: start;
 }
-.studio-block:first-of-type { padding-top: 0; }
+#studio .section-title { grid-column: 1 / -1; margin-bottom: 0; }
+/* 网格项默认 min-width:auto，终端里的占位字符画会把栏宽顶开，这里统一放开 */
+#studio .studio-block { min-width: 0; }
+#studio #upload { grid-column: 1; grid-row: 2; }
+#studio #styles { grid-column: 1; grid-row: 3; }
+#studio #output { grid-column: 1; grid-row: 4; }
+/* 右栏：top 取「导航实际高度(~80px) + 呼吸间距」，压不到导航底下；
+   grid-row 跨满左栏三行，才有可供 sticky 滑动的余量。 */
+#studio #preview {
+        grid-column: 2;
+        grid-row: 2 / span 3;
+        position: sticky;
+        top: calc(var(--space-20) + var(--space-8));
+        align-self: start;
+}
+/* 输出面板已搬出 .animation-layout：终端独占整栏，否则原来留给侧栏的 320px 会把画布压到 ~130px */
+#studio .animation-layout { grid-template-columns: minmax(0, 1fr); }
+/* 风格卡在 ~640px 的左栏里排 3 列；沿用 5 列会挤成细条 */
+#studio .style-grid { grid-template-columns: repeat(3, 1fr); }
+
+/* 平板及以下：转单列，DOM 顺序即 上传 → 风格 → 预览 → 导出（§5.4 要求风格网格在预览上方），并解除 sticky */
+@media (max-width: 1024px) {
+        #studio > .container { grid-template-columns: minmax(0, 1fr); }
+        #studio #upload, #studio #preview, #studio #styles, #studio #output {
+                grid-column: 1;
+                grid-row: auto;
+        }
+        #studio #preview { position: static; }
+}
+
+@media (max-width: 768px) {
+        #studio .style-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* 风格切换后的「已更新」脉冲（JS 切 .is-flash）：桌面预览常驻屏内，闪一下边框比把页面滚走安静。
+   只动 border-color —— 纯绘制、不触发重排；reduced-motion 下退化成静态描边（不闪）。 */
+@keyframes studio-flash {
+        0% { border-color: var(--green); }
+        100% { border-color: var(--border-subtle); }
+}
+#studio #preview .terminal.is-flash { animation: studio-flash 400ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+        #studio #preview .terminal.is-flash {
+                animation: none;
+                border-color: var(--green);
+        }
+}
 .studio-sub {
         color: var(--text-secondary);
         font-family: var(--font-mono);
