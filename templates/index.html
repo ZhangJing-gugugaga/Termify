@@ -116,11 +116,11 @@
             </div>
 
             <div class="studio-block" id="styles">
-                <h3 class="studio-sub">选择渲染风格</h3>
-                <div class="style-grid">
+                <h3 class="studio-sub" id="stylesHeading">选择渲染风格</h3>
+                <div class="style-grid" role="radiogroup" aria-labelledby="stylesHeading">
 
                 <!-- ASCII -->
-                <div class="style-card selected" data-style="ascii">
+                <div class="style-card selected" data-style="ascii" role="radio" aria-checked="true" tabindex="0">
                     <div class="style-preview ascii">
                         <img src="{{ url_for('static', filename='img/style-preview-ascii.gif') }}"
                              alt="Tethered Spacewalk · 经典ASCII灰度"
@@ -133,7 +133,7 @@
                 </div>
 
                 <!-- ASCII Lite -->
-                <div class="style-card" data-style="ascii-lite">
+                <div class="style-card" data-style="ascii-lite" role="radio" aria-checked="false" tabindex="-1">
                     <div class="style-preview ascii-lite">
                         <img src="{{ url_for('static', filename='img/style-preview-ascii-lite.gif') }}"
                              alt="Tethered Spacewalk · 简约ASCII"
@@ -146,7 +146,7 @@
                 </div>
 
                 <!-- Blocks -->
-                <div class="style-card" data-style="blocks">
+                <div class="style-card" data-style="blocks" role="radio" aria-checked="false" tabindex="-1">
                     <div class="style-preview blocks">
                         <img src="{{ url_for('static', filename='img/style-preview-blocks.gif') }}"
                              alt="Tethered Spacewalk · Unicode色块"
@@ -159,7 +159,7 @@
                 </div>
 
                 <!-- Braille -->
-                <div class="style-card" data-style="braille">
+                <div class="style-card" data-style="braille" role="radio" aria-checked="false" tabindex="-1">
                     <div class="style-preview braille">
                         <img src="{{ url_for('static', filename='img/style-preview-braille.gif') }}"
                              alt="Tethered Spacewalk · Braille点阵"
@@ -172,7 +172,7 @@
                 </div>
 
                 <!-- Geometric -->
-                <div class="style-card" data-style="geometric">
+                <div class="style-card" data-style="geometric" role="radio" aria-checked="false" tabindex="-1">
                     <div class="style-preview geometric">
                         <img src="{{ url_for('static', filename='img/style-preview-geometric.gif') }}"
                              alt="Tethered Spacewalk · 几何图形"
@@ -185,7 +185,7 @@
                 </div>
 
                 <!-- Binary -->
-                <div class="style-card" data-style="binary">
+                <div class="style-card" data-style="binary" role="radio" aria-checked="false" tabindex="-1">
                     <div class="style-preview binary">
                         <img src="{{ url_for('static', filename='img/style-preview-binary.gif') }}"
                              alt="Tethered Spacewalk · 极简二值"
@@ -198,7 +198,7 @@
                 </div>
 
                 <!-- Shades -->
-                <div class="style-card" data-style="shades">
+                <div class="style-card" data-style="shades" role="radio" aria-checked="false" tabindex="-1">
                     <div class="style-preview binary">
                         <img src="{{ url_for('static', filename='img/style-preview-shades.gif') }}"
                              alt="Tethered Spacewalk · 明暗渐变块"
@@ -211,7 +211,7 @@
                 </div>
 
                 <!-- Halftone -->
-                <div class="style-card" data-style="halftone">
+                <div class="style-card" data-style="halftone" role="radio" aria-checked="false" tabindex="-1">
                     <div class="style-preview halftone">
                         <img src="{{ url_for('static', filename='img/style-preview-halftone.gif') }}"
                              alt="Tethered Spacewalk · 网点印刷"
@@ -224,7 +224,7 @@
                 </div>
 
                 <!-- Dither -->
-                <div class="style-card" data-style="dither">
+                <div class="style-card" data-style="dither" role="radio" aria-checked="false" tabindex="-1">
                     <div class="style-preview dither">
                         <img src="{{ url_for('static', filename='img/style-preview-dither.gif') }}"
                              alt="Tethered Spacewalk · 抖动噪点"
@@ -237,7 +237,7 @@
                 </div>
 
                 <!-- Custom -->
-                <div class="style-card" data-style="custom">
+                <div class="style-card" data-style="custom" role="radio" aria-checked="false" tabindex="-1">
                     <div class="style-preview ascii">
                         <img src="{{ url_for('static', filename='img/style-preview-custom.gif') }}"
                              alt="多种字符拼成的无限符号 · 自定义字符"

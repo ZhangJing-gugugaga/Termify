@@ -501,6 +501,7 @@
     S.wasPlaying = true;
     resetProgressClock();  // 换作品先归零，别让上一个作品的进度留在条上
     markSelected(".style-card", '[data-style="' + S.charset + '"]');
+    syncStyleCards();
     renderFileList();
     updateMusicCard();
     requestPreview(S.charset);
@@ -1583,30 +1584,102 @@
       if (on) c.setAttribute("aria-disabled", "true");
       else c.removeAttribute("aria-disabled");
     });
+    syncStyleCards();  // aria-disabled 变了，roving tabindex 必须跟着重算
+  }
+
+  /* ── UX-2 风格卡 = 单选组（WAI-ARIA APG radio group）──
+     div 没有原生 radio 的键盘行为，roving tabindex 得自己维护：
+       · 选中项 tabindex=0，其余 -1 → Tab 进组只停在选中项，一次 Tab 出组
+       · 方向键在「未禁用」卡之间循环，并把选中一起带走（follow-focus）
+     follow-focus 的依据：原生 <input type=radio> 与 APG radio group 示例
+     都是「焦点移动即选中」，用户在别处的肌肉记忆直接成立；若改成「焦点移、
+     Space 才选中」，键盘用户按方向键时 aria-checked 不动、预览也不动，
+     反而要先猜系统处于哪种模式。Space 保留为选中当前聚焦项的显式键，
+     已选中时不再重放渲染（避免一次按键两次请求）。 */
+  function syncStyleCards() {
+    var cards = qa(".style-card");
+    var sel = null;
+    var i;
+    for (i = 0; i < cards.length; i++) {
+      if (cards[i].classList.contains("selected")) { sel = cards[i]; break; }
+    }
+    for (i = 0; i < cards.length; i++) {
+      var c = cards[i];
+      var checked = (c === sel);
+      var off = c.getAttribute("aria-disabled") === "true";
+      c.setAttribute("aria-checked", checked ? "true" : "false");
+      // 禁用组整体不进 Tab 序列；禁用卡永远拿不到 0
+      c.setAttribute("tabindex", (checked && !off) ? "0" : "-1");
+    }
+  }
+  // 方向键下一张「可用」卡，两端回绕；全禁用时返回 null（禁用卡不参与循环）
+  function nextStyleCard(card, dir) {
+    var cards = qa(".style-card");
+    var open = [];
+    var i;
+    for (i = 0; i < cards.length; i++) {
+      if (cards[i].getAttribute("aria-disabled") !== "true") open.push(cards[i]);
+    }
+    var at = -1;
+    for (i = 0; i < open.length; i++) {
+      if (open[i] === card) { at = i; break; }
+    }
+    if (at < 0) return null;
+    return open[(at + dir + open.length) % open.length];
+  }
+  /* 唯一的选中入口：鼠标、方向键、Space 都走这里，保证 .selected 与
+     aria-checked / tabindex 永远同一次写。skipIfSelected 只给键盘用——
+     已经是选中项时不再重放预览请求（鼠标连点维持原有重放行为）。 */
+  function selectStyleCard(card, skipIfSelected) {
+    var was = card.classList.contains("selected");
+    qa(".style-card").forEach(function (c) { c.classList.remove("selected"); });
+    card.classList.add("selected");
+    syncStyleCards();
+    if (skipIfSelected && was) return;
+    var s = card.getAttribute("data-style");
+    if (!S.taskId) showStyleDemo(s);
+    if (s === "custom" && !S.ramp) {
+      openCustomCharsetModal();  // 没填过字符 → 打开引导编辑器
+    } else {
+      requestPreview(s, { silent: !S.taskId });
+    }
+    var previewEl = document.getElementById("preview");
+    // 两栏化后桌面预览常驻屏内：滚过去只会把页面拽飞，改用脉冲提示；单列时才滚到刚好可见
+    if (previewEl) {
+      if (window.matchMedia("(max-width: 1024px)").matches) {
+        previewEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      } else {
+        flashPreview();
+      }
+    }
   }
 
   qa(".style-card").forEach(function (card) {
     card.addEventListener("click", function () {
-      qa(".style-card").forEach(function (c) { c.classList.remove("selected"); });
-      card.classList.add("selected");
-      var s = card.getAttribute("data-style");
-      if (!S.taskId) showStyleDemo(s);
-      if (s === "custom" && !S.ramp) {
-        openCustomCharsetModal();  // 没填过字符 → 打开引导编辑器
-      } else {
-        requestPreview(s, { silent: !S.taskId });
+      selectStyleCard(card, false);
+    });
+    card.addEventListener("keydown", function (e) {
+      var k = e.key || "";
+      var code = e.keyCode || 0;
+      if (k === " " || k === "Spacebar" || code === 32) {
+        e.preventDefault();  // 空格不滚页
+        selectStyleCard(card, true);
+        return;
       }
-      var previewEl = document.getElementById("preview");
-      // 两栏化后桌面预览常驻屏内：滚过去只会把页面拽飞，改用脉冲提示；单列时才滚到刚好可见
-      if (previewEl) {
-        if (window.matchMedia("(max-width: 1024px)").matches) {
-          previewEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        } else {
-          flashPreview();
-        }
-      }
+      var dir = 0;
+      if (k === "ArrowRight" || k === "ArrowDown" || k === "Right" || k === "Down" ||
+          code === 39 || code === 40) dir = 1;
+      else if (k === "ArrowLeft" || k === "ArrowUp" || k === "Left" || k === "Up" ||
+          code === 37 || code === 38) dir = -1;
+      if (dir === 0) return;
+      e.preventDefault();
+      var next = nextStyleCard(card, dir);
+      if (!next) return;
+      selectStyleCard(next, true);  // follow-focus：先选中再给焦点
+      next.focus();
     });
   });
+  syncStyleCards();
 
 
   /* ══════════ 分辨率：列数滑杆 + 行高按素材比例自动推导 ══════════
@@ -2197,6 +2270,7 @@
     if (charset && CHARSET_KEYS.indexOf(charset) >= 0) {
       S.charset = charset;
       markSelected(".style-card", '[data-style="' + charset + '"]');
+      syncStyleCards();
     }
     if (width > 0) {
       applyColumns(width, false);  // 行数仍按素材比例推导，只对齐列数
