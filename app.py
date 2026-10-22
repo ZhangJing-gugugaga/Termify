@@ -24,6 +24,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from termify.video import VALID_VIDEO_EXTS
 from termify import paths
@@ -85,6 +86,52 @@ def _skip_compress_partial(resp):
     return resp
 
 
+# PF-3b 大响应体积闸门：flask-compress 对非流式响应是"整块压完再发"——先
+# response.get_data() 拿全量字节，压完再 set_data() 并把 Content-Length 改成
+# 压缩后长度，首字节要等全量编码结束。12.1MB 的 source-frames JSON 在 br q9
+# 下要压 ~24s（实测 TTFB identity 3.53s / gzip 5.46s / br 27.65s），而真实
+# Chrome 默认发 Accept-Encoding: br，即 100% 的用户命中这条最慢路径。
+# 闸门：会走压缩（2xx + mimetype 在白名单 + 尚无 Content-Encoding）且未压缩
+# 体积超阈值时预置 Content-Encoding: identity —— flask-compress 见到响应已带
+# Content-Encoding 就直接 return（与 _skip_compress_partial 同一机制），于是
+# 原始字节直发。小于阈值的响应行为完全不变，仍 br 优先。
+# 阈值 1 MiB：br q9 编码 JSON 约 0.5 MB/s，1MiB 大致就是"压完要 1-2s"的分界；
+# 再往下压不动这个瓶颈，再往上压缩收益已经抵不过首字节延迟。命中它的真实端点：
+# source-frames 12.13MB、embed-frames 6.23MB、preview 6.26MB（三者都是整块
+# jsonify，无分块 flush 的可能）。
+COMPRESS_MAX_SIZE = 1024 * 1024
+
+
+@app.after_request
+def _skip_compress_large(resp):
+    """超阈值响应不压缩（identity 直发）。
+
+    体积按未压缩字节判定：jsonify 走 Response.set_data()、send_file 走文件
+    大小，两者都会写 Content-Length，即 resp.content_length。取不到时退回
+    calculate_content_length()——它只把已拼好的 body 各段 len() 相加，不会
+    触发序列化或压缩。
+
+    流式 / direct_passthrough 响应不设闸门：flask-compress 对它们走
+    COMPRESS_ALGORITHM_STREAMING 的分块压缩（逐块 flush 并摘掉 Content-Length），
+    首字节不等全量压完，本就没有这个延迟问题；在本 hook 里给流式响应预置
+    identity 反而会把本可压缩的 CSS/JS 静态文件打回裸传。
+    """
+    if "Content-Encoding" in resp.headers:
+        return resp
+    if resp.mimetype not in app.config["COMPRESS_MIMETYPES"]:
+        return resp
+    if not 200 <= resp.status_code < 300:
+        return resp
+    if resp.is_streamed or resp.direct_passthrough:
+        return resp
+    size = resp.content_length
+    if size is None:
+        size = resp.calculate_content_length()
+    if size is not None and size > COMPRESS_MAX_SIZE:
+        resp.headers["Content-Encoding"] = "identity"
+    return resp
+
+
 @app.errorhandler(404)
 def _not_found(_e):
     """404 落到站点风格页面（此前是 Flask 默认英文页：无导航、无中文、无返回入口）。
@@ -123,6 +170,70 @@ def _method_not_allowed(e):
 def _request_entity_too_large(_e):
     """请求体超过 MAX_CONTENT_LENGTH 时返回 JSON（而非 Flask 默认 HTML 页）。"""
     return jsonify({"error": "文件过大（上限 20MB） / File too large (max 20MB)"}), 413
+
+
+# --- S-2 写接口同源校验（CSRF）---------------------------------------------
+# 本站所有状态变更接口都是 /api/ 下的 POST/PUT/PATCH/DELETE，凭据只走请求头
+# （X-Termify-Admin-Pwd / X-Termify-Admin），没有 Cookie 会话，因此只要浏览器
+# 无法把跨站写请求打到这些路径上，CSRF 面就闭合。零依赖实现，不引入 Flask-WTF。
+#
+# 判定顺序 Origin -> Referer -> Sec-Fetch-Site：
+# 1. 有 Origin 就必须与 request.host_url 同源（scheme+host+port 全等）；
+#    "Origin: null"（沙箱 iframe、跨源重定向后的 POST）一律按跨源拒绝。
+# 2. 无 Origin 退回 Referer，同样必须同源。
+# 3. 两者都缺时不拒绝：浏览器对非 GET 请求必带 Origin，缺失即说明是非浏览器
+#    客户端（curl / 脚本 / 老客户端 / 测试 test_client）。它们没有可被冒用的
+#    环境凭据，一刀切拒绝只误伤 CLI 与测试、不增加安全性；此时若带了
+#    Sec-Fetch-Site（现代浏览器必发）且不是 same-origin/none，仍然拒绝，
+#    覆盖"中间件/代理剥掉 Origin 但浏览器仍发 Sec-Fetch-Site"的场景。
+_WRITE_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+_WRITE_GUARD_PREFIX = "/api/"
+_SEC_FETCH_ALLOWED = frozenset({"same-origin", "none"})
+
+
+def _url_origin(value: str) -> str:
+    """把 Origin/Referer/URL 归一成 'scheme://host[:port]' 小写串；非法返回 ""。"""
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return ""
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        return ""
+    return f"{parts.scheme}://{parts.netloc}".lower()
+
+
+def _cross_site_reject(reason: str):
+    """跨站写请求统一 403 + JSON（与 404/405/413 的 API 分支风格一致）。"""
+    return jsonify({
+        "error": "跨站请求已拒绝 / Cross-site request rejected",
+        "reason": reason,
+    }), 403
+
+
+@app.before_request
+def _write_origin_guard():
+    """对 /api/ 下所有状态变更请求做同源校验（S-2）。"""
+    if request.method in _WRITE_SAFE_METHODS:
+        return None
+    if not request.path.startswith(_WRITE_GUARD_PREFIX):
+        return None
+    self_origin = _url_origin(request.host_url)
+    origin = request.headers.get("Origin")
+    if origin is not None:
+        if self_origin and _url_origin(origin) == self_origin:
+            return None
+        return _cross_site_reject("Origin 与本站不同源 / Origin not same-origin")
+    referer = request.headers.get("Referer")
+    if referer:
+        if self_origin and _url_origin(referer) == self_origin:
+            return None
+        return _cross_site_reject("Referer 与本站不同源 / Referer not same-origin")
+    site = (request.headers.get("Sec-Fetch-Site") or "").strip().lower()
+    if site and site not in _SEC_FETCH_ALLOWED:
+        return _cross_site_reject(
+            "Sec-Fetch-Site 指示跨站 / Sec-Fetch-Site not same-origin")
+    return None
+
 
 _ABS_PATH_RE = re.compile(
     r"(?:[A-Za-z]:[\\/]|\\\\[^\\\s]+\\|/(?:home|root|usr|var|opt|srv|tmp|mnt|Users|private)/)"
@@ -381,6 +492,93 @@ def _rate_check(ip: str, action: str, *, per_minute: int | None = None,
                 return False, f"{action} rate limit: {per_day}/day exceeded"
         entries.append((action, now))
         return True, ""
+
+# --- S-1 管理口令失败限流 -------------------------------------------------
+# /api/gallery/admin 系列此前没有任何失败计数：错误口令可以无限连打。
+# 这里给"管理口令校验"单独一层失败计数 + 退避窗口，不复用 _rate_check 的
+# action 配额（正确口令不该被普通接口的配额连带惩罚）。
+# 阈值 10 次/10 分钟、命中后锁 15 分钟：管理员手误 2~3 次远不到阈值，而爆破
+# 被压到 10 次/10 分钟（约 1440 次/天），对人工口令已不可行。
+ADMIN_PWD_FAIL_MAX = 10
+ADMIN_PWD_FAIL_WINDOW = 600
+ADMIN_PWD_FAIL_LOCK = 900
+_ADMIN_PWD_MAX_IPS = 4096
+
+_ADMIN_PWD_LOCK = threading.Lock()
+_ADMIN_PWD_FAILS: dict[str, list[float]] = {}   # ip -> 窗口内失败时刻
+_ADMIN_PWD_BLOCKED: dict[str, float] = {}       # ip -> 解锁时刻
+
+
+def _admin_pwd_reset(ip: str) -> None:
+    with _ADMIN_PWD_LOCK:
+        _ADMIN_PWD_FAILS.pop(ip, None)
+        _ADMIN_PWD_BLOCKED.pop(ip, None)
+
+
+def _admin_pwd_wait(ip: str) -> int:
+    """该 IP 距解锁还剩的秒数；0 表示未被锁定（顺带清掉过期记录）。"""
+    now = time.time()
+    with _ADMIN_PWD_LOCK:
+        until = _ADMIN_PWD_BLOCKED.get(ip)
+        if until is None:
+            return 0
+        if until <= now:
+            _ADMIN_PWD_BLOCKED.pop(ip, None)
+            return 0
+        return int(until - now) + 1
+
+
+def _admin_pwd_fail(ip: str) -> int:
+    """记一次失败口令，返回剩余可尝试次数（0 = 本次已触发锁定）。"""
+    now = time.time()
+    with _ADMIN_PWD_LOCK:
+        if len(_ADMIN_PWD_FAILS) >= _ADMIN_PWD_MAX_IPS:
+            for key in [k for k, v in _ADMIN_PWD_FAILS.items()
+                        if not v or now - v[-1] >= ADMIN_PWD_FAIL_WINDOW]:
+                _ADMIN_PWD_FAILS.pop(key, None)
+        fails = [t for t in _ADMIN_PWD_FAILS.get(ip, ())
+                 if now - t < ADMIN_PWD_FAIL_WINDOW]
+        fails.append(now)
+        if len(fails) >= ADMIN_PWD_FAIL_MAX:
+            _ADMIN_PWD_FAILS.pop(ip, None)  # 锁定期间窗口清零，解锁后重新计数
+            _ADMIN_PWD_BLOCKED[ip] = now + ADMIN_PWD_FAIL_LOCK
+            return 0
+        _ADMIN_PWD_FAILS[ip] = fails
+        return ADMIN_PWD_FAIL_MAX - len(fails)
+
+
+def _admin_locked_response(wait: int):
+    resp = jsonify({
+        "error": "管理员口令失败次数过多，请稍后再试 / "
+                 "Too many failed admin password attempts, try again later",
+        "retry_after": wait,
+        "remaining_attempts": 0,
+    })
+    resp.status_code = 429
+    resp.headers["Retry-After"] = str(wait)
+    return resp
+
+
+def _admin_check() -> tuple[bool, object]:
+    """校验 X-Termify-Admin-Pwd 并做失败限流。
+
+    返回 (True, None) 表示口令正确（该 IP 计数已清零，调用方继续）；
+    返回 (False, response) 表示已生成 403（附剩余次数）或 429（退避中，
+    附 Retry-After / retry_after）。
+    """
+    ip = _client_ip()
+    wait = _admin_pwd_wait(ip)
+    if wait:
+        return False, _admin_locked_response(wait)
+    if _secret_equal(request.headers.get("X-Termify-Admin-Pwd", ""), _admin_pwd()):
+        _admin_pwd_reset(ip)
+        return True, None
+    remaining = _admin_pwd_fail(ip)
+    if remaining <= 0:
+        return False, _admin_locked_response(_admin_pwd_wait(ip) or ADMIN_PWD_FAIL_LOCK)
+    resp = jsonify({"error": "Unauthorized", "remaining_attempts": remaining})
+    resp.status_code = 403
+    return False, resp
 
 def _parse_rgb(value):
     """Parse 'rgb(R,G,B)' string into (R,G,B) tuple, or None if invalid/empty."""
@@ -2912,9 +3110,9 @@ def gallery_admin_list():
 
     Requires X-Termify-Admin-Pwd header.
     """
-    hdr_pwd = request.headers.get("X-Termify-Admin-Pwd", "")
-    if not _secret_equal(hdr_pwd, _admin_pwd()):
-        return jsonify({"error": "Unauthorized"}), 403
+    ok, deny = _admin_check()
+    if not ok:
+        return deny
     GALLERY_DB.anonymize_old_report_ips(days=90)  # 隐私最小化：过期举报人 IP 置空
     works = GALLERY_DB.admin_list_works()
     reports = GALLERY_DB.admin_list_reports(status="pending")
@@ -2927,9 +3125,9 @@ def gallery_admin_list():
 @gallery_route("/api/gallery/admin/<work_id>", methods=["DELETE"])
 def gallery_admin_delete(work_id):
     """Admin hard delete."""
-    hdr_pwd = request.headers.get("X-Termify-Admin-Pwd", "")
-    if not _secret_equal(hdr_pwd, _admin_pwd()):
-        return jsonify({"error": "Unauthorized"}), 403
+    ok, deny = _admin_check()
+    if not ok:
+        return deny
     work = GALLERY_DB.get_work(work_id)
     if not work:
         return jsonify({"error": "Work not found"}), 404
@@ -2953,9 +3151,9 @@ def gallery_admin_delete(work_id):
 @gallery_route("/api/gallery/admin/report/<int:report_id>", methods=["POST"])
 def gallery_admin_resolve_report(report_id):
     """Mark a report resolved/dismissed."""
-    hdr_pwd = request.headers.get("X-Termify-Admin-Pwd", "")
-    if not _secret_equal(hdr_pwd, _admin_pwd()):
-        return jsonify({"error": "Unauthorized"}), 403
+    ok, deny = _admin_check()
+    if not ok:
+        return deny
     data = request.get_json(silent=True) or {}
     status = data.get("status", "resolved")
     if status not in ("resolved", "dismissed"):
