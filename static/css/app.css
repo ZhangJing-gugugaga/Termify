@@ -386,6 +386,40 @@
             background: rgba(0, 255, 65, 0.03);
         }
 
+        /* UX-1 上传在途：实线绿框 + 呼吸 glow + 图标浮动（hover 的
+           .upload-zone::before 只在鼠标下亮，触屏/键盘用户看不到）。
+           指针仍是手型可点，失败可原地重试；文案播报在 #uploadStatus。 */
+        .upload-zone.uploading {
+            border-style: solid;
+            border-color: var(--green);
+            background: rgba(0, 255, 65, 0.04);
+            cursor: progress;
+        }
+
+        .upload-zone.uploading::before {
+            opacity: 1;
+            animation: upload-breathe 1.8s ease-in-out infinite;
+        }
+
+        .upload-zone.uploading .upload-icon {
+            border-color: var(--green);
+        }
+
+        .upload-zone.uploading .upload-icon svg {
+            stroke: var(--green);
+            animation: upload-bob 1.2s ease-in-out infinite;
+        }
+
+        @keyframes upload-breathe {
+            0%, 100% { opacity: 0.35; }
+            50% { opacity: 0.95; }
+        }
+
+        @keyframes upload-bob {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-3px); }
+        }
+
         .upload-icon {
             width: 44px;
             height: 44px;
@@ -454,6 +488,63 @@
             border-radius: var(--radius-sm);
             color: var(--text-dim);
             letter-spacing: 0.5px;
+        }
+
+        /* UX-1 上传状态行（#uploadStatus）：文字 + 指示环，两者都有语义，
+           颜色只是二次信息（is-busy 绿 / is-error 红）。 */
+        .upload-status {
+            display: none;
+            align-items: center;
+            gap: var(--space-3);
+            margin-top: var(--space-3);
+            font-family: var(--font-mono);
+            font-size: var(--fs-sm);
+            line-height: 1.5;
+            color: var(--text-secondary);
+            /* 375px 下长文件名 / 长错误串换行，不撑破版面 */
+            overflow-wrap: break-word;
+            word-break: break-word;
+            min-width: 0;
+            text-align: left;
+        }
+
+        .upload-status.show { display: flex; }
+
+        .upload-status.is-busy { color: var(--green); }
+
+        .upload-status.is-error { color: var(--red); }
+
+        /* 指示环：busy 时旋转，error 时实心静止 */
+        .upload-status.show::before {
+            content: '';
+            flex: 0 0 auto;
+            width: 10px;
+            height: 10px;
+            border: 2px solid currentColor;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: upload-spin 0.9s linear infinite;
+        }
+
+        .upload-status.is-error::before {
+            animation: none;
+            border-top-color: currentColor;
+            background: currentColor;
+        }
+
+        @keyframes upload-spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .upload-zone.uploading::before,
+            .upload-zone.uploading .upload-icon svg,
+            .upload-status.show::before {
+                animation: none;
+            }
+            .upload-status.show::before {
+                border-top-color: currentColor;
+            }
         }
 
         /* ── URL fetch ── */

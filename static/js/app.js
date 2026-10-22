@@ -913,15 +913,44 @@
     });
   }
 
+  /* ── UX-1 上传状态：可见文案 + role="status" 播报 ──
+     #uploadStatus 是 #uploadZone 的兄弟节点，zone 上的 aria-busy 因此
+     不会压掉 live region 的播报；文字必定写进 DOM，动画只作辅助。 */
+  var uploadStatusEl = null;
+  function uploadStatusNode() {
+    if (!uploadStatusEl) uploadStatusEl = byId("uploadStatus");
+    return uploadStatusEl;
+  }
+  function setUploadStatus(msg, kind) {
+    var el = uploadStatusNode();
+    if (!el) return;
+    el.textContent = msg;
+    el.className = "upload-status show" + (kind ? " is-" + kind : "");
+  }
+  function clearUploadStatus() {
+    var el = uploadStatusNode();
+    if (!el) return;
+    el.textContent = "";
+    el.className = "upload-status";
+  }
+  function uploadZoneBusy(on) {
+    if (!uploadZone) return;
+    if (on) uploadZone.classList.add("uploading");
+    else uploadZone.classList.remove("uploading");
+    if (on) uploadZone.setAttribute("aria-busy", "true");
+    else uploadZone.removeAttribute("aria-busy");
+  }
+
   function uploadImages(files) {
     var fd = new FormData();
     files.forEach(function (f) { fd.append("files", f); });
-    if (uploadZone) uploadZone.classList.add("uploading");
+    uploadZoneBusy(true);
+    setUploadStatus("正在上传 " + files.length + " 个文件，完成后自动生成预览… / Uploading…", "busy");
     setCardsDisabled(true);  // 上传在途：还没有 taskId，风格卡此刻真点不动
     fetch("/api/upload-batch", { method: "POST", body: fd })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (uploadZone) uploadZone.classList.remove("uploading");
+        uploadZoneBusy(false);
         setCardsDisabled(false);
         if (d.errors && d.errors.length) {
           d.errors.forEach(function (err) { toast(err.filename + ": " + err.error); });
@@ -947,18 +976,30 @@
           toast("没有有效文件被上传");
         }
         if (d.error) { toast(d.error); }
+        // 收口：失败文案留在页面上（可读、可原地重试），成功一律清除不残留
+        var failMsg = "";
+        if (d.errors && d.errors.length) {
+          failMsg = d.errors[0].filename + "：" + d.errors[0].error;
+        } else if (d.error) {
+          failMsg = d.error;
+        } else if (!(d.task_ids && d.task_ids.length)) {
+          failMsg = "没有有效文件 / No valid file";
+        }
+        if (failMsg) setUploadStatus("上传失败：" + failMsg + " · 点此区域重试 / Retry", "error");
+        else clearUploadStatus();
       })
       .catch(function (e) {
-        if (uploadZone) uploadZone.classList.remove("uploading");
+        uploadZoneBusy(false);
         setCardsDisabled(false);
         toast("upload failed: " + e);
+        setUploadStatus("上传失败：" + e + " · 点此区域重试 / Retry", "error");
       });
   }
 
   function uploadVideo(file) {
     var fd = new FormData();
     fd.append("file", file);
-    if (uploadZone) uploadZone.classList.add("uploading");
+    uploadZoneBusy(true);
     var startedAt = Date.now();
     showModal("上传视频 " + file.name,
       "0% · 正在上传…", false, true);
@@ -985,7 +1026,7 @@
       startFakeProgress();
     });
     xhr.addEventListener("load", function () {
-      if (uploadZone) uploadZone.classList.remove("uploading");
+      uploadZoneBusy(false);
       hideModal();
       var d = null;
       try { d = JSON.parse(xhr.responseText); } catch (err) { d = null; }
@@ -1008,7 +1049,7 @@
       if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
     xhr.addEventListener("error", function () {
-      if (uploadZone) uploadZone.classList.remove("uploading");
+      uploadZoneBusy(false);
       hideModal();
       toast("video upload failed: 网络错误");
     });

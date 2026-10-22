@@ -98,6 +98,11 @@
                     <span class="format-tag">.WEBM</span>
                 </div>
             </div>
+            <!-- UX-1 上传状态：可见文案 + role=status 播报。
+                 常驻空节点（:empty 不占位），JS 只填 textContent / 切 class；
+                 文字是主通道，关掉动画/色弱也读得懂。 -->
+            <p class="upload-status" id="uploadStatus" role="status"
+               aria-live="polite" aria-atomic="true"></p>
             <!-- File list (populated after upload) -->
             <div class="file-list" id="fileList"></div>
             <!-- URL fetch input -->
