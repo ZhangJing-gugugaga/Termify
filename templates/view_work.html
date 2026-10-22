@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261026a">
 </head>
 <body>
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <!-- ═══════════ NAVIGATION ═══════════ -->
     <nav>
@@ -1013,9 +1013,24 @@
             if (exportBackdropEl) exportBackdropEl.addEventListener("click", function (e) {
                 if (e.target === exportBackdropEl) exportBackdropEl.hidden = true;
             });
+            // 导出在途状态：连点 / 回车只认第一次提交（复用 app.css 的 .export-confirm.busy spinner）
+            var exportBusy = false;
+            var exportConfirmIdleText = "";
+            function setExportBusy(busy) {
+                exportBusy = !!busy;
+                var btn = document.getElementById("exportConfirmBtn");
+                if (!btn) return;
+                if (!exportConfirmIdleText) exportConfirmIdleText = btn.textContent;
+                btn.disabled = exportBusy;
+                btn.setAttribute("aria-busy", exportBusy ? "true" : "false");
+                btn.classList.toggle("busy", exportBusy);
+                btn.textContent = exportBusy ? "导出中… / Exporting…" : exportConfirmIdleText;
+            }
             var exportConfirmBtn = document.getElementById("exportConfirmBtn");
             if (exportConfirmBtn) exportConfirmBtn.addEventListener("click", function () {
+                if (exportBusy) return;  // 在途：重复点击 / Enter 一律忽略
                 exportBackdropEl.hidden = true;
+                setExportBusy(true);
                 doDownloadNow(pendingFmt);
             });
 
@@ -1027,8 +1042,10 @@
                         if (!r.ok) { return r.json().then(function (d) { throw new Error((d && d.error) || "HTTP " + r.status); }); }
                         return r.json();
                     }).then(function (d) {
+                        setExportBusy(false);
                         showEmbedSnippet(d.snippet, d.download_url);
                     }).catch(function (e) {
+                        setExportBusy(false);
                         toast("生成失败 / Failed: " + e.message);
                     });
                     return;
@@ -1044,6 +1061,7 @@
                         return r.blob();
                     }).then(function (blob) {
                         btn.disabled = false; btn.innerHTML = oldText;
+                        setExportBusy(false);
                         var a = document.createElement("a");
                         a.href = URL.createObjectURL(blob);
                         a.download = "gallery_" + WORK_ID + "_" + curCharset + ".mp4";
@@ -1054,12 +1072,38 @@
                         // blob 下载在 UC/X5 等移动浏览器不可靠 → 回退原生下载
                         //（含生成接口本身报错——原生下载会展示服务端错误信息）
                         btn.disabled = false; btn.innerHTML = oldText;
+                        setExportBusy(false);
                         toast("已切换浏览器直接下载");
                         window.location.href = url;
                     });
                     return;
                 }
-                window.location.href = url;
+                // python/html（以及没拿到 exportAnimBtn 的 mp4）：先 fetch 再落盘。
+                // 原来直接跳转，服务端 4xx/5xx 会把用户带离页面、无法重试；
+                // fetch 后失败能透出 error 原文并复位按钮。
+                fetch(url).then(function (r) {
+                    if (!r.ok) {
+                        return r.json().then(function (d) {
+                            throw new Error((d && d.error) || ("HTTP " + r.status));
+                        }, function () { throw new Error("HTTP " + r.status); });
+                    }
+                    var cd = r.headers.get("Content-Disposition") || "";
+                    var mm = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+                    var name = (mm && mm[1]) || ("gallery_" + WORK_ID + "." + fmt);
+                    return r.blob().then(function (blob) { return { blob: blob, name: name }; });
+                }).then(function (d) {
+                    setExportBusy(false);
+                    toast("导出完成，正在下载 / Export ready, downloading");
+                    var a = document.createElement("a");
+                    a.href = URL.createObjectURL(d.blob);
+                    a.download = d.name;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                }).catch(function (e) {
+                    setExportBusy(false);
+                    toast(e.message || String(e));
+                });
             }
 
             // ── 一行嵌入片段浮层：复制 / 下载 .html（与主页同一套结构） ──
