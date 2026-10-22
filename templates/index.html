@@ -297,7 +297,7 @@
                             <div class="progress-bar">
                                 <div class="progress-fill"></div>
                             </div>
-                            <span class="frame-counter" aria-live="off">0.0s / 0.0s</span>
+                            <span class="frame-counter" aria-live="off">--</span>
                         </div>
                     </div>
                 </div>
@@ -454,8 +454,8 @@
     </div>
 
     <!-- ═══════════ 导出格式弹窗（两步：选格式 → 确认导出） ═══════════ -->
-    <div class="export-backdrop" id="exportBackdrop" hidden>
-        <div class="export-modal" role="dialog" aria-modal="true" aria-labelledby="exportModalTitle">
+    <dialog class="export-backdrop" id="exportBackdrop" aria-labelledby="exportModalTitle">
+        <div class="export-modal">
             <div class="export-modal-title" id="exportModalTitle">选择导出格式 / Choose export format</div>
             <div class="export-options">
                 <button class="export-option selected" data-format="python" type="button">
@@ -480,11 +480,11 @@
                 <button class="export-confirm" id="exportConfirmBtn" type="button">开始导出 / Start export</button>
             </div>
         </div>
-    </div>
+    </dialog>
 
     <!-- ═══════════ 一行嵌入片段浮层（复制 / 下载 .html） ═══════════ -->
-    <div class="export-backdrop" id="embedSnippetBackdrop" hidden>
-        <div class="export-modal" role="dialog" aria-modal="true" aria-labelledby="embedSnippetTitle">
+    <dialog class="export-backdrop" id="embedSnippetBackdrop" aria-labelledby="embedSnippetTitle">
+        <div class="export-modal">
             <div class="export-modal-title" id="embedSnippetTitle">一行嵌入 / One-line embed</div>
             <div class="embed-snippet-hint">复制下面这段，粘进 README / 博客 / 任意 HTML 即播 / Copy &amp; paste anywhere</div>
             <textarea class="embed-snippet-box" id="embedSnippetText" readonly rows="8" spellcheck="false"
@@ -495,7 +495,7 @@
                 <button class="export-confirm" id="embedSnippetCopy" type="button">复制 / Copy</button>
             </div>
         </div>
-    </div>
+    </dialog>
 
     <script>
         // ═══════════ Style card selection ═══════════
@@ -596,11 +596,11 @@
     </div>
 
     <!-- 自定义字符集编辑器 -->
-    <div class="termify-modal" id="customCharsetModal" hidden>
+    <dialog class="termify-modal" id="customCharsetModal" aria-labelledby="customCharsetTitle">
         <div class="termify-modal-backdrop" id="customCharsetBackdrop"></div>
         <div class="termify-modal-box custom-charset-box">
             <button class="termify-modal-close" id="customCharsetClose" title="关闭">×</button>
-            <div class="termify-modal-title">自定义字符集编辑器</div>
+            <div class="termify-modal-title" id="customCharsetTitle">自定义字符集编辑器</div>
             <div class="custom-charset-hint">
                 用你自己的字符表现明暗：<b>左边 = 深（暗部）</b>，<b>右边 = 浅（亮部）</b>。
                 点击下方字符库追加，或直接输入。<span class="warn">避免 emoji 等宽字符。</span>
@@ -618,6 +618,6 @@
                 <button class="tweak-opt" id="ccCancelBtn">取消</button>
             </div>
         </div>
-    </div>
+    </dialog>
 </body>
 </html>

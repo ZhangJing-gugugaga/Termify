@@ -28,6 +28,101 @@
   function qa(s) { return document.querySelectorAll(s); }
   var toastTimer = null;
 
+  /* ── 弹层栈（UX-3 / UX-5 / UX-6）──
+     原生 <dialog> 用 element.showModal()（成员调用——不要撞下面 1447 行的
+     function showModal 进度浮层）拿 top layer、天生焦点陷阱和 Esc；分享弹层
+     的 DOM 在 templates/_gallery_modal.html（不在本次改动范围）里，用同一套栈
+     手写 Tab 陷阱。Esc 只关最上面一层，关闭时焦点还给打开它的那个元素。 */
+  var layers = [];
+  var FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),' +
+    'select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+  function isModalDialog(el) {
+    return !!el && el.tagName === "DIALOG" && typeof el.showModal === "function";
+  }
+  function focusablesIn(el) {
+    var all = el.querySelectorAll(FOCUSABLE);
+    var out = [];
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].getClientRects().length) out.push(all[i]);  // 只收可见的，被 hidden 收起的跳过
+    }
+    return out;
+  }
+  function layerIndex(el) {
+    for (var i = 0; i < layers.length; i++) if (layers[i].el === el) return i;
+    return -1;
+  }
+  function setLayerScrollLock() {
+    /* 原生 <dialog> 不锁背景滚动：遮罩底下的页面照样能滚 */
+    document.documentElement.classList.toggle("is-layer-open", layers.length > 0);
+  }
+  function openLayer(el, opts) {
+    if (!el || layerIndex(el) >= 0) return;
+    opts = opts || {};
+    var rec = { el: el, dialog: isModalDialog(el), opener: document.activeElement, hide: opts.hide };
+    layers.push(rec);
+    if (rec.dialog) {
+      guardDialogCancel(el);
+      if (!el.open) el.showModal();
+    }
+    /* 非 dialog 层（分享弹层用 .open 类）由调用方先显示，这里只管焦点 */
+    var target = opts.focus ? el.querySelector(opts.focus) : null;
+    if (!target) target = rec.dialog ? el : focusablesIn(el)[0];
+    if (target && target.focus) target.focus();
+    setLayerScrollLock();
+  }
+  function closeLayer(el) {
+    var idx = layerIndex(el);
+    if (idx < 0) {  // 没登记过（或已关）：只做幂等关窗
+      if (isModalDialog(el) && el.open) el.close();
+      return;
+    }
+    var rec = layers.splice(idx, 1)[0];
+    if (rec.dialog) { if (el.open) el.close(); }
+    else if (rec.hide) rec.hide();
+    setLayerScrollLock();
+    var back = rec.opener;
+    if (back && back !== document.body && document.documentElement.contains(back) &&
+        typeof back.focus === "function") {
+      back.focus();  // UX-6：焦点还给打开它的元素
+      return;
+    }
+    /* 打开它的元素已经不在文档里 → 退到仍在的最上层，别把焦点扔给 BODY */
+    var top = layers[layers.length - 1];
+    if (!top) return;
+    var f = top.dialog ? [top.el] : focusablesIn(top.el);
+    if (f.length && f[0].focus) f[0].focus();
+  }
+  /* 原生 dialog 的原生 Esc 关窗若没被下面的 preventDefault 拦住，这里兜一层，
+     保证一次 Esc 只关一层。 */
+  function guardDialogCancel(dlg) {
+    if (!dlg || dlg.__layerGuard) return;
+    dlg.__layerGuard = true;
+    dlg.addEventListener("cancel", function (e) {
+      e.preventDefault();
+      closeLayer(dlg);
+    });
+  }
+  document.addEventListener("keydown", function (e) {
+    if (!layers.length) return;
+    var top = layers[layers.length - 1];
+    if (e.key === "Escape" || e.key === "Esc") {
+      if (e.isComposing) return;  // 输入法候选框自己消费 Esc，别抢
+      e.preventDefault();          // 关哪一层由栈说了算，不让 <dialog> 自己动手
+      closeLayer(top.el);
+      return;
+    }
+    /* 原生 dialog 的 Tab 循环在 Chrome 里会把焦点甩到浏览器 UI（activeElement
+       变 BODY）再绕回来；这里对两种层都补齐首尾回环，中段仍交给原生处理。 */
+    if (e.key !== "Tab") return;
+    var f = focusablesIn(top.el);
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1], act = document.activeElement;
+    if (!top.el.contains(act)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+    else if (e.shiftKey && act === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && act === last) { e.preventDefault(); first.focus(); }
+  }, true);
+
   /* ── xterm-256 调色板索引 → RGB（16-231 色立方 + 232-255 灰阶），
         供预览解析服务端 source256 回退帧的 38;5/48;5 SGR ── */
   var Q256_LEVELS = [0, 95, 135, 175, 215, 255];
@@ -222,18 +317,24 @@
 
   /* ── Progress clock（rAF 匀速秒制，像视频播放器） ── */
   function fmtSecs(v) { return v.toFixed(1) + "s"; }
+  /* S-7：没有帧时写 "0.0s / 0.0s" 会被读成「一段 0 秒的动画」，
+     改用占位符表明「还没有进度」；一有帧立刻回到真实时长。 */
+  var IDLE_TIME_TEXT = "--";
   function updateProgressClock(cycleSec) {
     var n = S.frames.length;
     var totalSec = n * S.interval;
     if (progressFill) progressFill.style.width = (totalSec > 0 ? (cycleSec / totalSec) * 100 : 0) + "%";
-    if (frameCounter) frameCounter.textContent = fmtSecs(cycleSec) + " / " + fmtSecs(totalSec);
+    if (!frameCounter) return;
+    frameCounter.textContent = totalSec > 0
+      ? fmtSecs(cycleSec) + " / " + fmtSecs(totalSec)
+      : IDLE_TIME_TEXT;
   }
 
-  /* 空闲 / 无帧时如实归零：模板原先写死的 "0.0s / 2.4s" 加一段 2.4s 假循环
+  /* 空闲 / 无帧时如实留白：模板原先写死的 "0.0s / 2.4s" 加一段 2.4s 假循环
      （DEMO_TOTAL）是在假装正在播——P3 删掉，进度只由 真实帧数 × 帧间隔 驱动。 */
   function resetProgressClock() {
     if (progressFill) progressFill.style.width = "0%";
-    if (frameCounter) frameCounter.textContent = fmtSecs(0) + " / " + fmtSecs(0);
+    if (frameCounter) frameCounter.textContent = IDLE_TIME_TEXT;
   }
 
   /* ── Render a single frame into the preview terminal ── */
@@ -1220,10 +1321,10 @@
     if (!backdrop) { runExport("python"); return; }  // 弹窗缺失时兜底直出默认格式
     backdrop.hidden = false;
     markSelected(".export-option", '.export-option[data-format="python"]');
+    openLayer(backdrop);  // 原生 dialog：showModal + 焦点陷阱 + Esc
   }
   function closeExportModal() {
-    var backdrop = byId("exportBackdrop");
-    if (backdrop) backdrop.hidden = true;
+    closeLayer(byId("exportBackdrop"));
   }
   qa(".export-option").forEach(function (btn) {
     btn.addEventListener("click", function () {
@@ -1271,11 +1372,10 @@
     box.value = snippet || "";
     var dl = byId("embedSnippetDownload");
     if (dl) dl.setAttribute("data-download-url", downloadUrl || "");
-    backdrop.hidden = false;
+    openLayer(backdrop);
   }
   function closeEmbedSnippet() {
-    var backdrop = byId("embedSnippetBackdrop");
-    if (backdrop) backdrop.hidden = true;
+    closeLayer(byId("embedSnippetBackdrop"));
   }
   /* 复制：clipboard API 在 UC/X5 等 webview 常被拒 → execCommand 回退 */
   function copyEmbedSnippet() {
@@ -2047,11 +2147,10 @@
     ccInput.value = S.ramp || rampInput.value || "@%#*+=-:.";
     refreshCcPreview();
     modal.hidden = true;
-    ccModal.hidden = false;
-    ccInput.focus();
+    openLayer(ccModal, { focus: "#ccRampInput" });  // 打开即落在字符梯输入框
   }
   function closeCustomCharsetModal() {
-    if (ccModal) ccModal.hidden = true;
+    closeLayer(ccModal);
   }
   function applyCustomCharset() {
     var v = (ccInput.value || "").trim();
@@ -2134,6 +2233,12 @@
     var cur = S.fileList[S.selIdx] || {};
     if (!(cur.sourceFile || S.sourceFile)) { toast("请先上传文件 / Please upload a file first"); return; }
     galleryModal.classList.add("open");
+    /* 手写焦点陷阱：分享弹层的 DOM 在 templates/_gallery_modal.html，
+       不是本次可改的文件，无法换成原生 <dialog> */
+    openLayer(galleryModal, {
+      focus: "#galleryTitle",
+      hide: function () { galleryModal.classList.remove("open"); }
+    });
     var title = byId("galleryTitle");
     var srcName = ((cur.sourceFile || S.sourceFile) || {}).name || "";
     if (!title.value && srcName) {
@@ -2141,7 +2246,7 @@
       updateCounts();
     }
   }
-  function closeGalleryModal() { galleryModal.classList.remove("open"); }
+  function closeGalleryModal() { closeLayer(galleryModal); }
 
   if (shareBtn) shareBtn.addEventListener("click", openGalleryModal);
   if (byId("galleryModalClose")) byId("galleryModalClose").addEventListener("click", closeGalleryModal);
