@@ -8,14 +8,6 @@
     font-style: normal;
     font-display: swap;
 }
-@font-face {
-    font-family: 'Space Grotesk';
-    src: url('../fonts/web/SpaceGrotesk-VF.woff2') format('woff2');
-    font-weight: 300 700;
-    font-style: normal;
-    font-display: swap;
-}
-
 :root {
   --bg-deep: #060a10;
               --bg-base: #0a0e14;
@@ -44,13 +36,38 @@
   
               --text-primary: #e0e6ed;
               --text-secondary: #8899aa;
-              --text-dim: #556677;
+              --text-dim: #8494a6;
               --text-inverse: #0a0e14;
   
               --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code',
                            Consolas, 'DejaVu Sans Mono', Menlo, 'Courier New',
                            monospace;
-              --font-sans: 'Space Grotesk', system-ui, sans-serif;
+              /* 字号档：px 口径的唯一入口（clamp 与 8px 预览框例外） */
+              --fs-2xs: 10px;
+              --fs-xs: 11px;
+              --fs-sm: 12px;
+              --fs-md: 13px;
+              --fs-base: 14px;
+              --fs-lg: 16px;
+              --fs-xl: 18px;
+              --fs-2xl: 24px;
+              --fs-3xl: 28px;
+              --fs-4xl: 40px;
+  
+              /* 层级阶梯：值即既有层叠顺序，只加名字不可重排（DESIGN 7.2） */
+              --z-grid: 0;
+              --z-content: 1;
+              --z-badge: 2;
+              --z-terminal-overlay: 5;
+              --z-chip: 6;
+              --z-popover: 30;
+              --z-export: 90;
+              --z-nav: 100;
+              --z-tweaks: 200;
+              --z-toast: 300;
+              --z-modal: 400;
+              --z-modal-gallery: 500;
+              --z-scanline: 9999;
   
               --radius-sm: 2px;
               --radius-md: 4px;

@@ -15,7 +15,7 @@
 }
 .ta-title {
     font-family: var(--font-mono);
-    font-size: 40px;
+    font-size: var(--fs-4xl);
     font-weight: 700;
     letter-spacing: -1px;
     line-height: 1.1;
@@ -75,7 +75,6 @@
 .ta-input:focus {
     border-color: var(--green);
     box-shadow: 0 0 12px var(--green-glow);
-    outline: none;
 }
 .ta-input::placeholder { color: var(--text-dim); opacity: 0.6; }
 
@@ -89,7 +88,7 @@
     padding: 9px 10px;
     width: 100%;
 }
-.ta-select:focus { border-color: var(--green); outline: none; }
+.ta-select:focus { border-color: var(--green); }
 .ta-select:disabled { opacity: 0.55; }
 
 .ta-hint {
@@ -166,7 +165,7 @@
     font-size: 0.84rem;
     padding: 8px 10px;
 }
-.ta-field input:focus { border-color: var(--green); outline: none; }
+.ta-field input:focus { border-color: var(--green); }
 .ta-settings-actions {
     align-items: center;
     display: flex;
@@ -341,7 +340,7 @@
     font-family: var(--font-mono);
     font-size: 0.78rem;
     padding: 5px 12px;
-    transition: all var(--transition-fast);
+    transition: border-color var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
 }
 .ta-chip:hover {
     border-color: var(--green); color: var(--green);
@@ -357,9 +356,6 @@
 @keyframes ta-ai-pulse {
     0%, 100% { box-shadow: 0 0 0 transparent; }
     50% { box-shadow: 0 0 14px var(--green-glow); }
-}
-@media (prefers-reduced-motion: reduce) {
-    
 }
 
 /* 字体墙：英文字体 / 中文字体 / 图片字符集三选一，共用同一套卡片。
@@ -382,7 +378,7 @@
     border-radius: var(--radius-md); cursor: pointer;
     display: flex; flex-direction: column; gap: 4px;
     overflow: hidden; padding: var(--space-2) var(--space-3);
-    text-align: center; transition: all var(--transition-fast);
+    text-align: center; transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
 }
 .ta-fw-card:hover {
     border-color: var(--green);
@@ -431,7 +427,7 @@
 .ta-theme-dot {
     background: var(--c); border: 2px solid transparent;
     border-radius: 50%; cursor: pointer; height: 14px;
-    padding: 0; transition: all var(--transition-fast); width: 14px;
+    padding: 0; transition: box-shadow var(--transition-fast), border-color var(--transition-fast); width: 14px;
 }
 .ta-theme-dot:hover { box-shadow: 0 0 8px var(--c); }
 .ta-theme-dot.active {
@@ -447,7 +443,7 @@
     background: var(--bg-surface); border: 1px solid var(--border-dim);
     border-radius: var(--radius-md); cursor: pointer; flex: 1;
     max-width: 260px; overflow: hidden; padding: var(--space-2);
-    text-align: center; transition: all var(--transition-fast);
+    text-align: center; transition: border-color var(--transition-fast), background-color var(--transition-fast);
 }
 .ta-variant-card:hover { border-color: var(--green); }
 .ta-variant-card.active {
@@ -472,7 +468,7 @@
     background: var(--bg-base); border: 1px solid var(--border-dim);
     border-radius: var(--radius-sm); color: var(--text-dim);
     cursor: pointer; font-size: 0.85rem; padding: 8px 18px;
-    transition: all var(--transition-fast);
+    transition: border-color var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
 }
 .ta-mode-tab:hover { border-color: var(--green); color: var(--text-primary); }
 .ta-mode-tab.active {
