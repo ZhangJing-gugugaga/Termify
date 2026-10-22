@@ -46,7 +46,8 @@
                 linear-gradient(var(--border-dim) 1px, transparent 1px),
                 linear-gradient(90deg, var(--border-dim) 1px, transparent 1px);
             background-size: 60px 60px;
-            opacity: 0.3;
+            /* 网格开关（tweaks 写 --grid-opacity）真正的消费点 */
+            opacity: var(--grid-opacity, 0.3);
             pointer-events: none;
             z-index: var(--z-grid);
         }
@@ -63,6 +64,9 @@
                 rgba(0, 0, 0, 0.03) 2px,
                 rgba(0, 0, 0, 0.03) 4px
             );
+            /* 扫描线开关（tweaks / app.js bindTweak 写 --scanline-opacity）的
+               唯一消费点：0 = 关，1 = 开（DESIGN §1.4 / §10 #9 假控件） */
+            opacity: var(--scanline-opacity, 1);
             pointer-events: none;
             z-index: var(--z-scanline);
         }
@@ -1876,12 +1880,49 @@
             font-size: var(--fs-sm); color: var(--text-dim);
         }
         .gallery-card-stats { display: flex; gap: var(--space-3); }
+
+        /* ═══ 卡片三态：loading / error / disabled（DESIGN §8.3 配方） ═══
+           default / hover / selected 之外补的三态，全部由 JS 状态机切换
+           （static/js/app.js setCardLoading / cardRenderOk / cardRenderFailed /
+           setCardsDisabled），不是装饰。
+           · loading 沿用骨架屏语言的 .6，并停掉指针（真在算，别叠请求）
+           · disabled 沿用 .ta-select:disabled 的 .55（text_art.css:93）
+           · error 走 --red 边框、不加 glow（DESIGN §10 #1）
+           位置在三类卡片各自的 hover 规则之后：同特异性下 error 覆盖 hover 描边。 */
+        .style-card.loading,
+        .feature-card.loading,
+        .gallery-card.loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+        .style-card.error,
+        .feature-card.error,
+        .gallery-card.error {
+            border-color: var(--red);
+        }
+        .style-card.disabled,
+        .style-card[aria-disabled="true"],
+        .feature-card.disabled,
+        .feature-card[aria-disabled="true"],
+        .gallery-card.disabled,
+        .gallery-card[aria-disabled="true"] {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
         .gallery-empty {
             text-align: center; padding: var(--space-16) 0;
             color: var(--text-dim); font-family: var(--font-mono); font-size: var(--fs-base);
         }
         .gallery-empty a { color: var(--green); text-decoration: none; }
         .gallery-empty a:hover { text-decoration: underline; }
+        /* 作品列表请求失败：可见的错误行 + 重试按钮（不许只在 console /
+           3 秒 toast 里报，DESIGN 状态语言） */
+        .gallery-error {
+            text-align: center; padding: var(--space-16) 0;
+            color: var(--text-dim); font-family: var(--font-mono); font-size: var(--fs-base);
+        }
+        .gallery-error[hidden] { display: none; }
+        .gallery-error p + p { margin-top: var(--space-4); }
         .gallery-pagination {
             display: flex; align-items: center; justify-content: center;
             gap: var(--space-4); margin-top: var(--space-10);

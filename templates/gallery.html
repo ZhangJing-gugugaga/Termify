@@ -7,8 +7,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>在线画廊 · Termify</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261023a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261023a">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261024a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261024a">
 </head>
 <body>
 <div id="toast"></div>
@@ -70,6 +70,10 @@
             <div class="gallery-grid" id="galleryGrid"></div>
             <div class="gallery-empty" id="galleryEmpty" style="display:none;">
                 <p>暂无作品，<a href="/">去上传第一个 →</a> / No works yet. <a href="/">Upload the first one →</a></p>
+            </div>
+            <div class="gallery-error" id="galleryError" role="alert" hidden>
+                <p>作品列表加载失败，请检查网络后重试 / Failed to load works.</p>
+                <p><button type="button" class="gallery-page-btn" id="galleryErrorRetry">重试 / Retry</button></p>
             </div>
             <div class="gallery-pagination" id="galleryPagination"></div>
         </div>
@@ -162,19 +166,62 @@
             grid.innerHTML = html;
         }
 
+        function setGalleryError(on) {
+            var err = document.getElementById("galleryError");
+            if (err) err.hidden = !on;
+            if (!on) return;
+            var empty = document.getElementById("galleryEmpty");
+            if (empty) empty.style.display = "none";
+            var pg = document.getElementById("galleryPagination");
+            if (pg) pg.innerHTML = "";
+        }
+
         function fetchGallery() {
             var params = new URLSearchParams({ sort: G.sort, page: G.page, limit: G.limit });
             if (G.tags.length) params.set("tags", G.tags.join(","));
+            setGalleryError(false);
             showSkeleton(true);
             fetch("/api/gallery/list?" + params.toString())
-                .then(function (r) { return r.json(); })
+                .then(function (r) {
+                    if (!r.ok) throw new Error("HTTP " + r.status);  // 500/502 也走错误态
+                    return r.json();
+                })
                 .then(function (d) {
+                    showSkeleton(false);
                     G.total = d.total;
                     G.hasMore = d.has_more;
                     renderCards(d.items);
                     renderPagination(d);
                 })
-                .catch(function () { showSkeleton(false); toast("加载失败"); });
+                .catch(function () {
+                    // 失败要看得见：清空骨架 + 一行错误 + 重试按钮，不再只弹 2 秒 toast
+                    showSkeleton(false);
+                    setGalleryError(true);
+                });
+        }
+
+        var galleryRetry = document.getElementById("galleryErrorRetry");
+        if (galleryRetry) galleryRetry.addEventListener("click", function () { fetchGallery(); });
+
+        // 空态有两种：站里真没作品 vs 标签筛选没命中。后者必须给"清除筛选"
+        // 的动作，否则用户只能对着"暂无作品"以为平台空了。
+        function renderEmptyState(filtered) {
+            var empty = document.getElementById("galleryEmpty");
+            if (!empty) return;
+            if (filtered) {
+                empty.innerHTML = '<p>没有匹配的作品，换个标签试试 / No works match this filter.</p>' +
+                    '<p><button type="button" class="gallery-page-btn" id="galleryEmptyClear">清除筛选 / Clear filter</button></p>';
+                var clr = document.getElementById("galleryEmptyClear");
+                if (clr) clr.addEventListener("click", function () {
+                    G.tags = [];
+                    G.page = 1;
+                    syncCustomTagSelection();
+                    fetchGallery();
+                });
+            } else {
+                empty.innerHTML = '<p>暂无作品，<a href="/">去上传第一个 →</a> / No works yet. <a href="/">Upload the first one →</a></p>';
+            }
+            empty.style.display = "block";
         }
 
         function renderCards(items) {
@@ -182,7 +229,7 @@
             var empty = document.getElementById("galleryEmpty");
             if (!items.length) {
                 grid.innerHTML = "";
-                empty.style.display = "block";
+                renderEmptyState(G.tags.length > 0);
                 return;
             }
             empty.style.display = "none";

@@ -7,8 +7,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>动画工坊 · Termify</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261023a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261023a">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261024a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261024a">
 </head>
 <body>
 <div id="toast"></div>
@@ -298,7 +298,7 @@
                             <div class="progress-bar">
                                 <div class="progress-fill"></div>
                             </div>
-                            <span class="frame-counter">0.0s / 2.4s</span>
+                            <span class="frame-counter" aria-live="off">0.0s / 0.0s</span>
                         </div>
                     </div>
                 </div>
@@ -571,23 +571,12 @@
 
         // 主题色选择已迁移至输出面板「配色 / Color scheme」（app.js applyPalette）
 
-        // ═══════════ Progress bar animation（秒制匀速假演示） ═══════════
-        const progressFill = document.querySelector('.progress-fill');
-        const frameCounter = document.querySelector('.frame-counter');
-        const DEMO_TOTAL = 2.4;  // 秒
-        let demoStart = performance.now();
-        function demoTick(ts) {
-            if (progressFill && frameCounter && !window.__termifyHasTask) {
-                const cycle = ((ts - demoStart) / 1000) % DEMO_TOTAL;
-                progressFill.style.width = (cycle / DEMO_TOTAL * 100) + '%';
-                frameCounter.textContent = cycle.toFixed(1) + 's / ' + DEMO_TOTAL.toFixed(1) + 's';
-            }
-            requestAnimationFrame(demoTick);
-        }
-        requestAnimationFrame(demoTick);
+        // 进度条 / 帧计数由 app.js 的真实播放时钟驱动（updateProgressClock：
+        // cycleSec / S.frames.length × S.interval）。原来这里那段 2.4 秒
+        // DEMO_TOTAL 假循环已删除——没有帧时如实显示 0.0s / 0.0s。
     </script>
     <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260907a"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20261023a" defer></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20261024a" defer></script>
 
     <!-- Termify 自定义弹窗（替代浏览器原生 alert/confirm） -->
     <div class="termify-modal" id="termifyModal" hidden>
