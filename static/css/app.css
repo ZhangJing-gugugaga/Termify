@@ -240,22 +240,8 @@
             text-align: left;
         }
 
-        /* B13：Hero 假终端 → 真动画。素材是烘焙好的 style-preview GIF（312x234 / 12 帧，
-           与工作室「风格演示」同一管线），首帧自带深色底（= --bg-base），落到 .terminal-body
-           上无缝衔接，所以第一眼就是可读的字符画，不会先白后黑。
-           width/height + aspect-ratio 先把高度占住，GIF 解码前也不会把下文顶下来（CLS）。 */
-        .hero-demo-art {
-            display: block;
-            width: 312px;
-            height: auto;
-            max-width: 100%;
-            aspect-ratio: 312 / 234;
-            margin: var(--space-4) auto 0;
-            image-rendering: pixelated;
-        }
         /* 原来写在下行终端行上的内联 margin-top: 4px，收进样式表 */
         .hero-cmd-line { margin-top: var(--space-2); }
-        .hero-cursor-line { margin-top: var(--space-3); }
 
         /* ═══════════════════════════════════════════
            TERMINAL WINDOW COMPONENT

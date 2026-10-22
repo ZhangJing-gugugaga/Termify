@@ -820,7 +820,9 @@ $ git rev-parse --short HEAD   # P2 落地前的基线即为 b379cec
 **6 处 scrollIntoView 的降级决策**（原全部 `block: "start"`，会把用户整页拽走）：
 5 处「上传/拉取成功后跳到风格区」（`app.js:685 / 913 / 978 / 1560 / 1598`）→ `block: "nearest"`；第 6 处（点风格卡，`app.js:1418`）→ 桌面**不滚**，改 `flashPreview()` 终端边框脉冲（`app.css:2647`，只动 `border-color`，不动 `.terminal` 自带的 `box-shadow`），`≤1024px` 单列时预览可能被滚出视野才补 `nearest`。
 
-**Hero 真动画**：复用 `static/img/style-preview-blocks.gif`（312×234 / 12 帧，与 `showStyleDemo()` 同一烘焙管线），以 `.hero-demo-art` 塞进 `.hero-terminal` 的 `.terminal-body`；`width:312px; height:auto; aspect-ratio:312/234` + HTML `width/height` 属性双兜底，零 CLS。
+**Hero 真动画（已于 2026-10-22 撤销）**：用户裁定「首屏终端里那个太空人破坏了终端美感」，`.hero-demo-art` 及其 `.hero-cmd-line/.hero-cursor-line` 拆分、`freezeHeroDemo()` 三处一并删除，hero 回到「一行 `$ python cat_termify.py` + 光标」的纯终端形态（内联 `margin-top` 仍收在 `.hero-cmd-line` 里）。以下两段保留为当时的落地记录，不再是现行实现：
+
+**Hero 真动画（历史记录）**：复用 `static/img/style-preview-blocks.gif`（312×234 / 12 帧，与 `showStyleDemo()` 同一烘焙管线），以 `.hero-demo-art` 塞进 `.hero-terminal` 的 `.terminal-body`；`width:312px; height:auto; aspect-ratio:312/234` + HTML `width/height` 属性双兜底，零 CLS。
 reduced-motion 守卫**只能落 JS**（GIF 由解码器播放，CSS 停不住；挂一条空 `animation: none` 正是 §10 反模式 #8 的假守卫）：`freezeHeroDemo()` 在 `prefers-reduced-motion: reduce` 时把当前帧 `drawImage` 进同尺寸 `<canvas class="hero-demo-art">`（`role="img"` + `aria-label`）。
 作用域独立于测试锁定的 `.animation-terminal .terminal-body .preview-demo-art`（`app.css:740`）——那块一个字没碰。
 

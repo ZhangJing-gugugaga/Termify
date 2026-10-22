@@ -2064,28 +2064,6 @@
   initMusicUI();
   updateMusicCard();
 
-  /* ── Hero 动画在 reduced-motion 下只留一帧 ──
-     GIF 的播放归解码器管，CSS 停不住；与其挂一条空的 animation: none 假守卫，
-     不如把当前帧画进 canvas 顶替 <img>：静态、不新增渲染器、不依赖动画。 */
-  (function freezeHeroDemo() {
-    var media = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)");
-    var img = document.querySelector(".hero-demo-art");
-    if (!img || !media || !media.matches) return;
-    function drawStill() {
-      if (!img.naturalWidth) return;
-      var canvas = document.createElement("canvas");
-      canvas.className = img.className;
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      canvas.setAttribute("role", "img");
-      canvas.setAttribute("aria-label", img.getAttribute("alt") || "");
-      canvas.getContext("2d").drawImage(img, 0, 0);
-      if (img.parentNode) img.parentNode.replaceChild(canvas, img);
-    }
-    if (img.complete) drawStill();
-    else img.addEventListener("load", drawStill);
-  })();
-
   /* ── fork 落地：作品页「用它做一版」带 ?fork=<workId>&charset=&width=&height=&color= ──
      只预填编辑器的风格/尺寸/配色，素材仍需用户自己选——Termify 的渲染
      管线是输入驱动的，作品库的帧数据不进编辑器闭环。 */
