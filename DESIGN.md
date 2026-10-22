@@ -742,7 +742,7 @@ grep -rn "var(--green-text)" static/css/   # 应命中 1 行：text_art.css:406
 
 # A11 · 扫描线开关（变量被写但无人读）
 grep -rn 'scanline-opacity' static/ templates/                    # 5 处 JS/模板
-grep -rn 'scanline-opacity' static/css/                           # 空
+grep -rn 'scanline-opacity' static/css/                           # 基线空；P3 起应命中 app.css 的 body::after
 ```
 
 **A12 · WCAG 对比度**（python，脚本用完即删）
