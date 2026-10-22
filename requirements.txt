@@ -1,4 +1,5 @@
 flask>=3.0
+flask-compress>=1.25
 pillow>=10.0
 pyfiglet>=1.0
 pytest>=8.0

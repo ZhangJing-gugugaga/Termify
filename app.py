@@ -28,6 +28,7 @@ from termify import paths
 
 from flask import (Flask, abort, jsonify, make_response, redirect,
                    render_template, request, send_file, url_for)
+from flask_compress import Compress
 
 app = Flask(__name__)
 
@@ -42,6 +43,38 @@ if not app.logger.handlers:
 # 从环境变量加载密钥，未设置时自动生成（每次重启会变，仅轻度会话场景安全）
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24).hex())
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # PRD §7.1
+
+# PF-3 全站零压缩：此前 CSS/JS/HTML/JSON 全部裸传（实测 css 103929B + js 87979B）。
+# 复用 flask-compress（MIT）在应用内做 gzip/br —— 生产走 Caddy 反代，仓库无 Caddyfile，
+# 应用内自足实现才不依赖代理配置。flask-compress 会跳过已带 Content-Encoding 的响应
+# （代理已压过则不会二次压），并自动补 Vary: Accept-Encoding。
+app.config["COMPRESS_MIMETYPES"] = [
+    # 只压文本类：png/gif/jpeg/webp/mp4/woff2 等已压缩格式不在白名单内，一律不压。
+    "text/html", "text/css", "text/plain", "text/xml", "text/javascript",
+    "application/javascript", "application/json", "application/xml",
+    "application/xhtml+xml", "application/manifest+json", "image/svg+xml",
+]
+app.config["COMPRESS_MIN_SIZE"] = 500  # <500B 的小响应压缩不划算，跳过
+app.config["COMPRESS_ALGORITHM"] = ["br", "gzip", "deflate"]
+# br 默认 q4 反而比 gzip q6 更大（实测 app.css: gzip 16788B vs br-q4 17695B）；
+# q9 是拐点（14123B / 23ms），q11 要 286ms 不值，故取 9。
+app.config["COMPRESS_BR_LEVEL"] = 9
+# 静态文件走 send_file 的流式响应：默认流式算法不含 gzip，
+# 只发 Accept-Encoding: gzip 的客户端就拿不到压缩，故显式补上。
+app.config["COMPRESS_ALGORITHM_STREAMING"] = ["br", "gzip", "deflate"]
+Compress(app)
+
+
+@app.after_request
+def _skip_compress_partial(resp):
+    """206 分段响应不压缩：Content-Range 描述的是未压缩表示的字节区间，
+    压缩后区间就对不上了（RFC 9110 §8.4.1）。flask-compress 见到响应已带
+    Content-Encoding 会跳过，故标记 identity（有效的 content-coding 记号）。
+    本 hook 注册在 Compress 之后，Flask 按逆序执行，因此先于压缩逻辑运行。
+    """
+    if resp.status_code == 206 and resp.mimetype in app.config["COMPRESS_MIMETYPES"]:
+        resp.headers.setdefault("Content-Encoding", "identity")
+    return resp
 
 
 @app.errorhandler(404)
