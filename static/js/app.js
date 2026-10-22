@@ -516,6 +516,43 @@
   function isVideo(file) { return VIDEO_EXTS.indexOf(extOf(file.name)) >= 0; }
   function isImage(file) { return IMAGE_EXTS.indexOf(extOf(file.name)) >= 0; }
 
+  /* ── UX-7 上传前本地预检（真值全部取自服务端 app.py）──
+     · app.py:45  app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
+       → 20971520 B。它限的是**整个请求体**（multipart body）；服务端没有单独的
+       单文件上限，所以单文件判据同样是这个常量。
+     · app.py:110 VALID_EXT = {".gif", ".png", ".jpg", ".jpeg"}
+       判格式只比扩展名，不看 MIME——浏览器给的 type 对 .jfif 之类不可靠，
+       服务端也只认扩展名（app.py:536）。 */
+  var UPLOAD_MAX_BYTES = 20 * 1024 * 1024;              // app.py:45
+  var UPLOAD_MAX_MB = UPLOAD_MAX_BYTES / 1048576;       // 20
+  function uploadBodyBytes(files) {
+    // multipart 边界 + 每个部件的 Content-Disposition 头也占请求体，预检留余量；
+    // 否则恰好等于上限的文件仍要白传一遍才拿到服务端 413。
+    var total = 1024 + 200 * files.length;
+    for (var i = 0; i < files.length; i++) total += files[i].size || 0;
+    return total;
+  }
+  // 返回空串 = 全部合法；否则返回一条可读的双语错误文案（调用方负责挂到 #uploadStatus）
+  function uploadPreflight(files) {
+    var i, f, bytes;
+    for (i = 0; i < files.length; i++) {
+      f = files[i];
+      if (IMAGE_EXTS.indexOf(extOf(f.name)) < 0) {
+        return f.name + "：不支持的格式 / Unsupported format";
+      }
+      if ((f.size || 0) > UPLOAD_MAX_BYTES) {
+        return f.name + " 过大（上限 " + UPLOAD_MAX_MB + "MB） / File too large (max " + UPLOAD_MAX_MB + "MB)";
+      }
+    }
+    bytes = uploadBodyBytes(files);
+    if (bytes > UPLOAD_MAX_BYTES) {
+      var mb = Math.round(bytes / 1048576);
+      return "所选文件合计 " + mb + "MB，超出上限 " + UPLOAD_MAX_MB + "MB / Total " +
+             mb + "MB exceeds the " + UPLOAD_MAX_MB + "MB limit";
+    }
+    return "";
+  }
+
   /* ── File upload ── */
   function handleFiles(fileList) {
     var files = Array.prototype.slice.call(fileList);
@@ -528,6 +565,9 @@
 
     if (unsupported.length) {
       unsupported.forEach(function (f) { toast(f.name + ": 不支持的格式 / Unsupported format"); });
+      // UX-7：toast 只闪 2.2s，错过就没线索了 —— 与超大文件同一出口：
+      // 文案留在 #uploadStatus（role=status 会播报），点区域可原地重试，不发请求。
+      setUploadStatus(unsupported[0].name + "：不支持的格式 / Unsupported format", "error");
     }
 
     // Upload images via batch endpoint
@@ -942,6 +982,12 @@
   }
 
   function uploadImages(files) {
+    // UX-7：发请求前先本地预检——超限/格式不对就地给错，不让人白传一遍换服务端 413
+    var problem = uploadPreflight(files);
+    if (problem) {
+      setUploadStatus(problem + " · 点此区域重试 / Retry", "error");
+      return;
+    }
     var fd = new FormData();
     files.forEach(function (f) { fd.append("files", f); });
     uploadZoneBusy(true);
