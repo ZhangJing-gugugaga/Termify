@@ -579,9 +579,9 @@ transition: transform var(--transition-base), border-color var(--transition-base
 
 规则：`translateY` 在卡片 hover 上一律用 **`-2px`**（2 个实例 vs 1 个实例的多数）。`.gallery-card` 是分叉点，触碰时统一。`box-shadow` 不是配方的一部分，画廊卡的特例可保留。
 
-### 8.3 状态机缺口（confirmed，已知缺口）
+### 8.3 状态机缺口（decided，P3 已落地 · 实现与接入点见附录 D）
 
-三类卡片（`.style-card` / `.feature-card` / `.gallery-card`）合起来只实现了 **3 个状态**：
+三类卡片（`.style-card` / `.feature-card` / `.gallery-card`）合起来**原先**只实现了 **3 个状态**（下表为 P3 之前的基线普查，保留作证据）：
 
 | 状态 | 有无 | 依据 |
 |---|---|---|
@@ -794,7 +794,8 @@ print(cr('#00ff41', '#111620'))   # 13.27 --green
 **落地进度**（上表登记时都是 confirmed 现状，现按提交回填）：
 - 已于 `b379cec`（P0 + P1）收口：**B1 / B2 / B3 / B5 / B9 / B10**
 - 已于 P2 收口：**B7 / B8 / B11 / B12 / B13 / B14**
-- 仍未动：**B4**（卡片 loading / error / disabled 三态）、**B6**（`--scanline-opacity` 假开关，归 P3 状态语言那一单）、**B15**（375px 溢出）
+- 已于 P3（`1b1f3f6`）收口：**B4 / B6**
+- 仍未动：**B15**（375px 下 `.url-fetch-row` 溢出，独立 token）
 
 ---
 
@@ -824,6 +825,21 @@ reduced-motion 守卫**只能落 JS**（GIF 由解码器播放，CSS 停不住�
 作用域独立于测试锁定的 `.animation-terminal .terminal-body .preview-demo-art`（`app.css:740`）——那块一个字没碰。
 
 **帧时长记一笔**：`scripts/bake_style_previews.py:51` 的 `PIECE_INTERVAL = 0.125` 是**源意图 125ms**；GIF 的 `duration` 以厘秒存储，`int(round(0.125 * 1000))`=125 写进去后被量化成 12cs = **实际 120ms/帧**。两个数都对，别再互相"纠正"。
+
+---
+
+## 附录 D：P3 落地记录（状态语言）
+
+**开关不再是假的（B6）**：`body::after` 补 `opacity: var(--scanline-opacity, 1)`，`body::before` 补 `opacity: var(--grid-opacity, 0.3)`——两者原先都是「JS/模板写了变量、CSS 零消费」的同一类病，默认值保持不变故视觉零变化。CDP 实测点 `[data-tweak="scan-off"]` 后 `getComputedStyle(document.body,'::after').opacity` 1 → 0，`document.body.style` 上的 `--scanline-opacity` 同步归 0。**已知边界**：`bindTweak` 不写 localStorage，刷新一律回默认 1（无持久化，本次未加，加了会改变现有行为）。
+
+**进度条不再是假的**：模板里 `DEMO_TOTAL = 2.4` 的内联假循环与写死的 `"0.0s / 2.4s"` 文案整段删除——真实现（`app.js:274-281` 的 rAF + `performance.now()` 时钟）本来就在，缺的只是模板不去用它。新增 `resetProgressClock()` 在 `selectFile()` 里归零（换作品不留上一个作品的进度）；暂停不归零，改由 `updateProgressClock((idx + 1) * S.interval)` 显示「停在哪一帧就是哪一帧的时间」（播放器语义）。因为这个时钟不是 CSS animation，本单**没有**新增动画，也就没有新增 reduced-motion 守卫——为空动画名补空守卫正是 §10 反模式 #8。
+
+**卡片三态接真状态机（B4）**：CSS 按 §8.3 配方落在三类卡片各自 hover 规则之后（同特异性下 `error` 覆盖 `hover` 描边）。JS 侧 `static/js/app.js` 新增 `styleCardFor / setCardLoading / cardRenderOk / cardRenderFailed / setCardsDisabled`，挂点：`requestPreview` 本地分支与任务分支（发请求即 loading，且先清掉被新请求取代的旧卡 loading，不留卡死态）、`serverPreview` 的 `d.error` 与 `.catch`、`applyPreview`（所有成功路径的唯一出口）、`uploadImages`（上传在途置 `aria-disabled`）。顺带补了本地渲染分支原先缺失的 reject 处理（只有 `then` 单参，reject 会被静默吞掉）。
+**诚实边界**：`.feature-card` / `.gallery-card` 只有 CSS 没有 JS 接入——当前应用里没有对应它们的真实 loading / error / disabled 条件（画廊网格的加载态用既有 `.gallery-skeleton`，错误态用整块 `.gallery-error`），不为「接上」虚构状态。
+
+**画廊三态**：加载沿用 8 张 `.gallery-skeleton`；失败从「2 秒 toast」改为常驻 `.gallery-error` + 重试按钮，并补 `r.ok` 检查（500/502 也走错误态，原先 `r.json()` 会把错误页当数据）；空态分两支——标签筛选无命中给「清除筛选」，站里真没作品保留「去上传第一个」。
+
+**遗留（本单未修，登记待办）**：`static/js/app.js:755` 的 `fetch("data:image/jpeg;base64,…")` 被 CSP `connect-src 'self'` 拦截，每次 `b64ToBitmap` 打两条 console error（功能由 `.catch(viaImage)` 的 `<img>` 解码兜住）。修它要改 `termify/**` 的 CSP 响应头，超出前端边界。
 
 ---
 
