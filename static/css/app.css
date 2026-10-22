@@ -2865,3 +2865,270 @@
             letter-spacing: 0.5px;
             margin-top: var(--space-2);
         }
+
+        /* ═══════════════════════════════════════════════════════════
+           UX-8 触摸热区：可交互元素一律 ≥40×40
+           只扩热区——字号一个不动。带边框的小按钮用「透明边框 + 内阴影」
+           在 padding box 上画回原来的 1px 边框，视觉尺寸保持不变；
+           纯文字链接用 min-width/height + 负 margin 让行盒高度不变。
+           ═══════════════════════════════════════════════════════════ */
+
+        /* ── 纯文字链接 ── */
+        .logo {
+            min-height: 40px;
+        }
+        .nav-links a,
+        .footer-text a,
+        .footer-cta a,
+        .style-note a {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            min-height: 40px;
+            margin-top: -12px;
+            margin-bottom: -12px;
+        }
+        .nav-github {
+            min-height: 40px;
+        }
+
+        /* ── 输入框 / 按钮 ── */
+        .url-fetch-input {
+            min-height: 40px;
+        }
+        .url-fetch-btn {
+            min-width: 40px;
+            min-height: 40px;
+        }
+
+        /* ── 播放/暂停：盒子 40×40，视觉边框仍是 32×32 ── */
+        .control-btn {
+            width: 40px;
+            height: 40px;
+            border-width: 4px;
+            border-color: transparent;
+            background-clip: padding-box;
+            box-shadow: inset 0 0 0 1px var(--border-subtle);
+            transition: box-shadow var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+        }
+        .control-btn:hover {
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1px var(--green-dim);
+        }
+        .control-btn.active {
+            background: var(--green-glow);
+            background-clip: padding-box;
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1px var(--green);
+        }
+
+        /* ── 配色按钮：盒子 40，视觉边框 34 ── */
+        .palette-btn {
+            min-height: 40px;
+            border-width: 3px 1px;
+            border-color: transparent;
+            background-clip: padding-box;
+            box-shadow: inset 0 0 0 1px var(--border-dim);
+            transition: box-shadow var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+        }
+        .palette-btn:hover {
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1px var(--border-active);
+        }
+        .palette-btn.active {
+            background: var(--green-glow);
+            background-clip: padding-box;
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1px var(--green);
+        }
+
+        /* ── 排序 pill：盒子 40，视觉边框 36 ── */
+        .sort-tab {
+            min-height: 40px;
+            border-width: 2px 1px;
+            border-color: transparent;
+            background-clip: padding-box;
+            box-shadow: inset 0 0 0 1px var(--border-subtle);
+            transition: box-shadow var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+        }
+        .sort-tab:hover {
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1px var(--border-active);
+        }
+        .sort-tab.active {
+            background: var(--green-glow);
+            background-clip: padding-box;
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1px var(--green);
+        }
+
+        /* ── 自定义标签 pill：盒子 40，视觉边框 26 ── */
+        .custom-tags-toggle {
+            min-height: 40px;
+            border-width: 7px 1px;
+            border-color: transparent;
+            background-clip: padding-box;
+            box-shadow: inset 0 0 0 1px var(--border-dim);
+        }
+        .custom-tags-toggle:hover {
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1px var(--border-active);
+        }
+        .custom-tags-toggle.filtering {
+            background: var(--green-glow);
+            background-clip: padding-box;
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1px var(--green);
+        }
+        .custom-tag-item {
+            min-height: 40px;
+        }
+        .custom-tags-clear {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            min-height: 40px;
+        }
+
+        /* ── 分页按钮 / 微调选项 / 自定义字符弹层 ── */
+        .gallery-page-btn {
+            min-height: 40px;
+            border-width: 2px 1px;
+            border-color: transparent;
+            background-clip: padding-box;
+            box-shadow: inset 0 0 0 1px var(--border-subtle);
+            transition: box-shadow var(--transition-fast), color var(--transition-fast);
+        }
+        .gallery-page-btn:hover {
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1px var(--green);
+        }
+        .tweak-opt {
+            min-height: 40px;
+            border-width: 2px 1px;
+            border-color: transparent;
+            background-clip: padding-box;
+            box-shadow: inset 0 0 0 1px var(--border-dim);
+            transition: box-shadow var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+        }
+        .tweak-opt:hover {
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1px var(--border-active);
+        }
+        .tweak-opt.active {
+            background: var(--green-glow);
+            background-clip: padding-box;
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1px var(--green);
+        }
+        .custom-ramp-input {
+            min-height: 40px;
+        }
+        .tweaks-close,
+        .termify-modal-close {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            min-height: 40px;
+        }
+        .termify-modal-close {
+            top: 0;
+            right: 0;
+        }
+        /* 字符芯片：盒子 40×40，视觉芯片仍是 26×26 */
+        .cc-chip {
+            min-width: 40px;
+            height: 40px;
+            padding: 0;
+            border-width: 7px;
+            border-color: transparent;
+            background-clip: padding-box;
+            box-shadow: inset 0 0 0 1px var(--border-dim);
+        }
+        .cc-chip:hover {
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1px var(--green-dim);
+        }
+
+        /* ── 滑杆：input 盒子 44px 高，视觉轨道仍是 4px 细线 ── */
+        .size-slider-row input[type="range"] {
+            height: 44px;
+            background: transparent;
+            border-radius: 0;
+        }
+        .size-slider-row input[type="range"]::-webkit-slider-runnable-track {
+            height: 4px;
+            background: var(--border-dim);
+            border-radius: 2px;
+        }
+        .size-slider-row input[type="range"]::-webkit-slider-thumb {
+            margin-top: -5px;
+        }
+        .size-slider-row input[type="range"]::-moz-range-track {
+            height: 4px;
+            background: var(--border-dim);
+            border-radius: 2px;
+        }
+
+        /* ── S-6：窄屏保留 GitHub 图标入口（文字收进 aria-label 之外不可见） ── */
+        @media (max-width: 768px) {
+            .nav-github {
+                display: inline-flex;
+                width: 40px;
+                min-width: 40px;
+                height: 40px;
+                padding: 0;
+                justify-content: center;
+                gap: 0;
+            }
+            .nav-github-label {
+                display: none;
+            }
+            .nav-links {
+                gap: 6px;
+            }
+            nav .container {
+                padding-left: 10px;
+                padding-right: 10px;
+            }
+        }
+
+        /* ── 自定义配色行：label / 取色器 / 重置键都撑到 40，色块视觉仍是 32×20 ── */
+        .color-picker-label {
+            min-width: 40px;
+            min-height: 40px;
+        }
+        .color-picker-label input[type="color"] {
+            width: 40px;
+            height: 40px;
+            padding: 10px 4px;
+            border: none;
+            background: transparent;
+        }
+        .color-picker-label input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        .color-picker-label input[type="color"]::-webkit-color-swatch {
+            border: 1px solid var(--border-dim);
+            border-radius: 3px;
+        }
+        .color-picker-label input[type="color"]::-moz-color-swatch {
+            border: 1px solid var(--border-dim);
+            border-radius: 3px;
+        }
+        .color-reset-btn {
+            width: 40px;
+            height: 40px;
+            border-width: 10px 8px;
+            border-color: transparent;
+            border-radius: 3px;
+            background-clip: padding-box;
+            box-shadow: inset 0 0 0 1px var(--border-dim);
+        }
+        .color-reset-btn:hover {
+            border-color: transparent;
+            box-shadow: inset 0 0 0 1px var(--green-dim);
+        }

@@ -28,7 +28,7 @@
             </ul>
             <a href="https://github.com/ZhangJing-gugugaga/Termify" class="nav-github" target="_blank">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
-                GitHub
+                <span class="nav-github-label">GitHub</span>
             </a>
         </div>
     </nav>
@@ -124,7 +124,7 @@
                     <div class="style-preview ascii">
                         <img src="{{ url_for('static', filename='img/style-preview-ascii.gif') }}"
                              alt="Tethered Spacewalk · 经典ASCII灰度"
-                             width="312" height="234" loading="lazy">
+                             width="312" height="234" loading="lazy" decoding="async">
                     </div>
                     <div class="style-info">
                         <div class="style-name">经典ASCII灰度</div>
@@ -137,7 +137,7 @@
                     <div class="style-preview ascii-lite">
                         <img src="{{ url_for('static', filename='img/style-preview-ascii-lite.gif') }}"
                              alt="Tethered Spacewalk · 简约ASCII"
-                             width="312" height="234" loading="lazy">
+                             width="312" height="234" loading="lazy" decoding="async">
                     </div>
                     <div class="style-info">
                         <div class="style-name">简约ASCII</div>
@@ -150,7 +150,7 @@
                     <div class="style-preview blocks">
                         <img src="{{ url_for('static', filename='img/style-preview-blocks.gif') }}"
                              alt="Tethered Spacewalk · Unicode色块"
-                             width="312" height="234" loading="lazy">
+                             width="312" height="234" loading="lazy" decoding="async">
                     </div>
                     <div class="style-info">
                         <div class="style-name">Unicode色块</div>
@@ -163,7 +163,7 @@
                     <div class="style-preview braille">
                         <img src="{{ url_for('static', filename='img/style-preview-braille.gif') }}"
                              alt="Tethered Spacewalk · Braille点阵"
-                             width="312" height="234" loading="lazy">
+                             width="312" height="234" loading="lazy" decoding="async">
                     </div>
                     <div class="style-info">
                         <div class="style-name">Braille点阵</div>
@@ -176,7 +176,7 @@
                     <div class="style-preview geometric">
                         <img src="{{ url_for('static', filename='img/style-preview-geometric.gif') }}"
                              alt="Tethered Spacewalk · 几何图形"
-                             width="312" height="234" loading="lazy">
+                             width="312" height="234" loading="lazy" decoding="async">
                     </div>
                     <div class="style-info">
                         <div class="style-name">几何图形</div>
@@ -189,7 +189,7 @@
                     <div class="style-preview binary">
                         <img src="{{ url_for('static', filename='img/style-preview-binary.gif') }}"
                              alt="Tethered Spacewalk · 极简二值"
-                             width="312" height="234" loading="lazy">
+                             width="312" height="234" loading="lazy" decoding="async">
                     </div>
                     <div class="style-info">
                         <div class="style-name">极简二值</div>
@@ -202,7 +202,7 @@
                     <div class="style-preview binary">
                         <img src="{{ url_for('static', filename='img/style-preview-shades.gif') }}"
                              alt="Tethered Spacewalk · 明暗渐变块"
-                             width="312" height="234" loading="lazy">
+                             width="312" height="234" loading="lazy" decoding="async">
                     </div>
                     <div class="style-info">
                         <div class="style-name">明暗渐变块</div>
@@ -215,7 +215,7 @@
                     <div class="style-preview halftone">
                         <img src="{{ url_for('static', filename='img/style-preview-halftone.gif') }}"
                              alt="Tethered Spacewalk · 网点印刷"
-                             width="312" height="234" loading="lazy">
+                             width="312" height="234" loading="lazy" decoding="async">
                     </div>
                     <div class="style-info">
                         <div class="style-name">网点印刷</div>
@@ -228,7 +228,7 @@
                     <div class="style-preview dither">
                         <img src="{{ url_for('static', filename='img/style-preview-dither.gif') }}"
                              alt="Tethered Spacewalk · 抖动噪点"
-                             width="312" height="234" loading="lazy">
+                             width="312" height="234" loading="lazy" decoding="async">
                     </div>
                     <div class="style-info">
                         <div class="style-name">抖动噪点</div>
@@ -241,7 +241,7 @@
                     <div class="style-preview ascii">
                         <img src="{{ url_for('static', filename='img/style-preview-custom.gif') }}"
                              alt="多种字符拼成的无限符号 · 自定义字符"
-                             width="312" height="234" loading="lazy">
+                             width="312" height="234" loading="lazy" decoding="async">
                     </div>
                     <div class="style-info">
                         <div class="style-name">自定义字符</div>
@@ -418,7 +418,7 @@
     {% if gallery_enabled %}{% include '_gallery_modal.html' %}{% endif %}
 
     <!-- ═══════════ TWEAKS PANEL ═══════════ -->
-    <button class="tweaks-toggle" id="tweaksToggle" title="Tweaks">
+    <button class="tweaks-toggle" id="tweaksToggle" title="Tweaks" aria-controls="tweaksPanel" aria-expanded="false">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
 
@@ -525,19 +525,8 @@
         });
 
         // ═══════════ Tweaks panel ═══════════
-        const tweaksToggle = document.getElementById('tweaksToggle');
-        const tweaksPanel = document.getElementById('tweaksPanel');
-        const tweaksClose = document.getElementById('tweaksClose');
-
-        tweaksToggle.addEventListener('click', () => {
-            tweaksPanel.classList.toggle('open');
-            tweaksToggle.style.display = tweaksPanel.classList.contains('open') ? 'none' : 'flex';
-        });
-
-        tweaksClose.addEventListener('click', () => {
-            tweaksPanel.classList.remove('open');
-            tweaksToggle.style.display = 'flex';
-        });
+        // 开关绑定只在 static/js/app.js 里保留一份（ES5 那份，带 close 处理）；
+        // 这里原先还重复绑了一份等价监听，一次点击 toggle 两次互相抵消 → 面板永远打不开。
 
         // Tweaks: grid toggle
         document.querySelectorAll('[data-tweak="grid-on"]').forEach(btn => {

@@ -464,6 +464,15 @@
                       availH / (S.height * lineHeightRatio));
     fs = Math.max(2, Math.min(fs, 30));  // clamp to sane range
     tb.style.fontSize = fs + "px";
+
+    // 上面的字号是按网格（S.width）估的；模板里那份静态演示文字比网格宽，
+    // 窄屏会溢出 overflow:hidden 被裁掉。按实测宽度回缩字号，保证不裁字。
+    var shrinkGuard = 0;
+    while (tb.scrollWidth > tb.clientWidth && fs > 2 && shrinkGuard < 20) {
+      fs = Math.max(2, fs * 0.97);
+      tb.style.fontSize = fs + "px";
+      shrinkGuard++;
+    }
     return fs;
   }
 
@@ -1973,11 +1982,14 @@
       tweaksClose = byId("tweaksClose");
   if (tweaksToggle) tweaksToggle.addEventListener("click", function () {
     tweaksPanel.classList.toggle("open");
-    tweaksToggle.style.display = tweaksPanel.classList.contains("open") ? "none" : "flex";
+    var tweaksOpen = tweaksPanel.classList.contains("open");
+    tweaksToggle.style.display = tweaksOpen ? "none" : "flex";
+    tweaksToggle.setAttribute("aria-expanded", tweaksOpen ? "true" : "false");
   });
   if (tweaksClose) tweaksClose.addEventListener("click", function () {
     tweaksPanel.classList.remove("open");
     tweaksToggle.style.display = "flex";
+    tweaksToggle.setAttribute("aria-expanded", "false");
   });
 
   // Grid / scanline toggles
@@ -2384,4 +2396,25 @@
     showStyleDemo(S.charset);
     toast("已载入作品 " + fork + " 的风格，上传素材即可开始");
   })();
+
+  /* ── UX-10：静态演示 art 按实测宽度回缩字号 ──
+     模板里那份静态 art 比网格宽（50 字符 vs S.width 估出的字号），窄屏 white-space:pre
+     会溢到 padding 里被 overflow:hidden 裁掉。只在没有真实帧时生效：先清掉内联字号
+     回到 CSS 基准（媒体查询会变），再按实测宽度逐步回缩到不溢出。 */
+  function fitStaticPreviewFont() {
+    var tb = document.querySelector(".animation-terminal .terminal-body");
+    if (!tb || S.frames.length) return;
+    tb.style.fontSize = "";
+    var fs = parseFloat(getComputedStyle(tb).fontSize);
+    if (!fs) return;
+    var guard = 0;
+    while (tb.scrollWidth > tb.clientWidth && fs > 4 && guard < 40) {
+      fs = Math.round((fs - 0.1) * 100) / 100;
+      tb.style.fontSize = fs + "px";
+      guard++;
+    }
+  }
+  fitStaticPreviewFont();
+  window.addEventListener("resize", fitStaticPreviewFont);
+  window.addEventListener("load", fitStaticPreviewFont);
 })();
