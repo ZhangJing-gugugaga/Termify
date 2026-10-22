@@ -10,6 +10,7 @@ T1.6 Online Gallery adds /api/gallery/* + /gallery /v/<id> /admin routes.
 from __future__ import annotations
 
 import base64
+import collections
 import hashlib
 import ipaddress
 import json
@@ -1812,6 +1813,186 @@ def _subsample_frames(seq, charset: str, color_mode: str = "mono"):
     return [seq.lines_per_frame[i] for i in idx], total
 
 
+# --- PF-2 / PF-5：预览响应缓存 + 服务端成本/体积闸门 -------------------------
+# 终端「一屏」有物理上限：横向 400 列与本文件 width/height 的 1-400 硬钳一致，
+# 纵向 120 文本行（blocks 每格折算 2 行、braille 折算 4 行）。超限按上限截断，
+# 但不静默——响应头 X-Preview-Clamped / X-Embed-Clamped 与 JSON 的
+# clamped/requested 会写明被截到多少。
+PREVIEW_MAX_ROWS = 120
+# 单次响应体预算，按**实测**每格字节成本折算成帧数上限。取 3MB 的依据：
+# (1) 必须大于正常尺寸的整段体积（mono ascii 80x24 = 1.03MB / 514 帧全给），
+#     否则正常观看也会被抽稀；(2) 实测最坏请求 29-32MB，3MB 已是 10 倍收缩，
+#     且 flask-compress 对这类 ANSI 文本再压约 10 倍，实际传输 ~300KB。
+PREVIEW_BODY_BUDGET = 3 * 1024 * 1024
+# 内容只由 URL 与作品内容决定，渲染一次即可复用。进程内 LRU：gunicorn 多
+# worker 各自一份（未命中就重算，属可接受降级），重启即失效。
+PREVIEW_CACHE_BYTES = 64 * 1024 * 1024
+PREVIEW_CACHE_ENTRIES = 32
+PREVIEW_MAX_AGE = 600
+
+
+def _preview_row_mult(charset: str) -> int:
+    """一「行」height 折成多少文本行（与渲染管线的换算一致）。"""
+    if charset == "braille":
+        return 4
+    if charset == "blocks":
+        return 2
+    return 1
+
+
+def _preview_body_cost(charset: str, color_mode: str) -> int:
+    """每格字符在最终 JSON 里的字节数（实测均值）。
+
+    blocks 每格 fg+bg 两条 SGR ≈21B；braille 3 字节 UTF-8 ≈5.4B；非 mono 的
+    ascii 每格带 \x1b[38;2;r;g;bm ≈19.7B；mono 纯文本每格 1.04B（按 1 计）。
+    """
+    if charset == "blocks":
+        return 21
+    if charset == "braille":
+        return 6
+    return 20 if color_mode != "mono" else 1
+
+
+def _preview_clamp_height(charset: str, height: int):
+    """纵向截断到 PREVIEW_MAX_ROWS 文本行 → (height, clamped)。
+
+    只截 height 不截 width：横向已由 1-400 入参硬钳兜住，横向再截会改变画面
+    比例（预览与本地渲染对不上），纵向截只是少几行。
+    """
+    mult = _preview_row_mult(charset)
+    if height * mult <= PREVIEW_MAX_ROWS:
+        return height, False
+    return max(1, PREVIEW_MAX_ROWS // mult), True
+
+
+def _preview_clamp_note(requested_w: int, width: int, requested_h: int,
+                        height: int) -> str:
+    """只列出真被截掉的维度，如 "height:400>60"（没截的维度不进头，免得读成 400>400）。"""
+    parts = []
+    if width != requested_w:
+        parts.append("width:%d>%d" % (requested_w, width))
+    if height != requested_h:
+        parts.append("height:%d>%d" % (requested_h, height))
+    return ",".join(parts)
+
+
+def _preview_body_frame_cap(charset: str, width: int, height: int,
+                            color_mode: str) -> int:
+    """响应体预算允许的帧数（至少 1 帧）。"""
+    rows = height * _preview_row_mult(charset)
+    per_frame = max(1, width * rows * _preview_body_cost(charset, color_mode))
+    return max(1, PREVIEW_BODY_BUDGET // per_frame)
+
+
+def _embed_body_frame_cap(charset: str, width: int, height: int) -> int:
+    """embed 的帧上限：载荷是剥掉 ANSI 的纯文本，每格 ≈1.5B。
+
+    实测每格 0.69B(braille) / 1.03B(ascii 80x24) / 1.44B(blocks 200x60)，与预览
+    的 1-21B/格不是同一个成本模型；沿用预览的估算会把 blocks 的帧数砍到 1/10，
+    故单独建模。
+    """
+    rows = height * _preview_row_mult(charset)
+    return max(1, PREVIEW_BODY_BUDGET // int(max(1, width * rows * 1.5)))
+
+
+class _PreviewCache:
+    """进程内 LRU：key -> {etag, body, mimetype, cache_control, extra}。
+
+    threading.Lock 是必须的：serve 用 threaded=True，同一 worker 并发处理请求。
+    """
+
+    def __init__(self, max_bytes: int, max_entries: int):
+        self._lock = threading.Lock()
+        self._entries = collections.OrderedDict()
+        self._bytes = 0
+        self._max_bytes = max_bytes
+        self._max_entries = max_entries
+        self.hits = 0
+        self.misses = 0
+
+    def get(self, key):
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                self.misses += 1
+                return None
+            self._entries.move_to_end(key)
+            self.hits += 1
+            return entry
+
+    def put(self, key, entry) -> None:
+        size = len(entry["body"])
+        if size > self._max_bytes:
+            return  # 单条就超总预算：不缓存（也不挤掉别人）
+        with self._lock:
+            old = self._entries.pop(key, None)
+            if old is not None:
+                self._bytes -= len(old["body"])
+            self._entries[key] = entry
+            self._bytes += size
+            while self._entries and (self._bytes > self._max_bytes
+                                     or len(self._entries) > self._max_entries):
+                _, dropped = self._entries.popitem(last=False)
+                self._bytes -= len(dropped["body"])
+
+
+_PREVIEW_CACHE = _PreviewCache(PREVIEW_CACHE_BYTES, PREVIEW_CACHE_ENTRIES)
+
+
+def _preview_cache_key(kind: str, work, charset: str, width: int, height: int,
+                       color_mode: str, fg_color, bg_color, charset_ramp):
+    """(kind, 作品, 渲染参数) → 缓存键。
+
+    params_json + created_at 一并进键：同一 work_id 被重新发布成不同作品时，
+    只按 id 取会读到旧渲染。
+    """
+    sig = json.dumps([work["params_json"], work["created_at"], charset,
+                      width, height, color_mode, fg_color, bg_color,
+                      charset_ramp], separators=(",", ":"))
+    return (kind, work["id"], hashlib.sha1(sig.encode("utf-8")).hexdigest()[:16])
+
+
+def _preview_cache_response(entry, label):
+    """命中缓存 → 200（同一份字节）或 304（If-None-Match 命中）。"""
+    etag = entry["etag"]
+    inm = request.headers.get("If-None-Match", "")
+    fresh = bool(inm) and etag in [part.strip() for part in inm.split(",")]
+    if fresh:
+        # mimetype 必须显式给：默认 text/html 会撞上 _security_headers 的
+        # “HTML 禁缓存”规则，把 304 的 Cache-Control 改写成 no-cache。
+        resp = app.response_class(status=304, mimetype=entry["mimetype"])
+    else:
+        resp = app.response_class(entry["body"], mimetype=entry["mimetype"])
+    resp.headers["ETag"] = etag
+    resp.headers["Cache-Control"] = entry["cache_control"]
+    for name, value in entry["extra"].items():
+        resp.headers[name] = value
+    resp.headers["X-Preview-Cache"] = "HIT"
+    app.logger.info("%s cache HIT work=%s %s bytes=%d", label[0], label[1],
+                    "304" if fresh else "200", len(entry["body"]))
+    return resp
+
+
+def _preview_cache_store(key, resp, cache_control: str, extra: dict, label):
+    """把 200 响应原样入缓存；ETag 只在这里算一次，命中时零成本复用。
+
+    ETag 取未压缩字节的 sha1（flask-compress 在 after_request 才压，且同一
+    URL 的 gzip/identity 两种编码共用该 ETag，靠 Vary: Accept-Encoding 区分）。
+    """
+    body = resp.get_data()
+    etag = '"%s"' % hashlib.sha1(body).hexdigest()[:20]
+    resp.headers["ETag"] = etag
+    resp.headers["Cache-Control"] = cache_control
+    for name, value in extra.items():
+        resp.headers[name] = value
+    resp.headers["X-Preview-Cache"] = "MISS"
+    _PREVIEW_CACHE.put(key, {"etag": etag, "body": body,
+                             "mimetype": resp.mimetype,
+                             "cache_control": cache_control,
+                             "extra": dict(extra)})
+    app.logger.info("%s render work=%s bytes=%d", label[0], label[1], len(body))
+    return resp
+
 @app.route("/api/preview/<task_id>")
 def preview(task_id):
     charset = request.args.get("charset", "ascii").lower().strip()
@@ -2810,6 +2991,7 @@ def gallery_preview(work_id):
         height = int(request.args.get("height", original.get("height", 24)))
     except (TypeError, ValueError):
         return jsonify({"error": "width/height must be integers"}), 400
+    requested_w, requested_h = width, height
     width = max(1, min(400, width))
     height = max(1, min(400, height))
 
@@ -2820,18 +3002,27 @@ def gallery_preview(work_id):
     fg_color = _rgb_or_none(request.args.get("fg", original.get("fg")))
     bg_color = _rgb_or_none(request.args.get("bg", original.get("bg")))
 
+    # PF-2 成本闸门：先把纵向截到终端一屏，再按响应体预算限帧。缓存键用
+    # 「截断后」的尺寸，同一 URL 永远命中同一份字节。
+    height, clamped_rows = _preview_clamp_height(charset, height)
+    clamped = clamped_rows or (width, height) != (requested_w, requested_h)
+    cache_key = _preview_cache_key("preview", work, charset, width, height,
+                                   color_mode, fg_color, bg_color, charset_ramp)
+    hit = _PREVIEW_CACHE.get(cache_key)
+    if hit is not None:
+        return _preview_cache_response(hit, ("gallery-preview", work_id))
+
     from termify import convert
     # 渲染**前**算帧数并限帧：体积守卫是渲染之后才跑的，事后 413 已经太晚
     # （400 列 × 数百帧能直接把渲染进程 OOM 掉，本地开发服务实测被杀、
     # 页面全线 Failed to fetch）。这里先按「格 × 帧」封顶，渲染量因此有界。
-    rows = height * 2 if charset == "blocks" else height
-    if charset == "braille":
-        rows = height * 4
+    rows = height * _preview_row_mult(charset)
     cell_budget = max(1, PREVIEW_CELL_BUDGET // max(1, width * rows))
     frame_cap = _preview_max_frames(width, height, charset, color_mode)
+    body_cap = _preview_body_frame_cap(charset, width, height, color_mode)
 
     def _cap(total):
-        return max(1, min(cell_budget, frame_cap, total))
+        return max(1, min(cell_budget, frame_cap, body_cap, total))
 
     src_total = 0
 
@@ -2896,7 +3087,7 @@ def gallery_preview(work_id):
                      "try fewer columns",
             "too_large": True,
         }), 413
-    return jsonify({
+    payload = {
         "frames": frames,
         "frame_count": len(frames),
         "total_frames": total_frames,
@@ -2905,7 +3096,17 @@ def gallery_preview(work_id):
         "width": seq.width,
         "height": seq.height,
         "charset": charset,
-    })
+    }
+    extra = {}
+    if clamped:
+        # 静默改变画面比变慢更坏：明确回报被截到多少
+        payload["clamped"] = True
+        payload["requested"] = {"width": requested_w, "height": requested_h}
+        extra["X-Preview-Clamped"] = _preview_clamp_note(
+            requested_w, width, requested_h, height)
+    return _preview_cache_store(cache_key, jsonify(payload),
+                                "public, max-age=%d" % PREVIEW_MAX_AGE,
+                                extra, ("gallery-preview", work_id))
 
 
 def _export_budget_reject(width: int, height: int, frames: int):
@@ -2959,6 +3160,7 @@ def gallery_embed_frames(work_id):
         height = int(request.args.get("height", original.get("height", 24)))
     except (TypeError, ValueError):
         return jsonify({"error": "width/height must be integers"}), 400
+    requested_w, requested_h = width, height
     width = max(1, min(400, width))
     height = max(1, min(400, height))
 
@@ -2969,6 +3171,16 @@ def gallery_embed_frames(work_id):
     fg_color = _rgb_or_none(request.args.get("fg", original.get("fg")))
     bg_color = _rgb_or_none(request.args.get("bg", original.get("bg")))
 
+    # PF-5：与预览同款闸门 + 同一个进程内缓存（渲染管线本就完全共用）。
+    # 命中缓存不渲染任何东西，不该吃「渲染」限频额度，故排在限频闸之前。
+    height, clamped_rows = _preview_clamp_height(charset, height)
+    clamped = clamped_rows or (width, height) != (requested_w, requested_h)
+    cache_key = _preview_cache_key("embed", work, charset, width, height,
+                                   color_mode, fg_color, bg_color, charset_ramp)
+    hit = _PREVIEW_CACHE.get(cache_key)
+    if hit is not None:
+        return _preview_cache_response(hit, ("gallery-embed", work_id))
+
     # 公开只读端点：与预览同一条限频闸，防止被当成免费渲染 API 刷
     allowed, _reason = _rate_check(_client_ip(), "gallery-embed-frames",
                                    per_minute=30)
@@ -2978,14 +3190,13 @@ def gallery_embed_frames(work_id):
 
     from termify import convert
     # 与预览同款渲染前封顶：格 × 帧有界，先算再渲染（事后 413 已太晚）
-    rows = height * 2 if charset == "blocks" else height
-    if charset == "braille":
-        rows = height * 4
+    rows = height * _preview_row_mult(charset)
     cell_budget = max(1, PREVIEW_CELL_BUDGET // max(1, width * rows))
     frame_cap = _preview_max_frames(width, height, charset, color_mode)
+    body_cap = _embed_body_frame_cap(charset, width, height)
 
     def _cap(total):
-        return max(1, min(cell_budget, frame_cap, total))
+        return max(1, min(cell_budget, frame_cap, body_cap, total))
 
     src_total = 0
 
@@ -3050,8 +3261,19 @@ def gallery_embed_frames(work_id):
     from termify.output import embed as embed_mod
     resp = app.response_class(embed_mod.frames_payload(seq),
                               mimetype="application/json")
-    resp.headers["Cache-Control"] = "public, max-age=86400"
-    return resp
+    extra = {}
+    if clamped:
+        extra["X-Embed-Clamped"] = _preview_clamp_note(
+            requested_w, width, requested_h, height)
+    kept, natural = len(seq.lines_per_frame), min(cell_budget, frame_cap,
+                                                 src_total or frame_cap)
+    if kept < natural:
+        # 帧被体积闸门砍掉同样不能静默；embed 载荷是纯帧数组、没有元数据字段，
+        # 只能在响应头里交代（预览走 JSON 的 frame_count/total_frames）。
+        extra["X-Embed-Frames"] = "kept:%d;total:%d" % (kept, natural)
+    # Cache-Control 串与旧值逐字符一致（tests/test_t39_embed_export.py:143 断言）
+    return _preview_cache_store(cache_key, resp, "public, max-age=86400",
+                                extra, ("gallery-embed", work_id))
 
 
 @gallery_route("/api/gallery/download/<work_id>", methods=["GET"])
