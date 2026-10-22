@@ -7,8 +7,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>管理后台 — Termify</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261024a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261024a">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261025a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261025a">
 </head>
 <body>
 <div id="toast"></div>
@@ -38,6 +38,7 @@
                 <h1>管理后台</h1>
                 <p class="admin-login-hint">请输入管理员密码</p>
                 <input type="password" class="admin-login-input" id="adminPwd" placeholder="密码" autofocus>
+                <p id="adminLoginError" role="alert" style="display:none;color:var(--red,#ff3b30);margin:8px 0 0;">口令错误，请重试 / Wrong password.</p>
                 <button class="admin-login-btn" id="adminLoginBtn">登录</button>
             </div>
         </div>
@@ -46,6 +47,7 @@
     <!-- ═══════════ ADMIN PANEL ═══════════ -->
     <section class="admin-panel" id="adminPanel" style="display:none;">
         <div class="container">
+            <button type="button" class="admin-login-btn" id="adminSignOut" style="display:block;margin:0 0 16px auto;">退出 / Sign out</button>
             <div class="admin-tabs">
                 <button class="admin-tab active" data-tab="works">作品列表</button>
                 <button class="admin-tab" data-tab="reports">举报队列</button>
@@ -124,18 +126,65 @@
             if (e.key === "Enter") doLogin();
         });
 
+        // 先校验口令再切面板（B5）：错口令收掉登录框会把用户困在空面板里
+        // 无路可退，只剩刷新（且已填密码也不该被当成有效会话）。
         function doLogin() {
             var pwd = document.getElementById("adminPwd").value;
             if (!pwd) { toast("请输入密码"); return; }
             ADMIN_PWD = pwd;
-            showAdmin();
+            setLoginError("");
+            fetch("/api/gallery/admin", { headers: { "X-Termify-Admin-Pwd": ADMIN_PWD } })
+                .then(function (r) {
+                    if (r.status === 401 || r.status === 403) throw new Error("unauthorized");
+                    if (!r.ok) throw new Error("HTTP " + r.status);
+                    return r.json();
+                })
+                .then(function (d) {
+                    if (d && d.error) { loginFailed(d.error); return; }
+                    showAdmin(d);
+                })
+                .catch(function (err) {
+                    loginFailed(err && err.message === "unauthorized"
+                        ? "口令错误，请重试 / Wrong password."
+                        : "加载失败，请重试 / Failed to load, retry.");
+                });
         }
 
-        function showAdmin() {
+        // 失败态：留在登录框、保留已输入内容与焦点、常驻错误提示。
+        function loginFailed(msg) {
+            ADMIN_PWD = "";
+            setLoginError(msg);
+            document.getElementById("adminPanel").style.display = "none";
+            document.getElementById("adminLogin").style.display = "block";
+            var input = document.getElementById("adminPwd");
+            if (input) { input.focus(); input.select(); }
+        }
+
+        function setLoginError(msg) {
+            var el = document.getElementById("adminLoginError");
+            if (!el) return;
+            el.textContent = msg || "";
+            el.style.display = msg ? "block" : "none";
+        }
+
+        function showAdmin(data) {
+            setLoginError("");
             document.getElementById("adminLogin").style.display = "none";
             document.getElementById("adminPanel").style.display = "block";
-            loadData();
+            if (data) { renderWorks(data.works); renderReports(data.reports); }
+            else loadData();
         }
+
+        // 面板里的退路：清掉口令回到登录态（B5）。
+        function signOut() {
+            ADMIN_PWD = "";
+            document.getElementById("adminPwd").value = "";
+            document.getElementById("adminPanel").style.display = "none";
+            document.getElementById("adminLogin").style.display = "block";
+            setLoginError("");
+            document.getElementById("adminPwd").focus();
+        }
+        document.getElementById("adminSignOut").addEventListener("click", signOut);
 
         function loadData() {
             fetch("/api/gallery/admin", { headers: { "X-Termify-Admin-Pwd": ADMIN_PWD } })

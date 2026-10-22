@@ -7,8 +7,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>在线画廊 · Termify</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261024a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261024a">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261025a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261025a">
 </head>
 <body>
 <div id="toast"></div>
@@ -43,10 +43,10 @@
     <!-- ═══════════ FILTERS ═══════════ -->
     <section class="gallery-filters">
         <div class="container">
-            <div class="gallery-sort-tabs">
-                <button class="sort-tab active" data-sort="latest">最新</button>
-                <button class="sort-tab" data-sort="hot">热门</button>
-                <button class="sort-tab" data-sort="random">随机</button>
+            <div class="gallery-sort-tabs" role="group" aria-label="排序方式">
+                <button class="sort-tab active" data-sort="latest" aria-pressed="true" aria-label="按最新排序">最新</button>
+                <button class="sort-tab" data-sort="hot" aria-pressed="false" aria-label="按热度排序">热门</button>
+                <button class="sort-tab" data-sort="random" aria-pressed="false" aria-label="随机排序">随机</button>
             </div>
             <div class="gallery-custom-tags">
                 <button type="button" class="custom-tags-toggle" id="customTagsBtn" aria-expanded="false">
@@ -136,6 +136,40 @@
 
         var G = { sort: "latest", tags: [], page: 1, limit: 24, total: 0, hasMore: false };
 
+        // 深链（B1）：sort/page/limit/tags 从 location.search 读，非法值按服务端
+        // 同一套回退规则归一（sort 白名单、page>=1、limit 1..60、tags 最多 10 个）。
+        function readStateFromUrl() {
+            var q = new URLSearchParams(window.location.search);
+            var sort = q.get("sort");
+            if (sort === "hot" || sort === "random" || sort === "latest") G.sort = sort;
+            else G.sort = "latest";
+            var page = parseInt(q.get("page"), 10);
+            G.page = (isNaN(page) || page < 1) ? 1 : page;
+            var limit = parseInt(q.get("limit"), 10);
+            G.limit = (isNaN(limit) || limit < 1) ? 24 : Math.min(60, limit);
+            var raw = (q.get("tags") || "").split(",");
+            var tags = [];
+            for (var i = 0; i < raw.length; i++) {
+                var t = raw[i].trim();
+                if (t && tags.indexOf(t) < 0 && tags.length < 10) tags.push(t);
+            }
+            G.tags = tags;
+        }
+
+        // 状态一变就把地址栏同步成同一状态（replaceState：不新增历史记录）。
+        // 默认值不写进 URL，/gallery 保持干净。
+        function syncUrl() {
+            var p = new URLSearchParams();
+            if (G.sort !== "latest") p.set("sort", G.sort);
+            if (G.page > 1) p.set("page", G.page);
+            if (G.limit !== 24) p.set("limit", G.limit);
+            if (G.tags.length) p.set("tags", G.tags.join(","));
+            var qs = p.toString();
+            if (window.history && history.replaceState) {
+                history.replaceState(null, "", window.location.pathname + (qs ? "?" + qs : ""));
+            }
+        }
+
         // 存储型 XSS 防线：服务端只截断不转义，所有插进 innerHTML 的
         // 用户可控字符串（title/author/tags 等）必须先过 escapeHtml。
         // 含引号转义（属性上下文 alt="..."/href="..." 也不能逃逸）。
@@ -179,6 +213,7 @@
         function fetchGallery() {
             var params = new URLSearchParams({ sort: G.sort, page: G.page, limit: G.limit });
             if (G.tags.length) params.set("tags", G.tags.join(","));
+            syncUrl();
             setGalleryError(false);
             showSkeleton(true);
             fetch("/api/gallery/list?" + params.toString())
@@ -203,12 +238,13 @@
         var galleryRetry = document.getElementById("galleryErrorRetry");
         if (galleryRetry) galleryRetry.addEventListener("click", function () { fetchGallery(); });
 
-        // 空态有两种：站里真没作品 vs 标签筛选没命中。后者必须给"清除筛选"
-        // 的动作，否则用户只能对着"暂无作品"以为平台空了。
-        function renderEmptyState(filtered) {
+        // 空态有三种：站里真没作品 / 标签筛选没命中 / 页码越界（total>0 但当前页
+        // 没有 items）。第三种不能念"暂无作品，去上传第一个"——那是自相矛盾，
+        // 必须给跳回真实页面的动作（B2）。
+        function renderEmptyState() {
             var empty = document.getElementById("galleryEmpty");
             if (!empty) return;
-            if (filtered) {
+            if (G.tags.length > 0) {
                 empty.innerHTML = '<p>没有匹配的作品，换个标签试试 / No works match this filter.</p>' +
                     '<p><button type="button" class="gallery-page-btn" id="galleryEmptyClear">清除筛选 / Clear filter</button></p>';
                 var clr = document.getElementById("galleryEmptyClear");
@@ -218,8 +254,26 @@
                     syncCustomTagSelection();
                     fetchGallery();
                 });
-            } else {
+            } else if (G.total === 0) {
                 empty.innerHTML = '<p>暂无作品，<a href="/">去上传第一个 →</a> / No works yet. <a href="/">Upload the first one →</a></p>';
+            } else {
+                var lastPage = Math.ceil(G.total / G.limit) || 1;
+                empty.innerHTML = '<p>第 ' + escapeHtml(G.page) + ' 页没有作品（共 ' + escapeHtml(lastPage) +
+                    ' 页 / ' + escapeHtml(G.total) + ' 个作品）。This page is out of range.</p>' +
+                    '<p><button type="button" class="gallery-page-btn" id="galleryEmptyFirst">回到第 1 页 / First page</button> ' +
+                    '<button type="button" class="gallery-page-btn" id="galleryEmptyLast">最后一页 / Last page</button></p>';
+                var firstBtn = document.getElementById("galleryEmptyFirst");
+                if (firstBtn) firstBtn.addEventListener("click", function () {
+                    G.page = 1;
+                    fetchGallery();
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                });
+                var lastBtn = document.getElementById("galleryEmptyLast");
+                if (lastBtn) lastBtn.addEventListener("click", function () {
+                    G.page = lastPage;
+                    fetchGallery();
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                });
             }
             empty.style.display = "block";
         }
@@ -229,7 +283,7 @@
             var empty = document.getElementById("galleryEmpty");
             if (!items.length) {
                 grid.innerHTML = "";
-                renderEmptyState(G.tags.length > 0);
+                renderEmptyState();
                 return;
             }
             empty.style.display = "none";
@@ -238,17 +292,20 @@
                 // 角标区分来源（kind=text 字符艺术；其余为动画工坊作品）
                 var kind = (w.params && w.params.kind) || "";
                 var badge = kind === "text"
-                    ? '<span class="gallery-card-badge">字符</span>' : "";
-                return '<a class="gallery-card" href="/v/' + escapeHtml(w.id) + '">' +
+                    ? '<span class="gallery-card-badge" aria-hidden="true">字符</span>' : "";
+                // 卡片可访问名称只念一次「标题 · 作者」（B4）：缩略图是同一作品的
+                // 装饰性重复，alt="" 让它退出名称计算；❤/👁 计数 aria-hidden，
+                // 免得读屏把数字串进标题。
+                return '<a class="gallery-card" href="/v/' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.title) + ' · ' + escapeHtml(w.author || "匿名") + '">' +
                     '<div class="gallery-card-img">' +
-                    '<img src="' + escapeHtml(w.thumbnail_url) + '" alt="' + escapeHtml(w.title) + '" loading="lazy">' +
+                    '<img src="' + escapeHtml(w.thumbnail_url) + '" alt="" loading="lazy">' +
                     badge +
                     '</div>' +
                     '<div class="gallery-card-info">' +
                     '<div class="gallery-card-title">' + escapeHtml(w.title) + '</div>' +
                     '<div class="gallery-card-meta">' +
                     '<span class="gallery-card-author">' + escapeHtml(w.author || '匿名') + '</span>' +
-                    '<span class="gallery-card-stats">' +
+                    '<span class="gallery-card-stats" aria-hidden="true">' +
                     '<span>❤ ' + escapeHtml(w.like_count) + '</span>' +
                     '<span>👁 ' + escapeHtml(w.view_count) + '</span>' +
                     '</span>' +
@@ -260,6 +317,12 @@
             var el = document.getElementById("galleryPagination");
             if (d.total <= d.limit) { el.innerHTML = ""; return; }
             var totalPages = Math.ceil(d.total / d.limit);
+            // 页码越界：不再渲染会继续空翻的"上一页"，只标一句越界说明，
+            // 跳页动作交给上面空态里的按钮（B2）。
+            if (d.page > totalPages) {
+                el.innerHTML = '<span class="gallery-page-info">第 ' + escapeHtml(d.page) + ' / ' + escapeHtml(totalPages) + ' 页（已越界 / out of range）</span>';
+                return;
+            }
             var html = "";
             if (d.page > 1) html += '<button class="gallery-page-btn" data-page="' + escapeHtml(d.page - 1) + '">← 上一页</button>';
             html += '<span class="gallery-page-info">第 ' + escapeHtml(d.page) + ' / ' + escapeHtml(totalPages) + ' 页</span>';
@@ -267,13 +330,20 @@
             el.innerHTML = html;
         }
 
-        // Sort tabs
+        // Sort tabs：选中态同时落在 class 与 aria-pressed 上（B3），
+        // 容器是 role="group"（不是 tablist：这里没有配套的 tabpanel）。
+        function syncSortTabs() {
+            document.querySelectorAll(".sort-tab").forEach(function (b) {
+                var on = b.dataset.sort === G.sort;
+                b.classList.toggle("active", on);
+                b.setAttribute("aria-pressed", on ? "true" : "false");
+            });
+        }
         document.querySelectorAll(".sort-tab").forEach(function (btn) {
             btn.addEventListener("click", function () {
-                document.querySelectorAll(".sort-tab").forEach(function (b) { b.classList.remove("active"); });
-                btn.classList.add("active");
                 G.sort = btn.dataset.sort;
                 G.page = 1;
+                syncSortTabs();
                 fetchGallery();
             });
         });
@@ -416,6 +486,10 @@
             });
         });
 
+        // 首次进入：先按地址栏恢复状态，再拉列表（B1）
+        readStateFromUrl();
+        syncSortTabs();
+        syncCustomTagSelection();
         fetchGallery();
     </script>
 </body>

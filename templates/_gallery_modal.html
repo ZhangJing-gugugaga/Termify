@@ -5,11 +5,11 @@
         <h3 class="gallery-modal-title">分享到画廊</h3>
         <div class="gallery-form-row">
             <label class="gallery-form-label">标题 <span class="gallery-form-count" id="titleCount">0/60</span></label>
-            <input type="text" class="gallery-form-input" id="galleryTitle" maxlength="60" placeholder="给你的作品起个名字">
+            <input type="text" class="gallery-form-input" id="galleryTitle" maxlength="60" aria-label="作品标题 / Title" placeholder="给你的作品起个名字">
         </div>
         <div class="gallery-form-row">
             <label class="gallery-form-label">描述 <span class="gallery-form-count" id="descCount">0/500</span></label>
-            <textarea class="gallery-form-textarea" id="galleryDesc" maxlength="500" placeholder="描述这张图片的特点或创作意图（可选）"></textarea>
+            <textarea class="gallery-form-textarea" id="galleryDesc" maxlength="500" aria-label="作品描述 / Description" placeholder="描述这张图片的特点或创作意图（可选）"></textarea>
         </div>
         <div class="gallery-form-row">
             <label class="gallery-form-label">标签 <span class="gallery-form-hint">预设最多选 3 个</span></label>
@@ -31,12 +31,13 @@
         <div class="gallery-form-row">
             <label class="gallery-form-label">自定义标签 <span class="gallery-form-count" id="customTagsCount">0/3</span></label>
             <input type="text" class="gallery-form-input" id="galleryCustomTags" maxlength="60"
+                   aria-label="自定义标签 / Custom tags"
                    placeholder="用逗号分隔，例如：赛博朋克, 我的猫">
             <span class="gallery-form-hint">每个最长 12 字，最多 3 个；会显示在作品页并进入画廊「自定义标签」筛选</span>
         </div>
         <div class="gallery-form-row">
             <label class="gallery-form-label">作者 <span class="gallery-form-count" id="authorCount">0/20</span></label>
-            <input type="text" class="gallery-form-input" id="galleryAuthor" maxlength="20" placeholder="你的名字或昵称">
+            <input type="text" class="gallery-form-input" id="galleryAuthor" maxlength="20" aria-label="作者名 / Author" placeholder="你的名字或昵称">
         </div>
         <div class="gallery-form-row">
             <label class="gallery-form-label">可见性</label>

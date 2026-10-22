@@ -474,6 +474,7 @@
         .url-fetch {
             display: none;
             align-items: center;
+            flex-wrap: wrap;
             gap: var(--space-2);
             margin-top: var(--space-4);
             position: relative;
@@ -486,7 +487,8 @@
             white-space: nowrap;
         }
         .url-fetch-input {
-            flex: 1;
+            flex: 1 1 auto;
+            min-width: 0;
             font-family: var(--font-mono);
             font-size: var(--fs-sm);
             padding: var(--space-2) var(--space-3);

@@ -7,9 +7,9 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>字符艺术 · Termify</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261024a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261024a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20261024a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261025a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261025a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/text_art.css') }}?v=20261025a">
 </head>
 <body class="page-text-art">
     <!-- ═══════════ NAVIGATION ═══════════ -->
@@ -93,7 +93,8 @@
                     <div class="ta-group">
                         <span class="ta-label">图片</span>
                         <div class="ta-upload" id="taImgUpload">
-                            <input type="file" id="taImgFile" accept=".png,.jpg,.jpeg,.bmp,.webp" hidden>
+                            <input type="file" id="taImgFile" accept=".png,.jpg,.jpeg,.bmp,.webp" hidden
+                                   aria-label="选择图片文件 / Choose image file">
                             <button type="button" class="ta-btn" id="taImgPickBtn">选择图片</button>
                             <span class="ta-hint" id="taImgName">png / jpg / bmp / webp，动图请移步动画工坊</span>
                         </div>
@@ -124,6 +125,7 @@
                             <option value="custom">自定义字符</option>
                         </select>
                         <input type="text" class="ta-input" id="taImgRamp" hidden maxlength="64"
+                               aria-label="自定义字符，密到疏排列 / Custom character ramp, dense to sparse"
                                placeholder="自定义字符，密→疏排列，如 @#%*+=-:. ">
                     </div>
 
@@ -229,6 +231,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20261009b" defer></script>
+    <script src="{{ url_for('static', filename='js/text_art.js') }}?v=20261025a" defer></script>
 </body>
 </html>

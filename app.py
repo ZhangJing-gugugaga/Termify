@@ -44,6 +44,17 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24).hex())
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # PRD §7.1
 
 
+@app.errorhandler(404)
+def _not_found(_e):
+    """404 落到站点风格页面（此前是 Flask 默认英文页：无导航、无中文、无返回入口）。
+
+    API 路径保持 JSON —— 前端拿 HTML 会解析失败，比报错信息更糟。
+    """
+    if request.path == "/api" or request.path.startswith("/api/"):
+        return jsonify({"error": "接口不存在 / Not found"}), 404
+    return render_template("404.html"), 404
+
+
 @app.errorhandler(413)
 def _request_entity_too_large(_e):
     """请求体超过 MAX_CONTENT_LENGTH 时返回 JSON（而非 Flask 默认 HTML 页）。"""
@@ -1209,6 +1220,24 @@ IMGASCII_CHARSET_NAMES = {
 }
 
 
+def _has_unusable_image_payload() -> bool:
+    """请求里带了图片数据、但没能变成可用文件（字段名不对 / base64 解析失败 /
+    空文件上传）。用来把"数据坏了"和"根本没选图"分开报错——用户明明选了图却
+    被告知"请选择图片"，是纯误导。
+    """
+    if request.is_json:
+        body = request.get_json(silent=True)
+        if isinstance(body, dict):
+            for key in ("image", "image_data", "data", "file"):
+                val = body.get(key)
+                if isinstance(val, str) and val.strip():
+                    return True
+    for f in request.files.values():
+        if f is not None and (f.filename or f.content_length):
+            return True
+    return False
+
+
 def _imgascii_read(file):
     """multipart 图片 → (PIL RGB 画布, 错误响应 or None)。
 
@@ -1217,6 +1246,10 @@ def _imgascii_read(file):
     from PIL import Image
 
     if file is None or not file.filename:
+        if _has_unusable_image_payload():
+            return None, (jsonify({"error": "图片数据无法解析，请换一张 / "
+                                            "Could not decode the image data"}),
+                          400)
         return None, (jsonify({"error": "请选择图片 / Choose an image"}), 400)
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext == ".gif":
@@ -2559,7 +2592,7 @@ def _security_headers(resp):
     resp.headers.setdefault(
         "Content-Security-Policy",
         "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-        "script-src 'self' 'unsafe-inline'; media-src 'self' data:; font-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; media-src 'self' data: blob:; "
         "connect-src 'self'")
     # HTML 页面禁缓存：HTML 引用带版本号的静态资源，HTML 本身一旦被浏览器
     # 启发式缓存，改版后用户会一直拿到旧页面（无版本号变化的旧 JS/CSS），

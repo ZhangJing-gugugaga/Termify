@@ -749,12 +749,21 @@
         img.src = url;
       });
     }
-    if (typeof createImageBitmap !== "function" || typeof fetch !== "function") {
+    // fetch("data:…") 会走网络栈，被 CSP connect-src 'self' 拦下（每帧一条
+    // 违规报错）。改为 atob 手工解码成 Blob，全程在内存里，不经过 fetch。
+    if (typeof createImageBitmap !== "function" || typeof atob !== "function" ||
+        typeof Blob !== "function" || typeof Uint8Array !== "function") {
       return viaImage();
     }
-    return fetch(url).then(function (r) { return r.blob(); })
-      .then(function (b) { return createImageBitmap(b); })
-      .catch(viaImage);
+    try {
+      var bin = atob(b64);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return createImageBitmap(new Blob([bytes], { type: "image/jpeg" }))
+        .catch(viaImage);
+    } catch (e) {
+      return viaImage();
+    }
   }
 
   function ensureTaskFrames(taskId) {
@@ -1082,6 +1091,7 @@
     if (!addBtn) return;
     var input = document.createElement("input");
     input.type = "file";
+    input.setAttribute("aria-label", "选择背景音乐 / Choose background music");
     input.accept = "audio/mpeg,audio/wav,audio/mp4,audio/aac,audio/ogg,audio/flac,.mp3,.wav,.m4a,.aac,.ogg,.flac";
     input.style.display = "none";
     document.body.appendChild(input);
@@ -1560,6 +1570,7 @@
   // Hidden file input (multi-select)
   var fileInput = (function () {
     var f = document.createElement("input"); f.type = "file"; f.multiple = true;
+    f.setAttribute("aria-label", "选择图片或视频文件 / Choose image or video files");
     f.accept = "image/gif,image/png,image/jpeg,video/mp4,video/webm,video/quicktime,video/x-msvideo,video/x-matroska"; f.style.display = "none";
     document.body.appendChild(f); return f;
   })();

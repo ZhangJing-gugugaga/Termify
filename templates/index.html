@@ -7,8 +7,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>动画工坊 · Termify</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261024a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261024a">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261025a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261025a">
 </head>
 <body>
 <div id="toast"></div>
@@ -111,6 +111,7 @@
             <div class="url-fetch" id="urlFetch">
                 <span class="url-fetch-label">或粘贴链接 / Or paste a link：</span>
                 <input type="text" class="url-fetch-input" id="urlInput"
+                       aria-label="图片链接 / Image URL"
                        placeholder="https://example.com/image.gif" />
                 <button class="url-fetch-btn" id="urlFetchBtn" title="抓取 / Fetch">抓取 / Fetch</button>
             </div>
@@ -380,9 +381,9 @@
             <h2 class="section-title">为什么选择 Termify</h2>
             <div class="features-grid">
                 <div class="feature-card">
-                    <div class="feature-icon-box">8</div>
-                    <h3 class="feature-title">8种渲染风格</h3>
-                    <p class="feature-desc">经典ASCII、简约ASCII、Unicode色块、Braille点阵、几何图形、极简二值、明暗渐变、自定义字符梯——总有一款适合你的素材。</p>
+                    <div class="feature-icon-box">10</div>
+                    <h3 class="feature-title">9 种渲染风格 + 自定义字符</h3>
+                    <p class="feature-desc">经典ASCII、简约ASCII、Unicode色块、Braille点阵、几何图形、极简二值、明暗渐变、网点印刷、抖动噪点——9 种渲染风格，外加 1 种完全自定义的字符梯，总有一款适合你的素材。</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon-box">&gt;_</div>
@@ -445,7 +446,9 @@
         <div class="tweak-group">
             <div class="tweak-label">自定义字符集（密 → 疏）</div>
             <div class="custom-ramp-row">
-                <input type="text" id="customRampInput" class="custom-ramp-input" maxlength="128" placeholder="如: @%#*+=-:.  或  █▓▒░ ">
+                <input type="text" id="customRampInput" class="custom-ramp-input" maxlength="128"
+                       aria-label="自定义字符集，密到疏 / Custom character ramp"
+                       placeholder="如: @%#*+=-:.  或  █▓▒░ ">
                 <button class="tweak-opt" id="customRampApply">应用</button>
             </div>
             <div class="tweak-hint">应用后点击左侧"自定义字符"风格卡片预览；前景/背景色在右侧「配色」面板 / Custom ramp lives here; fg/bg colors moved to the Color scheme panel</div>
@@ -486,7 +489,8 @@
         <div class="export-modal" role="dialog" aria-modal="true" aria-labelledby="embedSnippetTitle">
             <div class="export-modal-title" id="embedSnippetTitle">一行嵌入 / One-line embed</div>
             <div class="embed-snippet-hint">复制下面这段，粘进 README / 博客 / 任意 HTML 即播 / Copy &amp; paste anywhere</div>
-            <textarea class="embed-snippet-box" id="embedSnippetText" readonly rows="8" spellcheck="false"></textarea>
+            <textarea class="embed-snippet-box" id="embedSnippetText" readonly rows="8" spellcheck="false"
+                      aria-label="一行嵌入代码 / One-line embed snippet"></textarea>
             <div class="export-modal-actions">
                 <button class="export-cancel" id="embedSnippetClose" type="button">关闭 / Close</button>
                 <button class="export-cancel" id="embedSnippetDownload" type="button">下载 .html</button>
@@ -575,8 +579,8 @@
         // cycleSec / S.frames.length × S.interval）。原来这里那段 2.4 秒
         // DEMO_TOTAL 假循环已删除——没有帧时如实显示 0.0s / 0.0s。
     </script>
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20260907a"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20261024a" defer></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20261025a"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20261025a" defer></script>
 
     <!-- Termify 自定义弹窗（替代浏览器原生 alert/confirm） -->
     <div class="termify-modal" id="termifyModal" hidden>
@@ -604,6 +608,7 @@
                 点击下方字符库追加，或直接输入。<span class="warn">避免 emoji 等宽字符。</span>
             </div>
             <input type="text" id="ccRampInput" class="custom-ramp-input" maxlength="128"
+                   aria-label="自定义字符集，深到浅 / Custom character ramp"
                    placeholder="如: █▓▒░  或  @%#*+=-:." autocomplete="off">
             <div class="cc-preview-row">
                 <span class="cc-preview-label">实时预览</span>

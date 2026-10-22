@@ -252,6 +252,20 @@
     }
   }
 
+  /* 字体提示文案：款数取自已加载的字体表。加载中不写数字——
+     字体表是异步 fetch，写死 FIGLET_FONTS.length 会让首屏永远停在
+     "精选 0 款字体"（选项其实早已 24 个）。 */
+  function syncFontHint() {
+    if (!taFontHint) return;
+    if (fontSource === "cjk") {
+      taFontHint.textContent = "中文点阵：宋体 / 楷体（系统字体光栅化）。默认盲文——复制或下载后粘到记事本、微信都对齐可分享；字符墙可换字块等终端样式。";
+      return;
+    }
+    taFontHint.textContent = FIGLET_FONTS.length
+      ? "FIGlet 精选 " + FIGLET_FONTS.length + " 款字体，选择作品的整体字形。字符墙首张「盲文·分享」卡把作品转成粘到哪都对齐的点阵形态。"
+      : "FIGlet 精选字体加载中，选择作品的整体字形。字符墙首张「盲文·分享」卡把作品转成粘到哪都对齐的点阵形态。";
+  }
+
   function setFontSource(source) {
     // 可见性不能放在"源未变化就 return"后面：首屏 fontSource 已是 figlet，
     // 第一次输入英文时不会再走 fillFontSelect 分支——尺寸分组（含英文字符
@@ -270,17 +284,14 @@
       if (f3) f3.hidden = cjk;
       if (f4) f4.hidden = cjk;
     }
-    if (taFontHint) {
-      taFontHint.textContent = source === "cjk"
-        ? "中文点阵：宋体 / 楷体（系统字体光栅化）。默认盲文——复制或下载后粘到记事本、微信都对齐可分享；字符墙可换字块等终端样式。"
-        : "FIGlet 精选 " + FIGLET_FONTS.length + " 款字体，选择作品的整体字形。字符墙首张「盲文·分享」卡把作品转成粘到哪都对齐的点阵形态。";
-    }
+    syncFontHint();
   }
 
   function loadFonts() {
     fetch("/api/text/fonts").then(function (r) { return r.json(); }).then(function (d) {
       if (d.ok && d.fonts) FIGLET_FONTS = d.fonts;
       if (fontSource === "figlet") fillFontSelect();
+      syncFontHint();   // 字体表到位 → 立刻把真实款数写回提示
     }).catch(function () {
       if (taFontHint) taFontHint.textContent = "字体加载失败，请刷新页面重试。";
     });
@@ -294,32 +305,63 @@
   var CJK_MAX_CHARS = 8;      // 与服务端 textart.CJK_MAX_CHARS 一致
   var taInputHint = byId("taInputHint");
 
+  /* 超上限判定：合法返回 null，超限返回 {kind, count, max, dropped}。
+     服务端对英文是 400 拒绝、对汉字是静默截断（只取前 8 个），所以前端
+     统一在超限时禁用生成按钮——不能让用户"点了才知道"。 */
+  function inputOverflow() {
+    var v = taInput ? taInput.value : "";
+    if (!v.trim()) return null;
+    if (hasCJK(v)) {
+      var cjk = (v.match(/[\u4E00-\u9FFF\u3400-\u4DBF]/g) || []).length;
+      if (cjk <= CJK_MAX_CHARS) return null;
+      return { kind: "cjk", count: cjk, max: CJK_MAX_CHARS,
+               dropped: cjk - CJK_MAX_CHARS };
+    }
+    var ascii = (v.match(/[\x20-\x7E]/g) || []).length;
+    if (ascii <= FIGLET_MAX_CHARS) return null;
+    return { kind: "figlet", count: ascii, max: FIGLET_MAX_CHARS,
+             dropped: ascii - FIGLET_MAX_CHARS };
+  }
+
+  function syncConvertEnable() {
+    if (!convertBtn) return;
+    convertBtn.disabled = !!inputOverflow() || busy;
+  }
+
   function syncInputHint() {
     if (!taInput || !taInputHint) return;
     var v = taInput.value;
+    var over = inputOverflow();
     if (!v.trim()) {
       taInputHint.hidden = true;
-      taInputHint.classList.remove("ta-hint-warn");
+      taInputHint.className = "ta-hint ta-input-hint";
       setFontSource("figlet");
+      syncConvertEnable();
       return;
     }
-    if (hasCJK(v)) {
-      var cjkCount = (v.match(/[\u4E00-\u9FFF\u3400-\u4DBF]/g) || []).length;
-      setFontSource("cjk");
-      taInputHint.hidden = false;
-      taInputHint.className = "ta-hint ta-input-hint" +
-        (cjkCount > CJK_MAX_CHARS ? " ta-hint-warn" : "");
+    var cjkMode = hasCJK(v);
+    var n = cjkMode ? (v.match(/[\u4E00-\u9FFF\u3400-\u4DBF]/g) || []).length
+                    : (v.match(/[\x20-\x7E]/g) || []).length;
+    var cap = cjkMode ? CJK_MAX_CHARS : FIGLET_MAX_CHARS;
+    setFontSource(cjkMode ? "cjk" : "figlet");
+    taInputHint.hidden = false;
+    taInputHint.className = "ta-hint ta-input-hint" +
+      (over ? " ta-hint-error" : "");
+    if (over) {
+      taInputHint.textContent = cjkMode
+        ? "超出上限（" + n + "/" + cap + " 个汉字）：请删到 " + cap +
+          " 个汉字以内再生成 / Over " + cap + " CJK chars: trim to " + cap +
+          " to generate"
+        : "超出上限（" + n + "/" + cap + " 字符）：请删到 " + cap +
+          " 字符以内再生成 / Over " + cap + " chars: trim to " + cap +
+          " to generate";
+    } else if (cjkMode) {
       taInputHint.textContent = "检测到中文 → 点阵字体 · " +
-        Math.min(cjkCount, CJK_MAX_CHARS) + "/" + CJK_MAX_CHARS + " 个汉字";
+        n + "/" + cap + " 个汉字";
     } else {
-      var ascii = (v.match(/[\x20-\x7E]/g) || []).length;
-      setFontSource("figlet");
-      taInputHint.hidden = false;
-      taInputHint.className = "ta-hint ta-input-hint" +
-        (ascii > FIGLET_MAX_CHARS ? " ta-hint-warn" : "");
-      taInputHint.textContent = ascii + "/" + FIGLET_MAX_CHARS +
-        " 字符 · FIGlet 字体";
+      taInputHint.textContent = n + "/" + cap + " 字符 · FIGlet 字体";
     }
+    syncConvertEnable();
   }
   if (taInput) {
     taInput.addEventListener("input", syncInputHint);
@@ -334,10 +376,36 @@
   var convertBtn = byId("taConvertBtn");
   var cjkHeightGroup = byId("taCjkHeightGroup");
   var cjkHeightInput = byId("taCjkHeight");
+
+  /* 行高就地纠正：min/max 只约束 spinner 箭头，手打 9999 照样能提交
+     （服务端内部会钳到 64，但不报错，用户以为生效了）。 */
+  function clampCjkHeight() {
+    if (!cjkHeightInput || cjkHeightInput.value === "") return;
+    var min = parseInt(cjkHeightInput.min, 10) || 10;
+    var max = parseInt(cjkHeightInput.max, 10) || 64;
+    var n = parseInt(cjkHeightInput.value, 10);
+    if (isNaN(n)) { cjkHeightInput.value = cjkHeightInput.defaultValue; return; }
+    var c = Math.min(Math.max(n, min), max);
+    if (String(c) === cjkHeightInput.value) return;
+    cjkHeightInput.value = String(c);
+    toast("字符高度限 " + min + "-" + max + " 行，已纠正为 " + c +
+          " / Height clamped to " + min + "-" + max);
+  }
+  if (cjkHeightInput) {
+    cjkHeightInput.addEventListener("change", clampCjkHeight);
+    cjkHeightInput.addEventListener("blur", clampCjkHeight);
+  }
   if (convertBtn) convertBtn.addEventListener("click", function () {
     if (busy) return;
     var text = taInput ? taInput.value : "";
     if (!text.trim()) { toast("请输入文字 / Enter some text"); return; }
+    // 英文超 64 服务端必然 400 → 兜一层（按钮此时已 disabled，回车/程序化
+    // 点击也不该发注定失败的请求）。中文超限服务端是静默截断，放行并提示。
+    var overInfo = inputOverflow();
+    if (overInfo && overInfo.kind !== "cjk") {
+      toast("超出 64 字符上限：请删到 64 以内 / Max 64 chars");
+      return;
+    }
     busy = true;
     convertBtn.disabled = true; convertBtn.textContent = "生成中…";
     if (taResultMeta) taResultMeta.hidden = true;
@@ -347,6 +415,7 @@
     // 只露"字符宽度"（列上限，超宽换行）
     var requestedH = 0;
     if (fontSource === "cjk" && cjkHeightInput && cjkHeightInput.value) {
+      clampCjkHeight();   // 手打 9999 也先纠正再发，服务端不接受越界值
       requestedH = parseInt(cjkHeightInput.value, 10) || 0;
       body.height = cjkHeightInput.value;
       body.charset = taCJKCharset;   // 字符墙选中的"点亮"字符
@@ -360,9 +429,22 @@
       body: JSON.stringify(body)
     }).then(function (r) { return r.json(); }).then(function (d) {
       busy = false;
-      convertBtn.disabled = false; convertBtn.textContent = "生成";
-      if (d.error) { showOutputError(d.error); hideFontWall(); return; }
+      convertBtn.textContent = "生成";
+      if (d.error) {
+        toast(d.error);   // 失败原因必须落到 toast（结果区小字常被忽略）
+        showOutputError(d.error);
+        hideFontWall();
+        syncConvertEnable();
+        return;
+      }
       showArt(d);
+      var notices = [];
+      // 服务端对超长汉字是静默截断：真发生了就必须说出来，
+      // 否则用户以为整段都生成了
+      if (overInfo && overInfo.kind === "cjk") {
+        notices.push("已按前 " + overInfo.max + " 个汉字生成，其余 " +
+                     overInfo.dropped + " 个已忽略");
+      }
       if (d.mode === "cjk") {
         loadCJKWall(text);   // 中文字符墙：点卡片换点亮字符（样张 → 重渲染）
         if (d.charset && CJK_CHARSET_NAMES[d.charset]) {
@@ -372,17 +454,21 @@
         // textart.cjk_effective_height）
         if (requestedH >= 10 && d.height &&
             requestedH - d.height >= 2) {
-          toast("字符高度已按文本长度收缩到 " + d.height +
-                " 行（总宽上限 " + (d.cols) + " 列，字越多收缩越狠）");
+          notices.push("字符高度已按文本长度收缩到 " + d.height +
+                       " 行（总宽上限 " + (d.cols) + " 列，字越多收缩越狠）");
         }
       } else {
         loadFigletWall(text);  // FIGlet 成功 → 字体墙点亮，点卡片即换
       }
+      if (notices.length) toast(notices.join(" · "));
+      syncConvertEnable();
     }).catch(function () {
       busy = false;
-      convertBtn.disabled = false; convertBtn.textContent = "生成";
+      convertBtn.textContent = "生成";
+      toast("网络异常，请重试 / Network error, retry");
       showOutputError("网络异常，请重试 / Network error, retry");
       hideFontWall();
+      syncConvertEnable();
     });
   });
 
@@ -960,6 +1046,7 @@
             toast("正在跳转动画工坊…");
             setTimeout(function () { window.location.href = d.redirect; }, 1200);
           } else {
+            toast(d.error);
             showOutputError(d.error);
           }
           return;
@@ -970,6 +1057,7 @@
       .catch(function (msg) {
         imgBusy = false;
         imgConvertBtn.disabled = false; imgConvertBtn.textContent = "生成";
+        toast(String(msg || "网络异常，请重试 / Network error, retry"));
         showOutputError(String(msg || "网络异常，请重试"));
       });
   });
