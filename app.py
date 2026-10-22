@@ -14,6 +14,7 @@ import hashlib
 import ipaddress
 import json
 import logging
+import mimetypes
 import os
 import re
 import secrets
@@ -31,6 +32,12 @@ from flask import (Flask, abort, jsonify, make_response, redirect,
 from flask_compress import Compress
 
 app = Flask(__name__)
+
+# 字体 MIME：Windows 注册表没有 .woff2/.ttf 的映射，werkzeug 会退成
+# application/octet-stream；站点又发了 X-Content-Type-Options: nosniff，
+# 严格的浏览器（Safari）会因此拒绝加载 @font-face，字体静默回退系统等宽字体。
+mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("font/ttf", ".ttf")
 
 # 显式日志 handler：非 debug 模式下 app.logger.warning/error 若无 handler，
 # 错误详情（如视频导入失败原因）会静默丢失，安全事件无从排查。
@@ -2632,6 +2639,34 @@ def _security_headers(resp):
     # 表现为"修了没生效"。静态资源带 ?v= 版本号，可长缓存。
     if resp.mimetype == "text/html":
         resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+# PF-6 静态资源长缓存：Flask 的 send_static_file 把 max_age 取自
+# SEND_FILE_MAX_AGE_DEFAULT（默认 None），werkzeug send_file 见 max_age 为 None
+# 就无条件写 Cache-Control: no-cache —— 模板里的 ?v= 对缓存策略零影响。
+# 不设 SEND_FILE_MAX_AGE_DEFAULT 是刻意的：它是全局的，设了会让 gallery/file/*
+# 这类动态 send_file 响应也吃到同一 max-age（误伤），且会顺带写一个与
+# Cache-Control 不一致的 Expires。改在 after_request 按"是否带版本参数"分流更精确。
+STATIC_VERSIONED_MAX_AGE = 31536000  # 1 年：URL 自带 ?v= 指纹，内容变了 URL 就变
+STATIC_PLAIN_MAX_AGE = 86400  # 1 天：裸 static URL 没有指纹，给短值留失效出口
+
+
+@app.after_request
+def _static_cache_policy(resp):
+    """带 ?v= 的静态资源给一年 + immutable；不带版本参数的给一天且不加 immutable。
+
+    只认 endpoint == "static"：/gallery/file/* 等动态路由（缩略图、原图、音频）
+    内容会随作品变更，绝不能被打上 immutable。304 也要复用同一套头，否则
+    浏览器拿到 304 后会用回自己缓存的旧策略。
+    """
+    if request.endpoint != "static" or resp.status_code not in (200, 304):
+        return resp
+    if request.args.get("v"):
+        resp.headers["Cache-Control"] = (
+            f"public, max-age={STATIC_VERSIONED_MAX_AGE}, immutable")
+    else:
+        resp.headers["Cache-Control"] = f"public, max-age={STATIC_PLAIN_MAX_AGE}"
     return resp
 
 

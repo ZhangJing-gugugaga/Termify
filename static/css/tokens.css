@@ -3,7 +3,10 @@
    每字符宽度不一，重 Unicode 风格整行漂移。OFL 许可证见 static/fonts/web/。 ── */
 @font-face {
     font-family: 'JetBrains Mono';
-    src: url('../fonts/web/JetBrainsMono-VF.ttf') format('truetype');
+    /* PF-6：woff2 是同一份可变字体的 Brotli 压缩版（300144B → 113580B，-62.2%），
+       现代浏览器都命中第一条，只有不认 woff2 的老浏览器才回落到 ttf。 */
+    src: url('../fonts/web/JetBrainsMono-VF.woff2') format('woff2'),
+         url('../fonts/web/JetBrainsMono-VF.ttf') format('truetype');
     font-weight: 100 800;
     font-style: normal;
     font-display: swap;
