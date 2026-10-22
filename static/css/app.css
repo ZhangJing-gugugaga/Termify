@@ -2402,6 +2402,31 @@
             font-weight: 600;
         }
         .export-confirm:hover { filter: brightness(1.1); }
+        /* UX-4：导出在途 —— 内联 spinner（不确定态，不伪造百分比） */
+        .export-confirm.busy {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-2, 8px);
+            white-space: nowrap;
+            cursor: progress;
+            filter: brightness(0.85);
+        }
+        .export-confirm.busy::before {
+            content: "";
+            width: 12px;
+            height: 12px;
+            flex: none;
+            border: 2px solid currentColor;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: termifySpin 0.8s linear infinite;
+        }
+        .export-confirm[disabled] { cursor: not-allowed; }
+        /* 不确定态 spinner 守卫：必须排在 .busy::before 之后，同特异性后者生效 */
+        @media (prefers-reduced-motion: reduce) {
+            .export-confirm.busy::before { animation: none; }
+        }
 
         /* ── 一行嵌入片段浮层（复用 .export-backdrop/.export-modal 骨架）── */
         .embed-snippet-hint {

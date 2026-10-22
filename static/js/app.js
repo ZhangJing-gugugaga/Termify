@@ -1236,11 +1236,26 @@
   if (exportBackdrop) exportBackdrop.addEventListener("click", function (e) {
     if (e.target === exportBackdrop) closeExportModal();  // 点遮罩取消
   });
+  /* UX-4：导出在途状态 —— 按钮 disabled + aria-busy + 文案切换，
+     连点/回车都只认第一次提交（服务端不回报进度，只做不确定态）。 */
+  var exportBusy = false;
+  var exportConfirmIdleText = "";
+  function setExportBusy(busy) {
+    exportBusy = !!busy;
+    var btn = byId("exportConfirmBtn");
+    if (!btn) return;
+    if (!exportConfirmIdleText) exportConfirmIdleText = btn.textContent;
+    btn.disabled = exportBusy;
+    btn.setAttribute("aria-busy", exportBusy ? "true" : "false");
+    btn.classList.toggle("busy", exportBusy);
+    btn.textContent = exportBusy ? "导出中… / Exporting…" : exportConfirmIdleText;
+  }
   var exportConfirmBtn = byId("exportConfirmBtn");
   if (exportConfirmBtn) exportConfirmBtn.addEventListener("click", function () {
+    if (exportBusy) return;  // 在途：重复点击 / Enter 一律忽略
     var sel = document.querySelector(".export-option.selected");
     var fmt = (sel && sel.getAttribute("data-format")) || "python";
-    closeExportModal();
+    setExportBusy(true);
     runExport(fmt);
   });
 
@@ -1333,6 +1348,7 @@
       }
       if (fmt === "embed") {
         // 一行嵌入：拿 snippet 填浮层，不跳转下载（python/html/mp4 分支保持不变）
+        closeExportModal();  // 有自带进度弹窗的格式不再叠一层格式选择
         showModal("正在生成嵌入片段", "正在生成自包含片段，请稍候…", false, true);
         startFakeProgress();
         fetch("/api/generate", {
@@ -1340,18 +1356,22 @@
           body: JSON.stringify(body)
         }).then(function (r) { return r.json(); }).then(function (d) {
           if (d.error) {
+            setExportBusy(false);
             showModal("生成失败", d.error, true);
             return;
           }
+          setExportBusy(false);
           hideModal();
           showEmbedSnippet(d.snippet, d.download_url);
         }).catch(function (e) {
+          setExportBusy(false);
           showModal("生成失败", "网络错误: " + e, true);
         });
         return;
       }
       if (fmt === "mp4") {
         // 无耗时预估（决策 v3.1 §2）：假进度封顶 90%，完成后自动下载
+        closeExportModal();
         showModal("正在导出 MP4 视频",
           "正在导出 MP4，完成后自动下载，请耐心等待…", false, true);
         startFakeProgress();
@@ -1360,13 +1380,16 @@
           body: JSON.stringify(body)
         }).then(function (r) { return r.json(); }).then(function (d) {
           if (d.error) {
+            setExportBusy(false);
             showModal("导出失败", d.error, true);
             return;
           }
+          setExportBusy(false);
           hideModal();
           toast("MP4 已生成 (" + (d.file_size || "?") + ")，开始下载");
           window.location.href = d.download_url;
         }).catch(function (e) {
+          setExportBusy(false);
           showModal("导出失败", "网络错误: " + e, true);
         });
         return;
@@ -1375,9 +1398,16 @@
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       }).then(function (r) { return r.json(); }).then(function (d) {
-        if (d.error) { toast(d.error); return; }
+        // 服务端报错：原文透出，按钮恢复可重试（不卡在「导出中」）
+        if (d.error) { setExportBusy(false); toast(d.error); return; }
+        closeExportModal();
+        setExportBusy(false);
+        toast("导出完成，正在下载 / Export ready, downloading");
         window.location.href = d.download_url;
-      }).catch(function (e) { toast("download failed: " + e); });
+      }).catch(function (e) {
+        setExportBusy(false);
+        toast("导出失败（" + e + "），请重试 / Export failed, please retry");
+      });
     }
     function generateWithMusic(taskId) {
       ensureMusicUploaded(taskId).then(function () { generateWithTask(taskId); });
@@ -1390,13 +1420,14 @@
       setModalProgress(0);
       uploadVideoXhr(S.localVideo.file).then(function (d) {
         hideModal();
-        if (d.error) { toast(d.error); return; }
+        if (d.error) { setExportBusy(false); toast(d.error); return; }
         S.taskId = d.task_id;
         var cur = S.fileList[S.selIdx];
         if (cur) cur.task_id = d.task_id;
         if (d.has_audio) toast("♪ 已检测到视频自带音频，将合成进导出文件");
         generateWithMusic(S.taskId);
       }).catch(function (e) {
+        setExportBusy(false);
         hideModal();
         toast("上传失败: " + e);
       });
