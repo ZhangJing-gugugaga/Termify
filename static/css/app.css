@@ -1200,6 +1200,17 @@
             outline: none;
             cursor: pointer;
         }
+        /* F1 键盘焦点环：上面这条底规则的 outline: none 特异性 (0,2,1)，压过全局
+           :focus-visible 的 (0,1,0)，键盘 Tab 落到 #viewSizeSlider 上一点焦点痕迹
+           都没有（同页其它控件都吃得到全局那套环）。这条 (0,3,1) 在键盘聚焦时把环
+           恢复成与全局完全一致的值；指针点击不匹配 :focus-visible，鼠标用户观感不变。
+           第二个选择器是同一支滑杆的历史重复命名（/v/ 回放页早先用 .view-size-row，
+           两个模板现在实际都用 .size-slider-row），一并保住免得再踩一次。 */
+        .size-slider-row input[type="range"]:focus-visible,
+        .view-size-row input[type="range"]:focus-visible {
+            outline: 2px solid var(--green);
+            outline-offset: 2px;
+        }
         .size-slider-row input[type="range"]::-webkit-slider-thumb {
             appearance: none;
             -webkit-appearance: none;
