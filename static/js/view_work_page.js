@@ -828,10 +828,23 @@
             if (_exportBtn) _exportBtn.addEventListener("click", function () { openExportModal(null); });
 
             // ── fork：带着当前风格/尺寸/配色回到编辑器，用户换自己的素材再渲染 ──
+            /* G-2：文字作品原来是裸跳转 "/text-art"，落地即空白编辑器。库里存的是
+               整幅字符画（params.frames[0]），这里把作品 id / 字体 / 正文一起过 URL，
+               由 text_art.js 预填。正文单件可达十几 KB，超过 6000 字符就不带，
+               接收侧回落 /api/gallery/work/<id> 取同一份数据。 */
+            var FORK_TEXT_MAX = 6000;
             var _forkBtn = document.getElementById("forkBtn");
             if (_forkBtn) _forkBtn.addEventListener("click", function () {
                 if (IS_TEXT || params.font) {
-                    window.location.href = "/text-art";  // 文字作品回艺术字页
+                    var tq = "?fork=" + encodeURIComponent(WORK_ID);
+                    if (params.font) {
+                        tq += "&font=" + encodeURIComponent(String(params.font));
+                    }
+                    var _body = textArtString();
+                    if (_body && _body.length <= FORK_TEXT_MAX) {
+                        tq += "&text=" + encodeURIComponent(_body);
+                    }
+                    window.location.href = "/text-art" + tq;
                     return;
                 }
                 var q = "?fork=" + encodeURIComponent(WORK_ID) +
