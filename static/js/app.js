@@ -1790,7 +1790,8 @@
       requestPreview(s, { silent: !S.taskId });
     }
     var previewEl = document.getElementById("preview");
-    if (previewEl) previewEl.scrollIntoView({ behavior: "instant", block: "start" });
+    // smooth：人工测试反馈「点卡瞬间跳转、没有滑动过程」，与页面其他 scrollIntoView 一致
+    if (previewEl) previewEl.scrollIntoView({ behavior: "smooth", block: "start" });
     flashPreview();  // 脉冲只作视觉装饰，不承担"把视线拉到预览"的职责（那由滚动负责）
   }
 

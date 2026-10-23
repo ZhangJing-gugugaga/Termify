@@ -442,6 +442,11 @@
        默认 stretch 会把 7 行压成等分高度，卡片里的 108px 预览被挤成 15px；
        行高交给内容，超出部分照旧滚动 */
     align-items: start; align-content: start;
+    /* grid-auto-rows: max-content：网格容器有确定高度（440px 墙体的 flex 剩余）时，
+       浏览器会把 auto 行压成等分（375 宽时 25 行各 18px，1440 宽时 9 行各 38px），
+       卡片高 146px 于是溢出本行、盖住下一行 —— 就是「中英文字体墙重叠」。
+       显式 max-content 让每行取卡片实际高度，超出部分仍由 overflow-y 滚动。 */
+    grid-auto-rows: max-content;
     flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 2px;
 }
 .ta-fw-card {

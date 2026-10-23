@@ -880,11 +880,37 @@
                     if (d.liked) toast("已点赞");
                 }).catch(function () { toast("操作失败"); });
             });
+            // 复制：clipboard API 在权限策略/非聚焦文档下会以 NotAllowedError 被拒
+            // （人工测试里「复制链接」直接报「复制失败」），必须回退 execCommand。
+            function copyText(text, okMsg, failMsg) {
+                function ok() { toast(okMsg); }
+                function fail() { toast(failMsg); }
+                function legacy() {
+                    var ta = document.createElement("textarea");
+                    ta.value = text;
+                    ta.setAttribute("readonly", "");
+                    ta.style.position = "fixed";
+                    ta.style.top = "-1000px";
+                    ta.style.opacity = "0";
+                    document.body.appendChild(ta);
+                    var copied = false;
+                    try {
+                        ta.select();
+                        ta.setSelectionRange(0, ta.value.length);
+                        copied = document.execCommand("copy");
+                    } catch (e) { copied = false; }
+                    document.body.removeChild(ta);
+                    if (copied) { ok(); } else { fail(); }
+                }
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(ok, legacy);
+                } else {
+                    legacy();
+                }
+            }
             // copy link
             document.getElementById("copyLinkBtn").addEventListener("click", function () {
-                navigator.clipboard.writeText(window.location.origin + "/v/" + WORK_ID).then(function () {
-                    toast("链接已复制");
-                }).catch(function () { toast("复制失败"); });
+                copyText(window.location.origin + "/v/" + WORK_ID, "链接已复制", "复制失败 / Copy failed");
             });
             // report modal
             var reportModal = document.getElementById("reportModal");
@@ -921,8 +947,7 @@
             if (_copyV) _copyV.addEventListener("click", function () {
                 var art = textArtString();
                 if (!art) return;
-                navigator.clipboard.writeText(art).then(function () { toast("已复制 / Copied"); })
-                    .catch(function () { toast("复制失败 / Copy failed"); });
+                copyText(art, "已复制 / Copied", "复制失败 / Copy failed");
             });
             var _dlV = document.getElementById("textDownloadBtnV");
             if (_dlV) _dlV.addEventListener("click", function () {

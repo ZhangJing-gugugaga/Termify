@@ -3057,7 +3057,7 @@
         }
 
 /* ═══════════════════════════════════════════════════════════
-   UI-STATES 修复块（?v=20261028a）
+   UI-STATES 修复块（?v=20261029a）
    把"状态语言"贴回线上排版：字号、间距、断点一律沿用上面已定的
    绝对值与现有 token，不复用设计版的字阶体系。
    1) 风格卡三段态 .is-loading / .is-error / [aria-disabled="true"]
@@ -3143,3 +3143,20 @@
         border-color: var(--green);
     }
 }
+
+/* ═══════════════════════════════════════════
+   BUGFIX-2026-11（人工测试反馈）
+   ═══════════════════════════════════════════ */
+/* 「自定义标签」面板被画廊卡片盖住：.gallery-filters 与 .gallery-section 的
+   .container 同为 z-index:1，后者在 DOM 中靠后 → 卡片绘制在面板之上。
+   抬升过滤区整个 section 的层级，面板（z-index:30）才能真正浮在卡片之上。 */
+.gallery-filters {
+    position: relative;
+    z-index: 20;
+}
+/* 窄屏下标签多时面板会长到 894px（超过视口高度），改为限高内部滚动 */
+.custom-tags-panel {
+    max-height: min(320px, 55vh);
+    overflow-y: auto;
+}
+

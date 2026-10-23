@@ -28,7 +28,7 @@ STATIC_JS = REPO_ROOT / "static" / "js"
 STATIC_CSS = REPO_ROOT / "static" / "css"
 NODE_HARNESS = REPO_ROOT / "tests" / "js_gallery_error_states.mjs"
 
-ASSET_VERSION = "20261028a"
+ASSET_VERSION = "20261029a"
 # 上一轮的版本串：拼出来而不是写死，免得这份用例自己成为"残留"的唯一命中
 OLD_ASSET_VERSION = "2026" + "1027" + "a"
 BACKTICK = chr(96)
@@ -228,8 +228,8 @@ def test_flash_wiring_and_first_paint() -> None:
     select_at = find_function_line(lines, "function selectStyleCard(")
     body = "\n".join(lines[select_at : select_at + 120])
     assert "flashPreview();" in body
-    baseline_scroll = '    if (previewEl) previewEl.scrollIntoView({ behavior: "instant", block: "start" });'
-    assert baseline_scroll in body, "基线滚动被改了：点卡必须仍 instant 跳到 #preview 顶部"
+    baseline_scroll = '    if (previewEl) previewEl.scrollIntoView({ behavior: "smooth", block: "start" });'
+    assert baseline_scroll in body, "点卡必须滚到 #preview 顶部（人工测试要求平滑滚动，不许 instant 跳转）"
     assert body.index(baseline_scroll) < body.index("flashPreview();")
     assert "matchMedia" not in body, "selectStyleCard 不该按断点分叉滚动行为"
 
