@@ -3156,10 +3156,18 @@ def _static_cache_policy(resp):
     if request.endpoint != "static" or resp.status_code not in (200, 304):
         return resp
     if request.args.get("v"):
-        resp.headers["Cache-Control"] = (
-            f"public, max-age={STATIC_VERSIONED_MAX_AGE}, immutable")
+        value = f"public, max-age={STATIC_VERSIONED_MAX_AGE}, immutable"
     else:
-        resp.headers["Cache-Control"] = f"public, max-age={STATIC_PLAIN_MAX_AGE}"
+        value = f"public, max-age={STATIC_PLAIN_MAX_AGE}"
+    # setlist 是"整键替换"语义：把同名的所有既有实例一起删掉，只留这一条。
+    # werkzeug 的 send_file 在 SEND_FILE_MAX_AGE_DEFAULT 有值时会先自己下发一条
+    # Cache-Control（默认 86400），与上面的策略并存就是两条同名头；RFC 9111
+    # §4.2 允许缓存方取第一条，一年 immutable 会输给那条短的，?v= 指纹白加。
+    resp.headers.setlist("Cache-Control", [value])
+    # Expires 只可能是 werkzeug 按 SEND_FILE_MAX_AGE_DEFAULT 算的，与上面的策略
+    # 无关；留着就是自相矛盾的过期时间（老客户端与中间缓存会按它判断）。
+    if "Expires" in resp.headers:
+        del resp.headers["Expires"]
     return resp
 
 
