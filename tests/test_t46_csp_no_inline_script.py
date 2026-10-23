@@ -44,7 +44,7 @@ EXTERNAL_SCRIPTS = (
     "index_page.js",
     "view_work_page.js",
 )
-STATIC_VERSION = "?v=20261030a"
+STATIC_VERSION = "?v=20261031a"
 
 REQUIRED_DIRECTIVES = (
     "default-src 'self'",
@@ -218,7 +218,7 @@ def test_external_script_file_exists_and_is_referenced(name):
     assert referencing, name
     for tmpl in referencing:
         text = (TEMPLATES / tmpl).read_text(encoding="utf-8")
-        assert "js/" + name + "') }}?v=20261030a" in text, tmpl
+        assert "js/" + name + "') }}?v=20261031a" in text, tmpl
 
 
 # ═══ 3. 渲染结果：无内联可执行脚本 + /v/ 数据块可无损还原 ═══════════════════

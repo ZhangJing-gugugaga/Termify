@@ -15,8 +15,8 @@
 {# 文字作品（kind=text）没有风格/尺寸/配色/导出/嵌入的可达入口：这些块
    服务端就不输出，避免整段 display:none 的幽灵控件进 DOM。 #}
 {% set is_text_work = '"kind":"text"' in ((work.params_json or '')|replace(' ', '')) %}
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261030a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261030a">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261031a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261031a">
 </head>
 <body>
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -345,7 +345,7 @@
         </div>
     </footer>
 
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20261030a"></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20261031a"></script>
     <!-- 作品数据：不可执行的 JSON 块（script-src 不管辖此类型），tojson
          把 < 与引号转义成 \uXXXX，故数据无法提前闭合本块或逃逸字符串。-->
     <script type="application/json" id="termifyWorkData">
@@ -356,6 +356,6 @@
             "tags": {{ (work.tags or '[]') | tojson }}
         }
     </script>
-    <script src="{{ url_for('static', filename='js/view_work_page.js') }}?v=20261030a" defer></script>
+    <script src="{{ url_for('static', filename='js/view_work_page.js') }}?v=20261031a" defer></script>
 </body>
 </html>
