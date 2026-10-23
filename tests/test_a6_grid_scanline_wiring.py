@@ -67,7 +67,8 @@ def test_fallbacks_equal_pre_fix_literals(css_text):
     "static/js/app.js",
     "static/js/index_page.js",
     # gallery_page.js 不再列入：F-2 删掉了画廊页整块死面板，该页没有开关可绑
-    "static/js/view_work_page.js",
+    # view_work_page.js 不再列入：G-1 删掉了详情页 Tweaks 面板与其绑定，
+    # 该页同样没有开关可绑（CSS 侧接线仍由本文件其余用例钉住）
 ])
 def test_js_side_writes_the_same_variable_names(js_path):
     """JS 侧写的变量名与取值必须与 CSS 侧消费的一致（老值 0.3 / 1 / 0）。"""

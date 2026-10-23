@@ -29,9 +29,10 @@
             function syncRampRow() {
                 if (rampRow) rampRow.hidden = curCharset !== "custom";
             }
-            if (rampInput) {
+            var rampApply = document.getElementById("viewRampApply");
+            if (rampInput && rampApply) {
                 rampInput.value = viewRamp;
-                document.getElementById("viewRampApply").addEventListener("click", function () {
+                rampApply.addEventListener("click", function () {
                     var v = rampInput.value || "";
                     if (!v.trim()) { toast("字符梯不能为空 / Ramp required"); return; }
                     viewRamp = v;
@@ -40,19 +41,9 @@
                 });
             }
 
+            // 文字作品页的风格/尺寸/配色/导出/嵌入块由模板条件渲染直接不输出
+            // （见 templates/view_work.html 的 is_text_work），此处只补文字作品元信息。
             if (IS_TEXT) {
-                var _stylesSection = document.getElementById("styles");
-                if (_stylesSection) _stylesSection.style.display = "none";
-                ["viewSizeCard", "viewSizeControls", "viewSizeMeta", "viewSizeWarn"].forEach(function (id) {
-                    var el = document.getElementById(id);
-                    if (el) el.style.display = "none";
-                });
-                var _paletteCard = document.getElementById("animPaletteCard");
-                if (_paletteCard) _paletteCard.style.display = "none";
-                var _exports = document.getElementById("exportAnimBtn");
-                if (_exports) _exports.style.display = "none";
-                var _tools = document.getElementById("textTools");
-                if (_tools) _tools.hidden = false;
                 var _meta = document.getElementById("textWorkMeta");
                 if (_meta) {
                     _meta.textContent = (params.font ? params.font + " · " : "") +
@@ -926,21 +917,6 @@
                         toast("举报已提交，感谢反馈"); reportModal.classList.remove("open");
                     }).catch(function () { toast("提交失败"); });
             });
-
-            // ── tweaks ──
-            var tt = document.getElementById("tweaksToggle"), tp = document.getElementById("tweaksPanel"), tc = document.getElementById("tweaksClose");
-            if (tt) tt.addEventListener("click", function () { tp.classList.toggle("open"); tt.style.display = tp.classList.contains("open") ? "none" : "flex"; });
-            if (tc) tc.addEventListener("click", function () { tp.classList.remove("open"); tt.style.display = "flex"; });
-            function bindTweak(onSel, offSel, prop, onVal, offVal) {
-                document.querySelectorAll(onSel).forEach(function (btn) {
-                    btn.addEventListener("click", function () { document.body.style.setProperty(prop, onVal); document.querySelectorAll(onSel + "," + offSel).forEach(function (b) { b.classList.remove("active"); }); btn.classList.add("active"); });
-                });
-                document.querySelectorAll(offSel).forEach(function (btn) {
-                    btn.addEventListener("click", function () { document.body.style.setProperty(prop, offVal); document.querySelectorAll(onSel + "," + offSel).forEach(function (b) { b.classList.remove("active"); }); btn.classList.add("active"); });
-                });
-            }
-            bindTweak('[data-tweak="grid-on"]', '[data-tweak="grid-off"]', "--grid-opacity", "0.3", "0");
-            bindTweak('[data-tweak="scan-on"]', '[data-tweak="scan-off"]', "--scanline-opacity", "1", "0");
 
             // ── text works: copy / download .txt ──
             var _copyV = document.getElementById("textCopyBtnV");

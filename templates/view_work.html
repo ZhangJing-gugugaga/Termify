@@ -12,6 +12,9 @@
 {% set seo_type = "article" %}
 {% set seo_image_path = url_for("gallery_og", work_id=work.id) %}
 {% include "_seo_meta.html" %}
+{# 文字作品（kind=text）没有风格/尺寸/配色/导出/嵌入的可达入口：这些块
+   服务端就不输出，避免整段 display:none 的幽灵控件进 DOM。 #}
+{% set is_text_work = '"kind":"text"' in ((work.params_json or '')|replace(' ', '')) %}
         <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261030a">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261030a">
 </head>
@@ -63,6 +66,7 @@
         </div>
     </div>
 
+    {% if not is_text_work %}
     <!-- ═══════════ STYLE SELECTION ═══════════ -->
     <section class="preview-section" id="styles">
         <div class="container">
@@ -189,6 +193,7 @@
             </div>
         </div>
     </section>
+    {% endif %}
 
     <!-- ═══════════ SIZE + PREVIEW + DOWNLOAD ═══════════ -->
     <section class="animation-section" id="preview">
@@ -217,6 +222,7 @@
                     </div>
                 </div>
                 <div class="output-panel" id="outputPanel">
+                    {% if not is_text_work %}
                     <div class="output-card" id="viewSizeCard">
                         <div class="output-card-title">终端尺寸 / TERMINAL SIZE</div>
                         <div class="size-slider-row">
@@ -227,6 +233,8 @@
                         <div class="size-meta" id="viewSizeMeta"></div>
                         <div class="size-warn" id="viewSizeWarn" hidden>&gt; 列数 &gt; 320：渲染变慢、导出文件增大 / Above 320 columns: slower rendering, larger export files</div>
                     </div>
+                    {% endif %}
+                    {% if not is_text_work %}
                     <div class="output-card" id="animPaletteCard">
                         <div class="output-card-title">配色 / COLOR SCHEME</div>
                         <div class="palette-row" id="viewPaletteRow">
@@ -238,7 +246,9 @@
                         </div>
                         <div class="palette-hint">配色实时作用于预览与导出 / Colors apply to preview &amp; exports</div>
                     </div>
-                    <div id="textTools" hidden>
+                    {% endif %}
+                    {% if is_text_work %}
+                    <div id="textTools">
                         <div class="output-card">
                             <div class="output-card-title">字符艺术 / Character art</div>
                             <div class="text-work-meta" id="textWorkMeta"></div>
@@ -252,10 +262,13 @@
                             ⬇ 下载 .txt
                         </button>
                     </div>
+                    {% endif %}
+                    {% if not is_text_work %}
                     <button class="download-btn" id="exportAnimBtn">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                         ⬇ 导出动画 / Export animation
                     </button>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -279,6 +292,7 @@
         </div>
     </div>
 
+    {% if not is_text_work %}
     <!-- ═══════════ EXPORT MODAL（与主页一致的两步导出 + 配色选择） ═══════════ -->
     <div class="export-backdrop" id="exportBackdrop" hidden>
         <div class="export-modal" role="dialog" aria-modal="true" aria-labelledby="exportModalTitle">
@@ -321,6 +335,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
     <!-- ═══════════ FOOTER ═══════════ -->
     <footer>
@@ -329,17 +344,6 @@
             <p class="footer-cta">字符集不够用？<a href="https://github.com/ZhangJing-gugugaga/Termify/issues">来提 Issue →</a></p>
         </div>
     </footer>
-
-    <!-- ═══════════ TWEAKS PANEL ═══════════ -->
-    <button class="tweaks-toggle" id="tweaksToggle" title="Tweaks">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    </button>
-    <div class="tweaks-panel" id="tweaksPanel">
-        <div class="tweaks-header"><span class="tweaks-title">Tweaks</span><button class="tweaks-close" id="tweaksClose">×</button></div>
-        <div class="tweak-group"><div class="tweak-label">背景网格</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="grid-on">显示</button><button class="tweak-opt" data-tweak="grid-off">隐藏</button></div></div>
-        <div class="tweak-group"><div class="tweak-label">扫描线</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="scan-on">显示</button><button class="tweak-opt" data-tweak="scan-off">隐藏</button></div></div>
-        <div class="tweak-group"><div class="tweak-label">主题色</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button><button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button><button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button></div></div>
-    </div>
 
     <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20261030a"></script>
     <!-- 作品数据：不可执行的 JSON 块（script-src 不管辖此类型），tojson
