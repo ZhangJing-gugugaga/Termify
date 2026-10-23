@@ -311,57 +311,6 @@
             window.scrollTo({ top: 0, behavior: "smooth" });
         });
 
-        // Tweaks panel
-        var tweaksToggle = document.getElementById("tweaksToggle");
-        var tweaksPanel = document.getElementById("tweaksPanel");
-        var tweaksClose = document.getElementById("tweaksClose");
-        if (tweaksToggle) tweaksToggle.addEventListener("click", function () {
-            tweaksPanel.classList.toggle("open");
-            tweaksToggle.style.display = tweaksPanel.classList.contains("open") ? "none" : "flex";
-        });
-        if (tweaksClose) tweaksClose.addEventListener("click", function () {
-            tweaksPanel.classList.remove("open");
-            tweaksToggle.style.display = "flex";
-        });
-
-        // Grid / scanline toggles
-        function bindTweak(onSel, offSel, prop, onVal, offVal) {
-            document.querySelectorAll(onSel).forEach(function (btn) {
-                btn.addEventListener("click", function () {
-                    document.body.style.setProperty(prop, onVal);
-                    document.querySelectorAll(onSel + "," + offSel).forEach(function (b) { b.classList.remove("active"); });
-                    btn.classList.add("active");
-                });
-            });
-            document.querySelectorAll(offSel).forEach(function (btn) {
-                btn.addEventListener("click", function () {
-                    document.body.style.setProperty(prop, offVal);
-                    document.querySelectorAll(onSel + "," + offSel).forEach(function (b) { b.classList.remove("active"); });
-                    btn.classList.add("active");
-                });
-            });
-        }
-        bindTweak('[data-tweak="grid-on"]', '[data-tweak="grid-off"]', "--grid-opacity", "0.3", "0");
-        bindTweak('[data-tweak="scan-on"]', '[data-tweak="scan-off"]', "--scanline-opacity", "1", "0");
-
-        // Theme color toggles
-        document.querySelectorAll('[data-tweak^="theme-"]').forEach(function (btn) {
-            btn.addEventListener("click", function () {
-                document.querySelectorAll('[data-tweak^="theme-"]').forEach(function (b) { b.classList.remove("active"); });
-                btn.classList.add("active");
-                var theme = btn.getAttribute("data-tweak").replace("theme-", "");
-                var colors = {
-                    green: { main: "#00ff41", dim: "#00cc33", glow: "rgba(0,255,65,0.15)" },
-                    amber: { main: "#ffb000", dim: "#cc8d00", glow: "rgba(255,176,0,0.12)" },
-                    cyan:  { main: "#00d4ff", dim: "#00a8cc", glow: "rgba(0,212,255,0.12)" }
-                };
-                var c = colors[theme]; if (!c) return;
-                document.documentElement.style.setProperty("--green", c.main);
-                document.documentElement.style.setProperty("--green-dim", c.dim);
-                document.documentElement.style.setProperty("--green-glow", c.glow);
-            });
-        });
-
         // 首次进入：先按地址栏恢复状态，再拉列表（B1）
         readStateFromUrl();
         syncSortTabs();

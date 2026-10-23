@@ -66,7 +66,7 @@ def test_fallbacks_equal_pre_fix_literals(css_text):
 @pytest.mark.parametrize("js_path", [
     "static/js/app.js",
     "static/js/index_page.js",
-    "static/js/gallery_page.js",
+    # gallery_page.js 不再列入：F-2 删掉了画廊页整块死面板，该页没有开关可绑
     "static/js/view_work_page.js",
 ])
 def test_js_side_writes_the_same_variable_names(js_path):
