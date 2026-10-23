@@ -528,8 +528,8 @@
   var copyBtn = byId("taCopyBtn");
   /* ── 移动端兼容助手 ──
      copyText：clipboard API 在 UC/X5 等 webview 常被拒 → execCommand 回退。
-     postDownload：blob+a.click 下载在 UC/X5 不可靠（0KB 失败）→ 隐藏表单
-     POST 走服务端 attachment，浏览器原生下载。 */
+     postDownload：fetch 取二进制 + a[download] 落盘（不能用表单 POST，
+     原因见函数上方注释）。 */
   function copyText(text, okMsg, failMsg) {
     function legacy() {
       var ta = document.createElement("textarea");
@@ -547,20 +547,48 @@
         function () { toast(okMsg || "已复制"); }, legacy);
     } else { legacy(); }
   }
-  function postDownload(path, fields) {
-    var form = document.createElement("form");
-    form.method = "POST";
-    form.action = path;
-    Object.keys(fields).forEach(function (k) {
-      var input = document.createElement("input");
-      input.type = "hidden";
-      input.name = k;
-      input.value = fields[k];
-      form.appendChild(input);
-    });
-    document.body.appendChild(form);
-    form.submit();
-    form.remove();
+  /* 下载：fetch → blob → a[download]。
+     不能再用隐藏 form.submit()：本站响应头统一带 Referrer-Policy:
+     no-referrer（app.py _security_headers），导航式 POST 因此既无 Referer
+     也拿不到 Sec-Fetch-*，只剩下 `Origin: null`，被 /api/ 写接口的同源守卫
+     按跨源一律 403（app.py _write_origin_guard）——四个下载按钮全线失败，
+     页面还被导航成 JSON 错误页。fetch 是同源请求，Origin 头是本站 origin，
+     守卫正常放行；响应也不再驱动整页导航。 */
+  function dispositionName(cd) {
+    var m = /filename\*=UTF-8''([^;]+)/i.exec(cd || "");
+    if (m) { try { return decodeURIComponent(m[1].trim()); } catch (e) {} }
+    m = /filename="?([^";]+)"?/i.exec(cd || "");
+    return m ? m[1].trim() : "";
+  }
+  function saveBlob(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+  }
+  function postDownload(path, fields, ext) {
+    fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields)
+    }).then(function (r) {
+      var type = r.headers.get("Content-Type") || "";
+      if (!r.ok || type.indexOf("application/json") === 0) {
+        return r.json().then(function (d) {
+          toast(d && d.error ? d.error : "下载失败，请重试 / Download failed");
+        }, function () {
+          toast("下载失败，请重试 / Download failed");
+        });
+      }
+      var name = dispositionName(r.headers.get("Content-Disposition")) ||
+                 ((fields.name || "textart") + "." + ext);
+      return r.blob().then(function (blob) { saveBlob(blob, name); });
+    }).catch(function () { toast("网络异常，请重试 / Network error, retry"); });
   }
   if (copyBtn) copyBtn.addEventListener("click", function () {
     if (!TA.art) return;
@@ -573,7 +601,7 @@
   if (dlBtn) dlBtn.addEventListener("click", function () {
     if (!TA.art) return;
     postDownload("/api/text/export-txt",
-                 { art: TA.art, name: exportName() });
+                 { art: TA.art, name: exportName() }, "txt");
   });
 
   /* ANSI 彩色复制：整行着色一次 reset。注意它**不是**给 shell 提示符用的
@@ -602,7 +630,7 @@
     if (!TA.art) { toast("请先生成 / Generate first"); return; }
     postDownload("/api/text/export-py", {
       art: TA.art, theme: TA.theme || currentTheme, name: exportName()
-    });
+    }, "py");
   });
 
   /* 终端命令（python -c，zlib+base64 压缩，已比旧版小 5~10 倍）。
@@ -619,7 +647,7 @@
       if (d.too_long) {
         postDownload("/api/text/export-py", {
           art: TA.art, theme: TA.theme || currentTheme, name: exportName()
-        });
+        }, "py");
         toast("作品太大（命令行 " + d.cmd_len + " 字符，超出 cmd.exe 上限），" +
               "已改为下载 .py：python 跑一下即可");
         return;
@@ -630,21 +658,20 @@
     }).catch(function () { toast("网络异常，请重试"); });
   });
 
-  /* PNG / HTML 下载：表单 POST → 服务端 attachment 原生下载
-     （blob+a.click 在 UC/X5 等移动浏览器 0KB 失败） */
+  /* PNG / HTML 下载：fetch 取二进制 → blob → a[download] */
   var pngBtn = byId("taPngBtn");
   if (pngBtn) pngBtn.addEventListener("click", function () {
     if (!TA.art) { toast("请先生成 / Generate first"); return; }
     postDownload("/api/text/export-png", {
       art: TA.art, theme: TA.theme || currentTheme, name: exportName()
-    });
+    }, "png");
   });
   var htmlBtn = byId("taHtmlBtn");
   if (htmlBtn) htmlBtn.addEventListener("click", function () {
     if (!TA.art) { toast("请先生成 / Generate first"); return; }
     postDownload("/api/text/export-html", {
       art: TA.art, theme: TA.theme || currentTheme, name: exportName()
-    });
+    }, "html");
   });
   var shareBtn = byId("taShareBtn");
   if (shareBtn) shareBtn.addEventListener("click", function () {
@@ -742,7 +769,7 @@
      只有「字符生成成功」「切到图片模式」时才注入脚本；本文件只留 4 个薄壳。
      桥：本文件暴露 __TA_LAZY_CTX（渲染/状态句柄），懒包回传 __TA_LAZY（4 入口），
      两边都不复制渲染逻辑。 */
-  var LAZY_SRC = "/static/js/text_art_lazy.js?v=20261031a";
+  var LAZY_SRC = "/static/js/text_art_lazy.js?v=20261031b";
   var lazyApi = null, lazyLoading = false, lazyQueue = [];
 
   function lazyReady(fn) {
