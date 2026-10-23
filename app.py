@@ -2658,11 +2658,21 @@ def download(filename):
 GALLERY_EXT = VALID_EXT  # source image extensions
 
 
-def _gallery_public_dict(work: dict, request_host: str = "") -> dict:
-    """Strip internals before returning to the client."""
+def _gallery_public_dict(work: dict, request_host: str = "",
+                         include_frames: bool = True) -> dict:
+    """Strip internals before returning to the client.
+
+    include_frames=False 是给列表接口用的（PF-8）：kind=text 作品的
+    params.frames 就是整幅艺术字正文，单件最大 14.7KB，24 条列表内联 4 件
+    即 31.9KB（limit=60 时 54KB）——而列表消费方 templates/gallery.html 只读
+    params.kind 做角标分类，从不用正文。详情接口 /api/gallery/work/<id> 与
+    /v/ 页仍原样携带 frames。
+    """
     params = json.loads(work["params_json"]) if work["params_json"] else {}
     # 服务器绝对路径（视频作品抽帧目录）绝不外发——进页面源码即泄露部署环境
     params.pop("frames_dir", None)
+    if not include_frames:
+        params.pop("frames", None)
     return {
         "id": work["id"],
         "title": work["title"],
@@ -2945,7 +2955,7 @@ def gallery_list():
                                          tags_any=tags_any)
     # Admin cookie check: include is_authorized flag per item
     return jsonify({
-        "items": [_gallery_public_dict(w) for w in items],
+        "items": [_gallery_public_dict(w, include_frames=False) for w in items],
         "total": total,
         "page": page,
         "limit": limit,
