@@ -14,6 +14,7 @@
   var applyTheme = CTX.applyTheme, syncThemeRow = CTX.syncThemeRow;
   var fitOutputFont = CTX.fitOutputFont, skeleton = CTX.skeleton;
   var showOutputError = CTX.showOutputError, TA = CTX.TA, OUTPUT_LH = CTX.OUTPUT_LH;
+  var setActionsEnabled = CTX.setActionsEnabled;
   var taOutput = CTX.els.output, taPreviewTitle = CTX.els.previewTitle;
   var taMetaText = CTX.els.metaText, taResultMeta = CTX.els.resultMeta;
   var taInput = CTX.els.input, taFont = CTX.els.font, convertBtn = CTX.els.convertBtn;
@@ -29,8 +30,9 @@
                        // 字符宽比例不在此写死：fitFontwallArt 按卡片内容
                        // 实测（盲文 advance 非 0.6em，见 artCharRatio）
 
+  /* 墙体常驻（首屏就是真内容）：这里只中止在途请求，不再把元素藏起来——
+     藏起来会让下方内容整体上移一整墙高度 */
   function hideFontWall() {
-    if (taFontwall) taFontwall.hidden = true;
     if (fwAbort) { fwAbort.abort(); fwAbort = null; }
   }
 
@@ -98,8 +100,7 @@
   }
 
   function wallLoading() {
-    if (!taFontwall || !taFontwallGrid) return;
-    taFontwall.hidden = false;
+    if (!taFontwallGrid) return;
     taFontwallGrid.innerHTML = '<p class="ta-fw-loading">字体墙渲染中…</p>';
   }
   function wallFailed() {
@@ -172,6 +173,18 @@
     if (!slug) return;
     var full = card.getAttribute("data-full");
     markActiveFontCard(slug);
+    // 墙体首屏就有、但可能还没有作品：此时点卡只记下选择（字体 / 字符集），
+    // 不渲染、不请求——否则会凭空生成一次，或对着空输入报错
+    if (!TA.art) {
+      if (CTX.state.mode() === "image") {
+        if (imgCharset) { imgCharset.value = slug; syncRampVisibility(); }
+      } else if (CTX.state.fontSource() === "cjk") {
+        CTX.state.setCjkCharset(slug);
+      } else if (taFont && slug !== "braille-share") {
+        taFont.value = slug;
+      }
+      return;
+    }
     if (full && CTX.state.mode() === "text" && !hasCJK(taInput ? taInput.value : "")) {
       if (slug !== "braille-share" && taFont) taFont.value = slug;
       showArt({ art: full,
@@ -265,7 +278,7 @@
       taMetaText.textContent = "图片艺术化 · " + meta + " · " +
         d.cols + " x " + d.rows;
     }
-    if (taResultMeta) taResultMeta.hidden = false;
+    setActionsEnabled(true);   // 结果行常驻，图片模式也要把导出按钮打开
     syncThemeRow();   // 配色行在预览下方，与英文字符化同一位置
     fitOutputFont();
   }
@@ -306,7 +319,6 @@
     }
     imgBusy = true;
     imgConvertBtn.disabled = true; imgConvertBtn.textContent = "生成中…";
-    if (taResultMeta) taResultMeta.hidden = true;
     skeleton();
     var p = imgParams();
     var fd = new FormData();

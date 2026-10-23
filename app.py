@@ -3348,7 +3348,7 @@ def gallery_source_frames_manifest(work_id):
     from PIL import Image
     with Image.open(paths[0]) as im:
         w, h = im.size
-    return jsonify({
+    resp = jsonify({
         "ok": True,
         "w": w,
         "h": h,
@@ -3356,6 +3356,12 @@ def gallery_source_frames_manifest(work_id):
         "count": len(paths),
         "version": _source_frames_version(paths),
     })
+    # 清单只有帧元数据 + 版本串，每次请求都要 stat 首末帧（实测 15.8ms）：
+    # 给 60 秒客户端缓存，够挡住重复打开作品页的连续请求；version 里带
+    # size/mtime，作品重新生成后版本串会变，客户端最迟 1 分钟内自然换新。
+    # 不能用 immutable / 长缓存（那样重生成视频后客户端会一直拿旧清单）。
+    resp.headers["Cache-Control"] = "public, max-age=60"
+    return resp
 
 
 @gallery_route("/api/gallery/source-frames/<work_id>/frame/<int:index>", methods=["GET"])

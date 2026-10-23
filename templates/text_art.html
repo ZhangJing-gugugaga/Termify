@@ -165,21 +165,21 @@
                         </div>
                     </div>
 
-                    <div class="ta-result-meta" id="taResultMeta" hidden>
+                    <div class="ta-result-meta" id="taResultMeta">
                         <div class="ta-meta-row">
-                        <span class="ta-meta-text" id="taMetaText"></span>
+                        <span class="ta-meta-text" id="taMetaText">— · 0 字符</span>
                         <span class="ta-result-actions">
-                            <button type="button" class="ta-btn ta-btn-sm" id="taCopyBtn" title="纯文本（不含颜色转义），与预览字符完全一致">复制文本</button>
-                            <button type="button" class="ta-btn ta-btn-sm" id="taAnsiBtn" title="带 24 位色转义。粘到终端窗口即显色；粘到 PowerShell/cmd 提示符会报错（转义不是合法命令），那种情况请用「下载 .py」">复制 ANSI</button>
-                            <button type="button" class="ta-btn ta-btn-sm" id="taPyBtn" title="下载可执行 .py：python xxx.py 就在终端出图，不受命令行长度限制">下载 .py</button>
-                            <button type="button" class="ta-btn ta-btn-sm" id="taTermBtn" title="python -c 单行命令（已 zlib 压缩），粘贴到任何终端运行即显示">终端命令</button>
-                            <button type="button" class="ta-btn ta-btn-sm" id="taPngBtn">下载 PNG</button>
-                            <button type="button" class="ta-btn ta-btn-sm" id="taHtmlBtn">下载 HTML</button>
-                            <button type="button" class="ta-btn ta-btn-sm" id="taDownloadBtn">.txt</button>
-                            {% if gallery_enabled %}<button type="button" class="ta-btn ta-btn-sm ta-btn-primary" id="taShareBtn">分享到画廊</button>{% endif %}
+                            <button type="button" class="ta-btn ta-btn-sm" id="taCopyBtn" disabled title="纯文本（不含颜色转义），与预览字符完全一致">复制文本</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taAnsiBtn" disabled title="带 24 位色转义。粘到终端窗口即显色；粘到 PowerShell/cmd 提示符会报错（转义不是合法命令），那种情况请用「下载 .py」">复制 ANSI</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taPyBtn" disabled title="下载可执行 .py：python xxx.py 就在终端出图，不受命令行长度限制">下载 .py</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taTermBtn" disabled title="python -c 单行命令（已 zlib 压缩），粘贴到任何终端运行即显示">终端命令</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taPngBtn" disabled>下载 PNG</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taHtmlBtn" disabled>下载 HTML</button>
+                            <button type="button" class="ta-btn ta-btn-sm" id="taDownloadBtn" disabled>.txt</button>
+                            {% if gallery_enabled %}<button type="button" class="ta-btn ta-btn-sm ta-btn-primary" id="taShareBtn" disabled>分享到画廊</button>{% endif %}
                         </span>
                         </div>
-                        <span class="ta-theme-row" id="taThemeRow" hidden>
+                        <span class="ta-theme-row" id="taThemeRow">
                             <span class="ta-theme-label">配色</span>
                             <button type="button" class="ta-theme-dot active" data-theme="green"  style="--c:#00ff41" title="终端绿"></button>
                             <button type="button" class="ta-theme-dot" data-theme="cyan"   style="--c:#00d4ff" title="青"></button>
@@ -194,9 +194,9 @@
                     <!-- 字体墙：三种模式共用（英文字体 / 中文字符集 / 图片字符集），
                          点卡片即换即看。中文模式下墙展示同一份点阵的各字符集
                          预览（字块/明暗/圆点/几何/盲文/经典），字体只在左栏选 -->
-                    <div class="ta-fontwall" id="taFontwall" hidden>
+                    <div class="ta-fontwall" id="taFontwall">
                         <p class="ta-fw-title" id="taFwTitle">字体墙 · 点击切换</p>
-                        <div class="ta-fw-grid" id="taFontwallGrid"></div>
+                        <div class="ta-fw-grid" id="taFontwallGrid"><p class="ta-fw-loading">字体墙渲染中…</p></div>
                     </div>
                 </div>
             </div>

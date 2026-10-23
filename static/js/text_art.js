@@ -44,6 +44,15 @@
   var taMetaText = byId("taMetaText");
   var taPreviewTitle = byId("taPreviewTitle");
   var taFontHint = byId("taFontHint");
+  /* 结果区动作按钮：没有作品时保持 disabled（模板首屏就带 disabled 属性），
+     有作品才可用——按钮常驻是「结果行首屏即真内容」的一部分 */
+  var resultActions = taResultMeta ?
+    taResultMeta.querySelectorAll(".ta-result-actions .ta-btn") : [];
+  function setActionsEnabled(on) {
+    for (var i = 0; i < resultActions.length; i++) {
+      resultActions[i].disabled = !on;
+    }
+  }
   var busy = false;
 
   function skeleton() {
@@ -67,8 +76,9 @@
     taOutput.appendChild(el);
     if (taPreviewTitle) taPreviewTitle.textContent = "text art";
     // 错误时保留上一作品的导出操作（复制 ANSI / 下载等不因一次报错消失），
-    // 仅在从未生成过作品时才整体隐藏。
-    if (taResultMeta) taResultMeta.hidden = !TA.art;
+    // 只有从未生成过作品时才把按钮关掉、文本位退回占位。
+    setActionsEnabled(!!TA.art);
+    if (!TA.art && taMetaText) taMetaText.textContent = "— · 0 字符";
     if (taResultMeta && TA.art && taMetaText) {
       taMetaText.textContent = "上一作品仍可导出 · " + TA.cols + " x " +
         TA.rows + "（本次生成失败：" + msg.split(" / ")[0] + "）";
@@ -76,6 +86,8 @@
   }
 
   /* 示例 chips：覆盖英文 / 中文两条路径 */
+  /* 字体墙首屏样例：墙体是静态字体列表，不依赖用户输入，首屏先用它出卡片 */
+  var FW_SAMPLE = "Hello";
   var EXAMPLES = [
     { kind: "figlet", label: "hello", value: "hello" },
     { kind: "figlet", label: "TERMIFY", value: "TERMIFY" },
@@ -95,17 +107,17 @@
       '<div class="ta-empty"><span class="ta-empty-prompt">等待生成</span>' +
       '<span class="ta-empty-caret" aria-hidden="true"></span></div>' +
       '<div class="ta-chips">' + chips + "</div></div>";
-    if (taResultMeta) taResultMeta.hidden = true;
+    // 结果行常驻：没有作品时给占位文本 + 按钮 disabled，而不是整块隐藏
+    if (taMetaText) taMetaText.textContent = "— · 0 字符";
+    setActionsEnabled(false);
   }
-  /* 预览窗口贴合内容（对齐主页 fitTerminalFontSize 的做法，2026-09-28）。
-     旧实现只按**宽度**缩字号，框高由 CSS 的 min-height:320px 撑着：
-     128 列 × 16 行的中文点阵只占框高的 68%，底部 104px 全是空的——
-     从外面看就是"字浮在框的上半截、下面被切掉了"（用户报的"被切割 /
-     显示不完全"）。现在改成两步：
-       1) 按网格固有比例（列 × 0.6em : 行 × 行高）从可用宽推出框高；
-       2) 字号同时满足宽高两个方向 → 内容 100% 填满框，无空白带。
+  /* 预览窗口：框高由 CSS 固定（.ta-output 的 clamp(240px,36vh,360px)），
+     JS 只缩字号让整幅作品塞进框内（宽、高两个方向同时满足）。
+     2026-10-26 起不再按作品网格比例反推框高：那会让框高随作品变化，
+     插入作品时把结果行/字体墙/页脚整片顶下去——/text-art 交互期唯一的
+     大 layout-shift（0.0257）。固定框高是 CLS=0 的前提。
      行高按来源模式定：中文点阵是 1:2 网格（1.2）、FIGlet 是 1:1 网格
-     （1.0）、图片艺术化服务端按 1.3 生成（1.3，与 frames.CELL_H_EM 同源）。
+     （1.05）、图片艺术化服务端按 1.3 生成（1.3，与 frames.CELL_H_EM 同源）。
      返回实际字号，供调用方决定要不要提示"已缩到最小"。 */
   // 字符格高宽比（行高倍数）：主预览与字体墙卡片必须用同一份，
   // 否则同一幅字在两个位置的胖瘦不一样（用户第一次报"预览与字体墙不一致"）。
@@ -150,26 +162,16 @@
     var padY = (parseFloat(cs.paddingTop) || 0) +
                (parseFloat(cs.paddingBottom) || 0);
     var availW = taOutput.clientWidth - padX;
-    if (availW <= 0) return 0;
+    var availH = taOutput.clientHeight - padY;
+    if (availW <= 0 || availH <= 0) return 0;
     var CELL_W = artCharRatio(TA.art);
-    var gridAspect = (TA.cols * CELL_W) / (TA.rows * lh);
-    var maxH = Math.max(240, Math.round(window.innerHeight * 0.62));
-    var boxH = Math.max(160, Math.min(maxH, Math.round(availW / gridAspect) + padY));
-    var availH = boxH - padY;
     var fs = Math.min(availW / (TA.cols * CELL_W), availH / (TA.rows * lh));
     // 下限 2px：超宽作品（如 4 字 × 50 行 = 400 列）需要 ~3px 才塞得下，
     // 旧的 4px 下限会让它横向溢出、右侧"显示不完全"。宁可小到看不清，
     // 也要整幅在框内；要原始尺寸用 .txt / .py / PNG 导出。
     fs = Math.max(2, Math.min(fs, 30));
-    // 字号被 30px 上限或 2px 下限夹住时，框高要跟着字号走，否则又留空白带
-    boxH = Math.max(160, Math.min(maxH,
-              Math.round(TA.rows * fs * lh) + padY));
     taOutput.style.lineHeight = lh;
     taOutput.style.fontSize = fs + "px";
-    // CSS 的 min-height:320px 会压过行内 height（min-height 优先级更高），
-    // 框永远收不下来 → 先放开 min-height，它就退回"JS 未跑时的兜底值"。
-    taOutput.style.minHeight = "0px";
-    taOutput.style.height = boxH + "px";
     return fs;
   }
   var outputFitTimer = null;
@@ -196,7 +198,7 @@
       taPreviewTitle.textContent = "text art · " + modeLabel +
         " " + d.cols + "x" + d.rows;
     }
-    if (taResultMeta) taResultMeta.hidden = false;
+    setActionsEnabled(true);
     syncThemeRow();   // 有作品 → 配色行可见（两种模式共用同一行）
     var fs = fitOutputFont();
     if (taMetaText) {
@@ -408,7 +410,6 @@
     }
     busy = true;
     convertBtn.disabled = true; convertBtn.textContent = "生成中…";
-    if (taResultMeta) taResultMeta.hidden = true;
     skeleton();
     var body = { text: text, font: taFont ? taFont.value : "" };
     // 中文点阵：行高随输入（10-64 行），英文 FIGlet 尺寸由字体决定、
@@ -497,15 +498,16 @@
   }
   if (taThemeRow) taThemeRow.addEventListener("click", function (e) {
     var dot = e.target.closest(".ta-theme-dot");
-    if (!dot || dot.hidden) return;
+    // 还没有作品时配色点只是摆设：点了也不改状态（首屏可见，不能报错）
+    if (!dot || dot.hidden || !TA.art) return;
     applyTheme(dot.getAttribute("data-theme"));
   });
   /* 配色行现在两种模式共用（原来图片模式把配色放在左面板，位置和英文字符化
-     不一致）。「原色」只有图片艺术化有源像素可取，文字模式下隐藏。 */
+     不一致）。「原色」只有图片艺术化有源像素可取，文字模式下隐藏。
+     配色行本身常驻（首屏就在结果行里），不再按有无作品隐藏。 */
   function syncThemeRow() {
     if (!taThemeRow) return;
     if (taThemeSource) taThemeSource.hidden = (taMode !== "image");
-    taThemeRow.hidden = !TA.art;
   }
 
   function exportName() {
@@ -769,6 +771,7 @@
     showArt: showArt, artCharRatio: artCharRatio, hasCJK: hasCJK,
     applyTheme: applyTheme, syncThemeRow: syncThemeRow,
     fitOutputFont: fitOutputFont, skeleton: skeleton,
+    setActionsEnabled: setActionsEnabled,
     showOutputError: showOutputError, OUTPUT_LH: OUTPUT_LH, TA: TA,
     els: {
       output: taOutput, previewTitle: taPreviewTitle, metaText: taMetaText,
@@ -818,6 +821,9 @@
   loadFonts();
   syncInputHint();
   showEmpty();  // 增强空态：含示例 chips（替换 HTML 硬编码版本）
+  /* 字体墙首屏就渲染真卡片（默认样例）：生成时只换卡片内容、容器高度不变。
+     代价是首屏多 1 次 /static/js/text_art_lazy.js + 1 次 /api/text/fontwall。 */
+  loadFigletWall(FW_SAMPLE);
   /* webfont（JetBrains Mono）就绪/晚到会改变字符 advance → 实测缓存作废，
      重贴一次字号（盲文走系统回退字体，不受 webfont 加载影响）。 */
   if (document.fonts) {
