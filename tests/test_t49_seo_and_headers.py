@@ -16,8 +16,8 @@ except ImportError:  # pragma: no cover
 pytestmark = pytest.mark.skipif(not _HAVE_FLASK, reason="flask 未安装")
 
 # 验收用的版本串：只要求"带 ?v= 参数"，具体值无关；用较新的一次点击穿
-# 模板里已升到 ?v=20261031b 的那批 URL。
-ASSET_QUERY = "?v=20261031b"
+# 模板里已升到 ?v=20261031c 的那批 URL。
+ASSET_QUERY = "?v=20261031c"
 
 
 def _client():

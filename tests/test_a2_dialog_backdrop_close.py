@@ -90,4 +90,4 @@ def test_homepage_ships_the_wired_dialog():
     html = flask_app.test_client().get("/").get_data(as_text=True)
     assert 'id="customCharsetModal"' in html
     assert 'id="customCharsetBackdrop"' in html
-    assert re.search(r"js/app\.js\?v=20261031b", html), "app.js 资源版本串没升到 20261031b"
+    assert re.search(r"js/app\.js\?v=20261031c", html), "app.js 资源版本串没升到 20261031c"
