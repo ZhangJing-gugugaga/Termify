@@ -39,7 +39,9 @@
                 linear-gradient(var(--border-dim) 1px, transparent 1px),
                 linear-gradient(90deg, var(--border-dim) 1px, transparent 1px);
             background-size: 60px 60px;
-            opacity: 0.3;
+            /* A-6 网格开关此前只写 --grid-opacity、这里硬编码 0.3，变量零消费
+               所以点了没反应。回退值就是原来的 0.3，默认视觉不变。 */
+            opacity: var(--grid-opacity, 0.3);
             pointer-events: none;
             z-index: 0;
         }
@@ -56,6 +58,9 @@
                 rgba(0, 0, 0, 0.03) 2px,
                 rgba(0, 0, 0, 0.03) 4px
             );
+            /* A-6 扫描线同病：变量没人消费。原本没有 opacity 属性（等效 1），
+               回退值取 1 保证默认视觉与改动前逐像素一致。 */
+            opacity: var(--scanline-opacity, 1);
             pointer-events: none;
             z-index: 9999;
             will-change: transform;
