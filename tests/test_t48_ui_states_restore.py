@@ -28,7 +28,7 @@ STATIC_JS = REPO_ROOT / "static" / "js"
 STATIC_CSS = REPO_ROOT / "static" / "css"
 NODE_HARNESS = REPO_ROOT / "tests" / "js_gallery_error_states.mjs"
 
-ASSET_VERSION = "20261031d"
+ASSET_VERSION = "20261031e"
 # 上一轮的版本串：拼出来而不是写死，免得这份用例自己成为"残留"的唯一命中
 OLD_ASSET_VERSION = "2026" + "1027" + "a"
 BACKTICK = chr(96)
