@@ -7,8 +7,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>动画工坊 · Termify</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261027a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261027a">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261028a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261028a">
 </head>
 <body>
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -250,7 +250,7 @@
                 </div>
 
                 {% if gallery_enabled %}
-                <p class="style-note">以上 9 张预览是同一件作品（Tethered Spacewalk），只换了字符集 —— 更多作品，去<a href="/gallery">画廊</a>逛逛 →</p>
+                <p class="style-note">以上前 9 张预览是同一件作品（Tethered Spacewalk），只换了字符集；最后一张「自定义字符」是字符拼出的图形 —— 更多作品，去<a href="/gallery">画廊</a>逛逛 →</p>
                 {% endif %}
             </div>
             </div>
@@ -496,9 +496,9 @@
         </div>
     </dialog>
 
-    <script src="{{ url_for('static', filename='js/index_page.js') }}?v=20261027a" defer></script>
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20261027a"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=20261027a" defer></script>
+    <script src="{{ url_for('static', filename='js/index_page.js') }}?v=20261028a" defer></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20261028a"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=20261028a" defer></script>
 
     <!-- Termify 自定义弹窗（替代浏览器原生 alert/confirm） -->
     <div class="termify-modal" id="termifyModal" hidden>

@@ -3055,3 +3055,91 @@
             border-color: transparent;
             box-shadow: inset 0 0 0 1px var(--green-dim);
         }
+
+/* ═══════════════════════════════════════════════════════════
+   UI-STATES 修复块（?v=20261028a）
+   把"状态语言"贴回线上排版：字号、间距、断点一律沿用上面已定的
+   绝对值与现有 token，不复用设计版的字阶体系。
+   1) 风格卡三段态 .is-loading / .is-error / [aria-disabled="true"]
+   2) 画廊列表失败态 .gallery-error
+   3) 终端「已更新」脉冲 .terminal.is-flash（hero 首屏 + 切风格）
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── 1. 风格卡三段态 ──
+   类名由 static/js/app.js 的 setCardLoading / cardRenderOk /
+   cardRenderFailed / setCardsDisabled 切换，不是装饰：loading = 请求在途
+   （停掉指针，别叠请求），error = 这条渲染链失败落定，disabled = 上传在途
+   还没有 taskId。放在 .style-card:hover / .selected 之后，同特异性下
+   is-error 覆盖 hover 描边。 */
+/* 卡面已经 position: relative + overflow: hidden，角标直接绝对定位即可 */
+.style-card.is-loading {
+    opacity: 0.6;
+    pointer-events: none;  /* 在途就别再接点击，免得叠请求 */
+}
+.style-card.is-error {
+    border-color: var(--red);
+}
+.style-card.is-loading::before,
+.style-card.is-error::before {
+    position: absolute;
+    left: var(--space-2);
+    bottom: var(--space-2);
+    z-index: 2;
+    padding: 2px var(--space-2);
+    background: rgba(10, 14, 20, 0.82);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1.4;
+}
+.style-card.is-loading::before {
+    content: "渲染中 / rendering";
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+}
+.style-card.is-error::before {
+    content: "渲染失败 / failed";
+    border: 1px solid var(--red-dim);
+    color: var(--red);
+}
+/* disabled 沿用 .ta-select:disabled 的 .55 语言（text_art.css:93） */
+.style-card[aria-disabled="true"] {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ── 2. 画廊列表失败态 ──
+   JS 侧 setGalleryError() 常驻显示，重试按钮复用 .gallery-page-btn 的
+   40px 热区；成功时重新 hidden。 */
+.gallery-error {
+    text-align: center;
+    padding: var(--space-16) 0;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 14px;
+}
+.gallery-error[hidden] {
+    display: none;
+}
+.gallery-error p + p {
+    margin-top: var(--space-4);
+}
+
+/* ── 3. 终端「已更新」脉冲 ──
+   只动 border-color：纯绘制、不触发重排，也不碰 .terminal 自带的
+   box-shadow。hero 首屏一次，切风格时桌面再一次；≤1024px 单列时预览
+   可能被滚出视野，改由 JS 滚到刚好可见。 */
+@keyframes terminal-flash {
+    from { border-color: var(--green); }
+    to { border-color: var(--border-subtle); }
+}
+.terminal.is-flash {
+    animation: terminal-flash 400ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+    .terminal.is-flash {
+        animation: none;
+        border-color: var(--green);
+    }
+}

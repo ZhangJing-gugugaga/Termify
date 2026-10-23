@@ -73,13 +73,31 @@
             grid.innerHTML = html;
         }
 
+        // 列表请求失败：错误行常驻可见 + 重试按钮。不再"只弹 2 秒 toast",
+        // 那时失败过后页面只剩一片空网格，用户以为站里没作品。
+        function setGalleryError(on) {
+            var err = document.getElementById("galleryError");
+            if (err) err.hidden = !on;
+            if (!on) return;
+            var grid = document.getElementById("galleryGrid");
+            if (grid) grid.innerHTML = "";
+            var empty = document.getElementById("galleryEmpty");
+            if (empty) empty.style.display = "none";
+            var pg = document.getElementById("galleryPagination");
+            if (pg) pg.innerHTML = "";
+        }
+
         function fetchGallery() {
             var params = new URLSearchParams({ sort: G.sort, page: G.page, limit: G.limit });
             if (G.tags.length) params.set("tags", G.tags.join(","));
             syncUrl();
+            setGalleryError(false);
             showSkeleton(true);
             fetch("/api/gallery/list?" + params.toString())
-                .then(function (r) { return r.json(); })
+                .then(function (r) {
+                    if (!r.ok) throw new Error("HTTP " + r.status);  // 500/502 也走错误态
+                    return r.json();
+                })
                 .then(function (d) {
                     showSkeleton(false);
                     G.total = d.total;
@@ -87,8 +105,14 @@
                     renderCards(d.items);
                     renderPagination(d);
                 })
-                .catch(function () { showSkeleton(false); toast("加载失败"); });
+                .catch(function () {
+                    showSkeleton(false);
+                    setGalleryError(true);
+                });
         }
+
+        var galleryRetry = document.getElementById("galleryErrorRetry");
+        if (galleryRetry) galleryRetry.addEventListener("click", function () { fetchGallery(); });
 
         // 空态有三种：站里真没作品 / 标签筛选没命中 / 页码越界（total>0 但当前页
         // 没有 items）。第三种不能念"暂无作品，去上传第一个"——那是自相矛盾，
