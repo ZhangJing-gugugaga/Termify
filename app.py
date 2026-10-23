@@ -742,8 +742,8 @@ def index():
 def index_html_redirect():
     """老链接归位（D-4）：/index.html 落到 301 → /，此前是 404。
 
-    站点首页只认 /（render_template 里的 url_for("index") 一直是 /），
-/index.html 只是外部硬编码/旧书签的写法；GET/HEAD 由同一条规则覆盖。
+    站点首页只认 /（模板里的 url_for("index") 一直是 /），/index.html 只是
+    外部硬编码与旧书签的写法；GET/HEAD 由同一条规则覆盖。
     """
     return redirect("/", 301)
 
