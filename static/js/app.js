@@ -385,20 +385,32 @@
     rafId = requestAnimationFrame(rafLoop);
   }
 
+  /* 播放/暂停共用的唯一前置条件：没有第二帧就没得播（rafLoop 也按这个门槛空转）。 */
+  function canPlay() {
+    return S.frames.length >= 2;
+  }
+
+  /* 按钮外观只从 playing 这一个真相派生——别处不再各写一份 add/remove("active")，
+     否则「翻了 class 但其实没播」就是这么长出来的。 */
+  function syncPlayerControls() {
+    if (playBtn) playBtn.classList.toggle("active", playing);
+    if (pauseBtn) pauseBtn.classList.toggle("active", !playing);
+  }
+
   function startPlayer() {
-    if (playing || S.frames.length < 2) return;
+    if (playing || !canPlay()) return;
     playing = true;
-    if (playBtn) playBtn.classList.add("active");
-    if (pauseBtn) pauseBtn.classList.remove("active");
     playStartTs = performance.now() - currentFrame * S.interval * 1000;
     rafId = requestAnimationFrame(rafLoop);
+    syncPlayerControls();
   }
 
   function pausePlayer() {
+    // 与 startPlayer 对称：同一个前置条件不成立就直接早返回，不再空翻一遍 class
+    if (!playing || !canPlay()) return;
     playing = false;
-    if (playBtn) playBtn.classList.remove("active");
-    if (pauseBtn) pauseBtn.classList.add("active");
     if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+    syncPlayerControls();
   }
 
   /* ── Apply preview data from server ── */
@@ -565,6 +577,7 @@
       if (playing) {
         if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
         playing = false;
+        syncPlayerControls();
       }
       S.charset = charset;
       applyPreview(d);
@@ -1901,6 +1914,8 @@
   // Play / Pause
   if (playBtn) playBtn.addEventListener("click", startPlayer);
   if (pauseBtn) pauseBtn.addEventListener("click", pausePlayer);
+  // 首屏模板把 Play 标成 active，但没素材时实际处于暂停态：开局先按真相刷一次
+  syncPlayerControls();
 
   // Progress bar scrub
   if (progressBar) progressBar.addEventListener("click", function (e) {
@@ -1908,6 +1923,7 @@
     var x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
     if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
     playing = false;
+    syncPlayerControls();   // 拖进度条等同暂停：按钮外观跟着真相走
     renderFrame(Math.round(x * (S.frames.length - 1)));
   });
 
