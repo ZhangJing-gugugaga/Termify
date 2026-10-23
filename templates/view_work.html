@@ -686,6 +686,9 @@
                到齐后再进入播放。单帧 URL 带 immutable 长缓存，二访/回退零成本。 */
             var SRC_FRAME_CONCURRENCY = 3;
             var SRC_FRAMES_URL = "/api/gallery/source-frames/" + WORK_ID;
+            /* 单帧 URL 必须带清单里的 version：帧被重新生成后 URL 随之变化，
+               "immutable 一年" 才真的成立（否则老客户端会拿旧帧一整年）。 */
+            var srcFrameVersion = "";
 
             // 单帧 URL → canvas；尺寸用清单给的源像素尺寸（与整包路径同源）。
             function loadSourceFrame(index, w, h) {
@@ -698,7 +701,8 @@
                         resolve(c);
                     };
                     img.onerror = function () { resolve(null); };
-                    img.src = SRC_FRAMES_URL + "/frame/" + index;
+                    img.src = SRC_FRAMES_URL + "/frame/" + index +
+                        (srcFrameVersion ? "?v=" + encodeURIComponent(srcFrameVersion) : "");
                 });
             }
 
@@ -739,6 +743,7 @@
                 fetch(SRC_FRAMES_URL + "/manifest").then(function (r) { return r.json(); })
                     .then(function (m) {
                         if (!m || !m.ok || !m.count) throw new Error("manifest unavailable");
+                        srcFrameVersion = m.version || "";
                         return loadSourceFrame(0, m.w, m.h).then(function (bmp) {
                             if (!bmp) throw new Error("first frame failed");
                             firstFrameReady(m, bmp);

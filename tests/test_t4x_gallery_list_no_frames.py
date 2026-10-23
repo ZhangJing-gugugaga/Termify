@@ -12,10 +12,11 @@
 4. 审计用例：遍历 url_map 里 /api/ 下所有 POST/PUT/DELETE，逐个打跨站
    Origin，断言全部被 before_request 守卫挡住 —— 防止新增写接口漏挂闸门。
 
-已知未覆盖缺口（本文件刻意不写成断言，避免把不安全行为固化成规范）：
+曾经的三处缺口（已由 tests/test_t4y_admin_pwd_bypass_locked.py 覆盖）：
 gallery_work(GET) / gallery_delete(DELETE) / _work_raw_file_authorized(GET)
-三处直接比对 X-Termify-Admin-Pwd，绕过 _admin_check()，因此口令爆破可换
-这三个入口无限次重试。详见 laneA 报告 §8。
+原先直接比对 X-Termify-Admin-Pwd，绕过 _admin_check() 的按 IP 失败计数。
+现在三者统一走 app.py 的 _admin_pwd_header_state()，与 _admin_check 共用同一份
+计数与退避窗口；不带该头的普通访客不计失败。
 """
 
 from __future__ import annotations

@@ -580,6 +580,36 @@ def _admin_check() -> tuple[bool, object]:
     resp.status_code = 403
     return False, resp
 
+
+def _admin_pwd_header_state() -> str:
+    """比对 X-Termify-Admin-Pwd 并纳入同一份失败计数，返回状态串。
+
+    作品详情 is_authorized / 作品删除 / 私有原作直链这三处此前直接
+    _secret_equal 比对管理口令，绕过了 _admin_check 的失败计数 —— 等于给
+    口令爆破开了三条不限次的布尔 oracle（其中删除是猜中即毁）。这里把它们并
+    回同一份按 IP 的失败计数与退避窗口。
+
+    返回：
+      "absent" —— 未带该头（普通访客），不计失败；
+      "ok"     —— 口令正确（该 IP 计数清零）；
+      "bad"    —— 口令错误，已记一次失败；
+      "locked" —— 该 IP 处于退避窗口内，调用方应回 429。
+    """
+    hdr = request.headers.get("X-Termify-Admin-Pwd", "")
+    if not hdr:
+        return "absent"
+    ip = _client_ip()
+    if _admin_pwd_wait(ip):
+        return "locked"
+    if _secret_equal(hdr, _admin_pwd()):
+        _admin_pwd_reset(ip)
+        return "ok"
+    if _admin_pwd_fail(ip) <= 0:
+        # 跨阈值的这一次就锁（与 _admin_check 一致的语义），不是下一次
+        return "locked"
+    return "bad"
+
+
 def _parse_rgb(value):
     """Parse 'rgb(R,G,B)' string into (R,G,B) tuple, or None if invalid/empty."""
     if not value:
@@ -2972,14 +3002,17 @@ def gallery_work(work_id):
     if work["is_private"]:
         # Check admin token cookie; else allow view if URL is direct link (private only hides from list)
         pass  # private works are still viewable at /v/<id>
+    # 管理口令头也纳入失败计数（原先直接比对 → 一条不限次的布尔 oracle）。
+    # 已凭 ownership cookie 认下的访客不再比对口令，也就不会累计失败。
+    cookie_ok = _secret_equal(request.cookies.get(f"termify_admin_{work_id}", ""),
+                              work["admin_token"])
+    hdr_state = "absent" if cookie_ok else _admin_pwd_header_state()
+    if hdr_state == "locked":
+        return _admin_locked_response(_admin_pwd_wait(_client_ip()) or ADMIN_PWD_FAIL_LOCK)
     GALLERY_DB.increment_view(work_id)
     fresh = GALLERY_DB.get_work(work_id)
     out = _gallery_public_dict(fresh)
-    out["is_authorized"] = (
-        _secret_equal(request.cookies.get(f"termify_admin_{work_id}", ""),
-                      work["admin_token"])
-        or _secret_equal(request.headers.get("X-Termify-Admin-Pwd", ""), _admin_pwd())
-    )
+    out["is_authorized"] = cookie_ok or hdr_state == "ok"
     # Has the current visitor (IP + cookie) liked this work?
     like_cookie = request.cookies.get(f"termify_like_{work_id}", "")
     if like_cookie:
@@ -3043,12 +3076,21 @@ def gallery_delete(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work:
         return jsonify({"error": "Work not found"}), 404
+    ip = _client_ip()
+    # 12/min 刻意留在 ADMIN_PWD_FAIL_MAX(10) 之上：否则配额会先于管理口令锁定
+    # 报 429，把"猜口令"的退避窗口挡住看不见（而且那个 429 不带 Retry-After）。
+    allowed, _reason = _rate_check(ip, "gallery-delete", per_minute=12, per_day=60)
+    if not allowed:
+        return jsonify({"error": "删除太频繁，请稍后再试 (限 12 次/分钟) / "
+                                 "Too many deletes, please try again later (12/min)"}), 429
     token = request.cookies.get(f"termify_admin_{work_id}", "")
     hdr_token = request.headers.get("X-Termify-Admin", "")
     input_token = hdr_token or token
-    is_admin = _secret_equal(request.headers.get("X-Termify-Admin-Pwd", ""), _admin_pwd())
-    authorized = is_admin or _secret_equal(input_token, work["admin_token"])
-    if not authorized:
+    token_ok = _secret_equal(input_token, work["admin_token"])
+    hdr_state = "absent" if token_ok else _admin_pwd_header_state()
+    if hdr_state == "locked":
+        return _admin_locked_response(_admin_pwd_wait(ip) or ADMIN_PWD_FAIL_LOCK)
+    if not (token_ok or hdr_state == "ok"):
         return jsonify({"error": "Unauthorized"}), 403
     deleted = GALLERY_DB.delete_work(work_id)
     if deleted:
@@ -3185,8 +3227,11 @@ def gallery_source_frames(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work:
         return jsonify({"error": "Work not found"}), 404
-    if not _work_raw_file_authorized(work):
-        return jsonify({"error": "Unauthorized"}), 403
+    auth = _work_raw_file_authorized(work)
+    if auth is not True:
+        if auth is False:
+            return jsonify({"error": "Unauthorized"}), 403
+        return auth
     original = json.loads(work["params_json"]) if work["params_json"] else {}
     if original.get("kind") != "video":
         return jsonify({"error": "Not a video work"}), 400
@@ -3241,8 +3286,11 @@ def _source_frames_context(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work:
         return None, (jsonify({"error": "Work not found"}), 404)
-    if not _work_raw_file_authorized(work):
-        return None, (jsonify({"error": "Unauthorized"}), 403)
+    auth = _work_raw_file_authorized(work)
+    if auth is not True:
+        if auth is False:
+            return None, (jsonify({"error": "Unauthorized"}), 403)
+        return None, auth
     original = json.loads(work["params_json"]) if work["params_json"] else {}
     if original.get("kind") != "video":
         return None, (jsonify({"error": "Not a video work"}), 400)
@@ -3848,12 +3896,15 @@ _download_dedup: dict[str, dict[str, float]] = {}
 
 # --- proxy routes for source/thumbnail/og (serve files outside static) ---
 
-def _work_raw_file_authorized(work: dict) -> bool:
+def _work_raw_file_authorized(work: dict):
     """私有作品的原始媒体直链（source/audio/source-frames）仅创作者/管理员。
 
     公开作品一律放行；私有作品按"链接分享即预览"模型仅隐藏于列表，
     但原始文件（源视频/音轨/全量抽帧）要求 ownership cookie、创作者
     token 头或全局管理密码之一。
+
+    返回 True / False；管理口令比对纳入失败计数，该 IP 处于退避窗口时返回
+    已生成的 429 响应（调用方直接 return 出去）。
     """
     if not work.get("is_private"):
         return True
@@ -3862,7 +3913,10 @@ def _work_raw_file_authorized(work: dict) -> bool:
              or request.cookies.get(f"termify_admin_{work_id}", ""))
     if _secret_equal(token, work["admin_token"]):
         return True
-    return _secret_equal(request.headers.get("X-Termify-Admin-Pwd", ""), _admin_pwd())
+    state = _admin_pwd_header_state()
+    if state == "locked":
+        return _admin_locked_response(_admin_pwd_wait(_client_ip()) or ADMIN_PWD_FAIL_LOCK)
+    return state == "ok"
 
 
 @gallery_route("/gallery/file/<work_id>/source")
@@ -3870,8 +3924,11 @@ def gallery_source(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work or not os.path.isfile(work["source_path"]):
         abort(404)
-    if not _work_raw_file_authorized(work):
+    auth = _work_raw_file_authorized(work)
+    if auth is False:
         abort(403)
+    if auth is not True:
+        return auth
     return send_file(work["source_path"])
 
 
@@ -3897,8 +3954,11 @@ def gallery_audio(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work:
         abort(404)
-    if not _work_raw_file_authorized(work):
+    auth = _work_raw_file_authorized(work)
+    if auth is False:
         abort(403)
+    if auth is not True:
+        return auth
     params = json.loads(work["params_json"]) if work["params_json"] else {}
     name = params.get("audio_file") or ""
     if not name or ".." in name or "/" in name or os.sep in name:
