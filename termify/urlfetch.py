@@ -21,6 +21,9 @@ _BLOCKED_NETWORKS = [
     ipaddress.ip_network("fc00::/7"),       # IPv6 unique local
     ipaddress.ip_network("fe80::/10"),      # IPv6 link-local
     ipaddress.ip_network("::1/128"),        # IPv6 loopback
+    # 云厂商内网元数据服务（阿里云 100.100.100.200）：能从主机上读到实例
+    # 凭据，比普通私网段更敏感，单列一条。
+    ipaddress.ip_network("100.100.100.200/32"),
 ]
 
 ALLOWED_SCHEMES = {"http", "https"}
@@ -54,6 +57,23 @@ class URLFetchError(Exception):
     """Raised when URL fetch fails validation."""
 
 
+def _check_resolved_addr(addr: str) -> None:
+    """单个解析结果判黑名单；IPv4-mapped IPv6 先还原成 IPv4 再判。
+
+    ::ffff:127.0.0.1 与 IPv4 网段是不同 version，"ip in net" 恒为 False——
+    不还原就等于整条 mapped 通道绕过黑名单（实测 getaddrinfo
+    ('[::ffff:127.0.0.1]') 原样返回该串）。
+    """
+    ip = ipaddress.ip_address(addr)
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:
+        ip = mapped
+    for net in _BLOCKED_NETWORKS:
+        if ip in net:
+            raise URLFetchError(
+                "URLs pointing to internal / private networks are blocked")
+
+
 def validate_url(url: str) -> str:
     """Validate URL scheme + host (SSRF). Returns cleaned URL or raises."""
     parsed = urlparse(url)
@@ -65,11 +85,7 @@ def validate_url(url: str) -> str:
     # Resolve hostname and block private IPs
     try:
         for info in socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80)):
-            addr = info[4][0]
-            ip = ipaddress.ip_address(addr)
-            for net in _BLOCKED_NETWORKS:
-                if ip in net:
-                    raise URLFetchError("URLs pointing to internal / private networks are blocked")
+            _check_resolved_addr(info[4][0])
     except socket.gaierror:
         raise URLFetchError("Could not resolve hostname")
 
