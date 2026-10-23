@@ -30,6 +30,20 @@
            「字符高度」这类靠 hidden 收起的控件顶出来。 */
         [hidden] { display: none !important; }
 
+        /* E-1 键盘焦点环（回归修复）。Tab 遍历时 14 个可聚焦元素实测全是浏览器
+           默认 outline:auto 1px rgb(16,16,16)，画在 --bg-deep #060a10 上只有
+           1.04:1，等于隐形。这条全局规则此前丢失——static/css/text_art.css:600
+           的注释仍在依赖它（它靠 :not(:focus-visible) 让色点内缩描边不顶掉它）。
+           取 2px + 2px offset + --green，与 .export-theme-dot 既有焦点语汇
+           （2px transparent outline + 2px offset + --green）一致：
+           #00ff41 对 #060a10 是 14.53:1。
+           指针点击不匹配 :focus-visible，鼠标用户观感不变；自定义 :focus 样式
+           （如 .url-fetch-input:focus 改 border-color）权重更高，仍按原样生效。 */
+        :focus-visible {
+            outline: 2px solid var(--green);
+            outline-offset: 2px;
+        }
+
         /* Subtle grid background */
         body::before {
             content: '';
@@ -565,7 +579,9 @@
             border: 1px solid var(--border-dim);
             border-radius: var(--radius-sm);
             color: var(--text-primary);
-            outline: none;
+            /* 这条 outline: none 与 :focus-visible 同权重、又在文件更后面，会把恢复的
+               键盘焦点环整个吞掉（实测 Tab 到这里 outlineStyle 仍是 none）。焦点反馈
+               交给全局焦点环 + 下一条 border-color，这里不再压掉 outline。 */
             transition: border-color var(--transition-fast);
         }
         .url-fetch-input:focus { border-color: var(--green); }
