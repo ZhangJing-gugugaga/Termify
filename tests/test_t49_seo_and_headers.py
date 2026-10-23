@@ -93,3 +93,107 @@ def test_large_response_compression_gate_still_works():
         # 非 static 端点：缓存策略 hook 不碰它
         assert app_mod._static_cache_policy(resp) is resp
         assert "Cache-Control" not in resp.headers
+
+# --- 2. D-2 robots.txt / sitemap.xml ----------------------------------------
+
+@pytest.fixture
+def isolated_gallery(monkeypatch, tmp_path):
+    """把画廊库指到 tmp_path，避免测试读写仓库里的 data/（已 gitignore 的本地数据）。"""
+    (tmp_path / "uploads").mkdir(exist_ok=True)
+    (tmp_path / "tmp").mkdir(exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("TERMIFY_BASE_DIR", str(tmp_path))
+    monkeypatch.setenv("TERMIFY_TASK_DB", str(tmp_path / "tasks_t49.db"))
+
+    from termify.taskstore import cache_clear_all, reset_store_for_tests
+
+    cache_clear_all()
+    reset_store_for_tests()
+    import app as app_mod
+    from termify import gallery as gallery_mod
+
+    gdata = tmp_path / "gallery_data"
+    gdata.mkdir()
+    monkeypatch.setattr(app_mod, "GALLERY_DATA_DIR", str(gdata))
+    db = gallery_mod.GalleryDB(str(gdata / "termify.db"))
+    db.init_db()
+    monkeypatch.setattr(app_mod, "GALLERY_DB", db)
+    app_mod._RL_LOG.clear()
+    yield db
+    cache_clear_all()
+    reset_store_for_tests()
+
+
+def _work(work_id, is_private=0, created_at="2026-01-02T03:04:05"):
+    import json as _json
+    return {
+        "id": work_id,
+        "title": "t49 " + work_id,
+        "description": "",
+        "tags": _json.dumps([]),
+        "author": "tester",
+        "source_path": "/nonexistent/source.png",
+        "thumbnail_path": "/nonexistent/thumb.png",
+        "og_path": "/nonexistent/og.png",
+        "params_json": _json.dumps({"kind": "image"}),
+        "is_private": is_private,
+        "admin_token": "tok-" + work_id,
+        "created_at": created_at,
+        "ip": "203.0.113.10",
+    }
+
+
+def _sitemap_locs(client=None):
+    """把 sitemap 走一遍真正的 XML 解析，返回 <loc> 列表。"""
+    import xml.etree.ElementTree as ET
+
+    r = (_client() if client is None else client).get("/sitemap.xml")
+    assert r.status_code == 200
+    assert r.headers["Content-Type"].startswith("application/xml")
+    root = ET.fromstring(r.get_data(as_text=True))
+    ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+    return [el.text for el in root.findall("s:url/s:loc", ns)]
+
+
+def test_robots_txt_allows_all_and_points_at_sitemap():
+    r = _client().get("/robots.txt")
+    assert r.status_code == 200
+    assert r.headers["Content-Type"].startswith("text/plain")
+    body = r.get_data(as_text=True)
+    assert "User-agent: *" in body
+    assert "Allow: /" in body
+    sitemap_lines = [ln for ln in body.splitlines() if ln.startswith("Sitemap: ")]
+    assert len(sitemap_lines) == 1
+    assert sitemap_lines[0].endswith("/sitemap.xml")
+    assert sitemap_lines[0].startswith("Sitemap: http")
+
+
+def test_sitemap_xml_is_valid_and_lists_the_three_pages(isolated_gallery):
+    locs = _sitemap_locs()
+    assert len(locs) >= 3
+    base = locs[0].rsplit("/", 1)[0]
+    for path in ("/", "/gallery", "/text-art"):
+        assert base + path in locs, path
+    # 绝对 URL：不能是 /xxx 这种站内相对路径
+    assert all(loc.startswith("http") for loc in locs)
+
+
+def test_sitemap_lists_published_works_with_lastmod(isolated_gallery):
+    isolated_gallery.insert_work(_work("t49public001"))
+    isolated_gallery.insert_work(_work("t49private01", is_private=1))
+    r = _client().get("/sitemap.xml")
+    body = r.get_data(as_text=True)
+    tree_locs = _sitemap_locs()
+    assert any(loc.endswith("/v/t49public001") for loc in tree_locs)
+    # 私密作品不进 sitemap
+    assert "t49private01" not in body
+    # lastmod 用作品的 created_at
+    assert "<lastmod>2026-01-02T03:04:05</lastmod>" in body
+
+
+def test_sitemap_only_reads_the_gallery_db(isolated_gallery):
+    isolated_gallery.insert_work(_work("t49ro0000001"))
+    _before, total_before = isolated_gallery.list_works(page=1, limit=1000)
+    _sitemap_locs()
+    _after, total_after = isolated_gallery.list_works(page=1, limit=1000)
+    assert (total_before, total_after) == (1, 1)

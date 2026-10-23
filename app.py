@@ -24,7 +24,8 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
+from xml.sax.saxutils import escape as _xml_escape
 
 from termify.video import VALID_VIDEO_EXTS
 from termify import paths
@@ -741,6 +742,86 @@ def index():
 def text_art_page():
     """字符艺术独立页（FIGlet 直转 + 中文 TTF 点阵）。"""
     return render_template("text_art.html")
+
+
+# --- 站点级 SEO 端点（robots / sitemap） ------------------------------------
+
+_SITEMAP_STATIC_PATHS = ("/", "/gallery", "/text-art")
+_SITEMAP_MAX_WORKS = 100
+
+
+def _public_base_url() -> str:
+    """站点绝对根 URL（不带尾斜杠），供 robots/sitemap 拼绝对地址。
+
+    ``request.host_url`` 反映的是"应用实际看到的那一段"：线上 Caddy 反代到
+    127.0.0.1:5000 是 http，照抄会让 sitemap 全是 http:// 地址。与
+    ``_client_ip`` 用同一套信任边界——只有直连对端是回环/私网（说明确实在
+    反代之后）才采信 X-Forwarded-Proto，直连客户端伪造不了。
+    """
+    base = request.host_url.rstrip("/")
+    try:
+        peer = ipaddress.ip_address(request.remote_addr or "")
+        trusted = peer.is_loopback or peer.is_private
+    except ValueError:
+        trusted = False
+    if trusted:
+        proto = (request.headers.get("X-Forwarded-Proto") or "")
+        proto = proto.split(",")[0].strip().lower()
+        if proto in ("http", "https"):
+            base = proto + "://" + base.split("://", 1)[-1]
+    return base
+
+
+def _sitemap_lastmod(value) -> str | None:
+    """works.created_at → <lastmod>。库里存的就是 ISO 串
+    （"2026-01-01T00:00:00"），形如日期且够长就发，认不出来就不发——
+    宁缺勿错。"""
+    if not value:
+        return None
+    text = str(value).strip().replace(" ", "T")
+    if len(text) < 19 or text[4] != "-" or text[7] != "-" or text[10] != "T":
+        return None
+    return text[:19]
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    """允许全站抓取并指明 sitemap。此前该路径落 404 页，爬虫拿不到任何指令。"""
+    body = "\n".join([
+        "User-agent: *",
+        "Allow: /",
+        "",
+        f"Sitemap: {_public_base_url()}/sitemap.xml",
+        "",
+    ])
+    return Response(body, mimetype="text/plain")
+
+
+@app.route("/sitemap.xml")
+def sitemap_xml():
+    """三张固定页 + 最近 100 条已发布作品的 /v/<id>。
+
+    取库只读：``list_works`` 默认 ``include_private=False``，私密作品不进
+    sitemap；不插入、不更新任何行。
+    """
+    base = _public_base_url()
+    entries = [(base + path, None) for path in _SITEMAP_STATIC_PATHS]
+    works = []
+    if GALLERY_ENABLED:
+        works, _total = GALLERY_DB.list_works(page=1, limit=_SITEMAP_MAX_WORKS)
+    for work in works:
+        entries.append((f"{base}/v/{quote(str(work['id']), safe='')}",
+                        _sitemap_lastmod(work.get("created_at"))))
+    parts = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    for loc, lastmod in entries:
+        parts.append("  <url>")
+        parts.append(f"    <loc>{_xml_escape(loc)}</loc>")
+        if lastmod:
+            parts.append(f"    <lastmod>{_xml_escape(lastmod)}</lastmod>")
+        parts.append("  </url>")
+    parts.append("</urlset>")
+    return Response("\n".join(parts) + "\n", mimetype="application/xml")
 
 
 @app.route("/api/upload", methods=["POST"])
