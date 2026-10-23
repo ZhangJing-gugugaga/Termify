@@ -341,7 +341,7 @@ A: 两种方式：
 1. 在主工作台上传素材 → 选好风格 / 尺寸 / 配色 → 点「下载动画文件」之前或之后，点 **「发布到画廊」** 按钮（右下角，弹窗来自 `_gallery_modal.html`）。
 2. 在弹窗里填：标题、描述、作者名、标签（预设标签最多 3 个 + 自定义标签）。
 3. 选 **公开 / 私密**。私密作品只有拿到短链的人能看。
-4. 点「发布」→ 自动跳到 `/v/<id>` 分享页，并给你一个 **admin_token**（写在 URL 里，用于之后删除自己的作品）。
+4. 点「发布」→ 自动跳到 `/v/<id>` 分享页。发布凭据以 **httponly Cookie**（`termify_admin_<id>`）的形式种在你当前浏览器里，之后用同一个浏览器就能删除自己的作品；凭据不会出现在 URL、页面或接口响应体里。
 
 > 💡 发布限 **3 次/分钟、10 次/天**（每 IP），防止刷屏。视频作品会抽首帧入库，源视频本身不长期存储。
 
@@ -356,10 +356,11 @@ curl -X POST http://127.0.0.1:5000/api/gallery/upload \
   -F 'custom_tags=["我的标签"]' \
   -F 'is_private=false' \
   -F 'params={"charset":"blocks","width":120,"height":36,"color":"source"}'
-# 返回: {"ok":true,"id":"aBcDeFgH","admin_token":"...","url":"/v/aBcDeFgH",...}
+# 返回: {"ok":true,"id":"aBcDeFgH","url":"/v/aBcDeFgH",...}
+# 响应同时下发 Set-Cookie: termify_admin_aBcDeFgH=<token>; HttpOnly; SameSite=Lax
 ```
 
-返回里的 `admin_token` 请自己留存 —— 之后删除作品用 `DELETE /api/gallery/work/<id>`（Header `X-Termify-Admin: <token>`，或首次发布时种下的同名 Cookie）。完整画廊接口（列表 / 点赞 / 举报 / 管理台）见 `app.py` 的 `/api/gallery/*` 路由。
+删除自己的作品用 `DELETE /api/gallery/work/<id>`，凭据取两种之一：首次发布时由服务端种下的 `termify_admin_<id>` Cookie（浏览器场景自动携带），或调用方自行保存的 `X-Termify-Admin: <token>` 请求头（脚本场景）。发布接口的响应体里**不再包含** `admin_token` 字段——HTTP 客户端请从 `Set-Cookie` 响应头取，或直接复用 Cookie jar。完整画廊接口（列表 / 点赞 / 举报 / 管理台）见 `app.py` 的 `/api/gallery/*` 路由。
 
 **Q: 有桌面版吗？**
 A: 有。从 [Releases](https://github.com/ZhangJing-gugugaga/Termify/releases) 下载 `Termify.exe`，双击启动后自动打开浏览器访问本地 Web 界面。转化能力与在线 Demo 一致（ffmpeg 已内置），但**不含画廊**——纯本地版、0 云端依赖，适合离线环境或大文件处理。

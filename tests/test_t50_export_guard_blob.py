@@ -42,7 +42,7 @@ EXPORT_ENDPOINTS = ("/api/text/export-png", "/api/text/export-html",
 ART = "HELLO\nWORLD"
 PAYLOAD = {"art": ART, "theme": "green", "name": "hotfix_art"}
 
-ASSET_VERSION = "20261031c"
+ASSET_VERSION = "20261031d"
 
 
 @pytest.fixture(autouse=True)

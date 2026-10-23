@@ -8,8 +8,8 @@
     /* PF-6：字体也带 ?v= 指纹，否则 send_static_file 只能给 1 天 max-age
        （裸 URL 走 STATIC_PLAIN_MAX_AGE），冷缓存每次都要回源校验。版本号与
        全站 ?v= 同源，由协调者统一管理。 */
-    src: url('../fonts/web/JetBrainsMono-VF.woff2?v=20261031c') format('woff2'),
-         url('../fonts/web/JetBrainsMono-VF.ttf?v=20261031c') format('truetype');
+    src: url('../fonts/web/JetBrainsMono-VF.woff2?v=20261031d') format('woff2'),
+         url('../fonts/web/JetBrainsMono-VF.ttf?v=20261031d') format('truetype');
     font-weight: 100 800;
     font-style: normal;
     font-display: swap;
