@@ -738,6 +738,16 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/index.html")
+def index_html_redirect():
+    """老链接归位（D-4）：/index.html 落到 301 → /，此前是 404。
+
+    站点首页只认 /（render_template 里的 url_for("index") 一直是 /），
+/index.html 只是外部硬编码/旧书签的写法；GET/HEAD 由同一条规则覆盖。
+    """
+    return redirect("/", 301)
+
+
 @app.route("/text-art")
 def text_art_page():
     """字符艺术独立页（FIGlet 直转 + 中文 TTF 点阵）。"""

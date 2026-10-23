@@ -227,3 +227,22 @@ def test_trailing_slash_redirect_is_not_a_loop():
     r = _client().get("/gallery/", follow_redirects=True)
     assert r.status_code == 200
     assert r.request.path == "/gallery"
+
+# --- 4. D-4 /index.html 归位 ------------------------------------------------
+
+def test_index_html_redirects_301_to_root():
+    r = _client().get("/index.html")
+    assert r.status_code == 301
+    assert r.headers["Location"] == "/"
+
+
+def test_index_html_head_also_redirects():
+    h = _client().head("/index.html")
+    assert h.status_code == 301
+    assert h.headers["Location"] == "/"
+
+
+def test_index_html_follows_to_the_real_homepage():
+    r = _client().get("/index.html", follow_redirects=True)
+    assert r.status_code == 200
+    assert r.request.path == "/"
