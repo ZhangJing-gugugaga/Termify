@@ -403,7 +403,6 @@
 
   /* ── Apply preview data from server ── */
   function applyPreview(d) {
-    cardRenderOk(S.charset);  // 所有渲染路径的成功出口：loading / error 一起复位
     S.frames = d.frames || [];
     S.interval = d.interval || 0.1;
     S.totalFrames = d.frame_count || S.frames.length;
@@ -499,7 +498,6 @@
         return;
       }
       var myReq = ++latestReq;
-      setCardLoading(charset);
       if (animTerminal) animTerminal.classList.add("rendering");
       localRenderFrames(charset, S.width, S.height, myReq).then(function (localFrames) {
         if (myReq !== latestReq || !localFrames) return;  // 竞态或空帧
@@ -511,12 +509,6 @@
           frame_count: localFrames.length,
           charset: charset
         });
-      }, function () {
-        // 本地解码/渲染 reject：卡片落 error，别只剩终端里的"渲染中…"
-        if (myReq !== latestReq) return;
-        if (animTerminal) animTerminal.classList.remove("rendering");
-        cardRenderFailed(charset);
-        toast("预览渲染失败 / render failed");
       });
       return;
     }
@@ -529,7 +521,6 @@
       return;
     }
     var myId = ++latestReq;
-    setCardLoading(charset);  // 真在算：这张卡进 loading，指针停掉，避免叠请求
     // 方案B 推广：服务端任务优先本地渲染（源帧一次性拉取后，风格/尺寸切换零请求）
     if (!taskFramesFailed(S.taskId)) {
       if (animTerminal) animTerminal.classList.add("rendering");
@@ -560,7 +551,7 @@
     fetch(url).then(function (r) { return r.json(); }).then(function (d) {
       if (myId !== latestReq) return;
       if (animTerminal) animTerminal.classList.remove("rendering");
-      if (d.error) { cardRenderFailed(charset); toast(d.error); return; }
+      if (d.error) { toast(d.error); return; }
       S.wasPlaying = playing;
       if (playing) {
         if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
@@ -571,7 +562,6 @@
     }).catch(function () {
       if (myId !== latestReq) return;
       if (animTerminal) animTerminal.classList.remove("rendering");
-      cardRenderFailed(charset);
       toast("preview failed");
     });
   }
@@ -851,7 +841,7 @@
     renderFileList();
     toast("导入完成（" + bitmaps.length + " 帧）· 风格切换零等待");
     var stylesSection = document.getElementById("styles");
-    if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   /* ── T23 JS 渲染已迁移至 static/js/termify-render.js（与画廊作品页共用） ── */
@@ -1103,12 +1093,10 @@
     files.forEach(function (f) { fd.append("files", f); });
     uploadZoneBusy(true);
     setUploadStatus("正在上传 " + files.length + " 个文件，完成后自动生成预览… / Uploading…", "busy");
-    setCardsDisabled(true);  // 上传在途：还没有 taskId，风格卡此刻真点不动
     fetch("/api/upload-batch", { method: "POST", body: fd })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         uploadZoneBusy(false);
-        setCardsDisabled(false);
         if (d.errors && d.errors.length) {
           d.errors.forEach(function (err) { toast(err.filename + ": " + err.error); });
         }
@@ -1125,7 +1113,7 @@
           selectFile(S.selIdx);
           renderFileList();
           var stylesSection = document.getElementById("styles");
-          if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
           if (d.task_ids.length > 1) {
             toast("已上传 " + d.task_ids.length + " 个文件，点击文件名切换");
           }
@@ -1147,7 +1135,6 @@
       })
       .catch(function (e) {
         uploadZoneBusy(false);
-        setCardsDisabled(false);
         toast("upload failed: " + e);
         setUploadStatus("上传失败：" + e + " · 点此区域重试 / Retry", "error");
       });
@@ -1203,7 +1190,7 @@
       selectFile(S.selIdx);
       renderFileList();
       var stylesSection = document.getElementById("styles");
-      if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     xhr.addEventListener("error", function () {
       uploadZoneBusy(false);
@@ -1674,55 +1661,6 @@
     }
     setTitleMeta();
   }
-  /* 风格切换后的「已更新」提示：终端边框脉冲一次。
-     两栏化后预览在桌面常驻屏内，滚动比静止更吵，所以用一次脉冲代替。
-     reduced-motion 下由 CSS 降级成静态描边（不闪）。 */
-  function flashPreview() {
-    var termEl = document.querySelector("#preview .terminal");
-    if (!termEl) return;
-    termEl.classList.remove("is-flash");
-    void termEl.offsetWidth;  // 强制重排，连点也能重放动画
-    termEl.classList.add("is-flash");
-    setTimeout(function () { termEl.classList.remove("is-flash"); }, 420);
-  }
-
-  /* ── 卡片三态（DESIGN §8.3）──
-     只加 CSS 不接状态就是又一个假控件：这里把 loading / error 挂到
-     requestPreview 的真实生命周期上——请求发出亮 loading（并停掉指针），
-     成功由 applyPreview 收工，失败落到那张卡的 .error（边框转 --red）。 */
-  function styleCardFor(charset) {
-    return document.querySelector('.style-card[data-style="' + charset + '"]');
-  }
-  function setCardLoading(charset) {
-    qa(".style-card").forEach(function (c) {
-      c.classList.remove("loading");  // 被新请求取代的旧卡不留下卡死的 loading
-      if (c.getAttribute("data-style") === charset) c.classList.remove("error");
-    });
-    var card = styleCardFor(charset);
-    if (card) card.classList.add("loading");
-  }
-  function cardRenderOk(charset) {
-    var card = styleCardFor(charset);
-    if (!card) return;
-    card.classList.remove("loading");
-    card.classList.remove("error");
-  }
-  function cardRenderFailed(charset) {
-    var card = styleCardFor(charset);
-    if (!card) return;
-    card.classList.remove("loading");
-    card.classList.add("error");
-  }
-  /* disabled：上传在途时风格卡真的不可交互（还没有 taskId，点下去既渲染不了
-     也预览不了），沿用 .ta-select:disabled 的 .55 语言。 */
-  function setCardsDisabled(on) {
-    qa(".style-card").forEach(function (c) {
-      if (on) c.setAttribute("aria-disabled", "true");
-      else c.removeAttribute("aria-disabled");
-    });
-    syncStyleCards();  // aria-disabled 变了，roving tabindex 必须跟着重算
-  }
-
   /* ── UX-2 风格卡 = 单选组（WAI-ARIA APG radio group）──
      div 没有原生 radio 的键盘行为，roving tabindex 得自己维护：
        · 选中项 tabindex=0，其余 -1 → Tab 进组只停在选中项，一次 Tab 出组
@@ -1780,14 +1718,7 @@
       requestPreview(s, { silent: !S.taskId });
     }
     var previewEl = document.getElementById("preview");
-    // 两栏化后桌面预览常驻屏内：滚过去只会把页面拽飞，改用脉冲提示；单列时才滚到刚好可见
-    if (previewEl) {
-      if (window.matchMedia("(max-width: 1024px)").matches) {
-        previewEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      } else {
-        flashPreview();
-      }
-    }
+    if (previewEl) previewEl.scrollIntoView({ behavior: "instant", block: "start" });
   }
 
   qa(".style-card").forEach(function (card) {
@@ -1952,7 +1883,7 @@
       selectFile(S.selIdx);
       renderFileList();
       var stylesSection = document.getElementById("styles");
-      if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
       urlInput.value = "";
     }
     function doFetchVideoUrl(url) {
@@ -1990,7 +1921,7 @@
                         srcW: os.width || 0, srcH: os.height || 0 }];
         S.selIdx = 0; selectFile(0); renderFileList();
         var stylesSection = byId("styles");
-        if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        if (stylesSection) stylesSection.scrollIntoView({ behavior: "smooth", block: "start" });
         urlInput.value = "";
       }).catch(function (e) {
         urlBtn.disabled = false; urlBtn.textContent = "下载 / Fetch";

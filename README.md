@@ -599,7 +599,7 @@ Termify/
 - **后端**：Python 3.10+、Flask、Pillow、pyfiglet（字符艺术）
 - **前端**：原生 HTML/CSS/JS，无框架依赖
 - **测试**：pytest（443 tests，运行 `pytest -q` 即可）
-- **主题**：暗色终端美学，JetBrains Mono 单一等宽字体
+- **主题**：暗色终端美学，JetBrains Mono + Space Grotesk 字体
 
 ## 🐛 反馈与 ISSUE
 

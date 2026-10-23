@@ -7,8 +7,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>在线画廊 · Termify</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261026a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261026a">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261027a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261027a">
 </head>
 <body>
 <div id="toast"></div>
@@ -71,10 +71,6 @@
             <div class="gallery-empty" id="galleryEmpty" style="display:none;">
                 <p>暂无作品，<a href="/">去上传第一个 →</a> / No works yet. <a href="/">Upload the first one →</a></p>
             </div>
-            <div class="gallery-error" id="galleryError" role="alert" hidden>
-                <p>作品列表加载失败，请检查网络后重试 / Failed to load works.</p>
-                <p><button type="button" class="gallery-page-btn" id="galleryErrorRetry">重试 / Retry</button></p>
-            </div>
             <div class="gallery-pagination" id="galleryPagination"></div>
         </div>
     </section>
@@ -125,6 +121,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/gallery_page.js') }}?v=20261026a" defer></script>
+    <script src="{{ url_for('static', filename='js/gallery_page.js') }}?v=20261027a" defer></script>
 </body>
 </html>

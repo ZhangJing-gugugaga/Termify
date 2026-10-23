@@ -17,7 +17,7 @@
         }
 
         body {
-            font-family: var(--font-mono);
+            font-family: var(--font-sans);
             background: var(--bg-deep);
             color: var(--text-primary);
             line-height: 1.6;
@@ -30,13 +30,6 @@
            「字符高度」这类靠 hidden 收起的控件顶出来。 */
         [hidden] { display: none !important; }
 
-        /* 键盘焦点环：鼠标点按不出现，Tab 走位必须可见（WCAG 2.4.7）。
-           输入框的 :focus 只换边框色，那是「聚焦」而非「键盘焦点」，两者分开表达。 */
-        :focus-visible {
-            outline: 2px solid var(--green);
-            outline-offset: 2px;
-        }
-
         /* Subtle grid background */
         body::before {
             content: '';
@@ -46,10 +39,9 @@
                 linear-gradient(var(--border-dim) 1px, transparent 1px),
                 linear-gradient(90deg, var(--border-dim) 1px, transparent 1px);
             background-size: 60px 60px;
-            /* 网格开关（tweaks 写 --grid-opacity）真正的消费点 */
-            opacity: var(--grid-opacity, 0.3);
+            opacity: 0.3;
             pointer-events: none;
-            z-index: var(--z-grid);
+            z-index: 0;
         }
 
         /* Scanline overlay */
@@ -64,11 +56,9 @@
                 rgba(0, 0, 0, 0.03) 2px,
                 rgba(0, 0, 0, 0.03) 4px
             );
-            /* 扫描线开关（tweaks / app.js bindTweak 写 --scanline-opacity）的
-               唯一消费点：0 = 关，1 = 开（DESIGN §1.4 / §10 #9 假控件） */
-            opacity: var(--scanline-opacity, 1);
             pointer-events: none;
-            z-index: var(--z-scanline);
+            z-index: 9999;
+            will-change: transform;
         }
 
         /* ═══════════════════════════════════════════
@@ -79,7 +69,7 @@
             margin: 0 auto;
             padding: 0 var(--space-6);
             position: relative;
-            z-index: var(--z-content);
+            z-index: 1;
         }
 
         /* ═══════════════════════════════════════════
@@ -91,7 +81,7 @@
             position: sticky;
             top: 0;
             background: rgba(6, 10, 16, 0.95);
-            z-index: var(--z-nav);
+            z-index: 100;
         }
 
         nav .container {
@@ -116,7 +106,7 @@
             align-items: center;
             justify-content: center;
             font-family: var(--font-mono);
-            font-size: var(--fs-base);
+            font-size: 14px;
             font-weight: 700;
             color: var(--green);
             box-shadow: 0 0 12px var(--green-glow);
@@ -124,7 +114,7 @@
 
         .logo-text {
             font-family: var(--font-mono);
-            font-size: var(--fs-2xl);
+            font-size: 20px;
             font-weight: 600;
             color: var(--text-primary);
             letter-spacing: -0.5px;
@@ -144,7 +134,7 @@
 
         .nav-links a {
             font-family: var(--font-mono);
-            font-size: var(--fs-md);
+            font-size: 13px;
             color: var(--text-secondary);
             text-decoration: none;
             transition: color var(--transition-fast);
@@ -163,10 +153,10 @@
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-md);
             font-family: var(--font-mono);
-            font-size: var(--fs-md);
+            font-size: 13px;
             color: var(--text-secondary);
             text-decoration: none;
-            transition: border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+            transition: all var(--transition-fast);
         }
 
         .nav-github:hover {
@@ -192,7 +182,7 @@
             border: 1px solid rgba(0, 255, 65, 0.2);
             border-radius: 100px;
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             color: var(--green);
             margin-bottom: var(--space-8);
             letter-spacing: 0.5px;
@@ -227,7 +217,7 @@
         }
 
         .hero-subtitle {
-            font-size: var(--fs-xl);
+            font-size: 18px;
             color: var(--text-secondary);
             max-width: 560px;
             margin: 0 auto var(--space-12);
@@ -239,9 +229,6 @@
             margin: 0 auto;
             text-align: left;
         }
-
-        /* 原来写在下行终端行上的内联 margin-top: 4px，收进样式表 */
-        .hero-cmd-line { margin-top: var(--space-2); }
 
         /* ═══════════════════════════════════════════
            TERMINAL WINDOW COMPONENT
@@ -279,7 +266,7 @@
             flex: 1;
             text-align: center;
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             color: var(--text-dim);
             margin-right: 30px;
         }
@@ -287,7 +274,7 @@
         .terminal-body {
             padding: var(--space-5);
             font-family: var(--font-mono);
-            font-size: var(--fs-md);
+            font-size: 13px;
             line-height: 1.8;
         }
 
@@ -334,7 +321,7 @@
 
         .section-label {
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             color: var(--text-dim);
             letter-spacing: 2px;
             text-transform: uppercase;
@@ -343,7 +330,7 @@
 
         .section-title {
             font-family: var(--font-mono);
-            font-size: var(--fs-3xl);
+            font-size: 28px;
             font-weight: 600;
             margin-bottom: var(--space-8);
             letter-spacing: -0.5px;
@@ -352,10 +339,10 @@
         .upload-zone {
             border: 2px dashed var(--border-subtle);
             border-radius: var(--radius-lg);
-            padding: var(--space-6) var(--space-8);
+            padding: var(--space-16) var(--space-8);
             text-align: center;
             cursor: pointer;
-            transition: border-color var(--transition-base), background-color var(--transition-base);
+            transition: all var(--transition-base);
             position: relative;
             overflow: hidden;
         }
@@ -421,21 +408,21 @@
         }
 
         .upload-icon {
-            width: 44px;
-            height: 44px;
-            margin: 0 auto var(--space-3);
+            width: 64px;
+            height: 64px;
+            margin: 0 auto var(--space-6);
             border: 2px solid var(--border-subtle);
             border-radius: var(--radius-md);
             display: flex;
             align-items: center;
             justify-content: center;
             position: relative;
-            z-index: var(--z-content);
+            z-index: 1;
         }
 
         .upload-icon svg {
-            width: 22px;
-            height: 22px;
+            width: 28px;
+            height: 28px;
             stroke: var(--text-dim);
             transition: stroke var(--transition-fast);
         }
@@ -446,18 +433,18 @@
 
         .upload-text {
             position: relative;
-            z-index: var(--z-content);
+            z-index: 1;
         }
 
         .upload-text h3 {
             font-family: var(--font-mono);
-            font-size: var(--fs-lg);
+            font-size: 16px;
             font-weight: 500;
             margin-bottom: var(--space-2);
         }
 
         .upload-text p {
-            font-size: var(--fs-base);
+            font-size: 14px;
             color: var(--text-dim);
         }
 
@@ -474,14 +461,14 @@
             display: flex;
             justify-content: center;
             gap: var(--space-3);
-            margin-top: var(--space-3);
+            margin-top: var(--space-6);
             position: relative;
-            z-index: var(--z-content);
+            z-index: 1;
         }
 
         .format-tag {
             font-family: var(--font-mono);
-            font-size: var(--fs-xs);
+            font-size: 11px;
             padding: var(--space-1) var(--space-3);
             background: var(--bg-elevated);
             border: 1px solid var(--border-dim);
@@ -498,7 +485,7 @@
             gap: var(--space-3);
             margin-top: var(--space-3);
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             line-height: 1.5;
             color: var(--text-secondary);
             /* 375px 下长文件名 / 长错误串换行，不撑破版面 */
@@ -555,11 +542,11 @@
             gap: var(--space-2);
             margin-top: var(--space-4);
             position: relative;
-            z-index: var(--z-content);
+            z-index: 1;
         }
         .url-fetch-label {
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             color: var(--text-dim);
             white-space: nowrap;
         }
@@ -567,19 +554,20 @@
             flex: 1 1 auto;
             min-width: 0;
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             padding: var(--space-2) var(--space-3);
             background: var(--bg-base);
             border: 1px solid var(--border-dim);
             border-radius: var(--radius-sm);
             color: var(--text-primary);
+            outline: none;
             transition: border-color var(--transition-fast);
         }
         .url-fetch-input:focus { border-color: var(--green); }
         .url-fetch-input::placeholder { color: var(--text-dim); opacity: 0.5; }
         .url-fetch-btn {
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             padding: var(--space-2) var(--space-4);
             background: var(--green);
             border: none;
@@ -598,18 +586,18 @@
             gap: var(--space-2);
             margin-top: var(--space-4);
             position: relative;
-            z-index: var(--z-content);
+            z-index: 1;
         }
         .file-list-item {
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             padding: var(--space-1) var(--space-3);
             background: var(--bg-elevated);
             border: 1px solid var(--border-dim);
             border-radius: var(--radius-sm);
             color: var(--text-secondary);
             cursor: pointer;
-            transition: border-color var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+            transition: all var(--transition-fast);
             max-width: 180px;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -646,7 +634,7 @@
             border-radius: var(--radius-md);
             overflow: hidden;
             cursor: pointer;
-            transition: border-color var(--transition-base), transform var(--transition-base), box-shadow var(--transition-base);
+            transition: all var(--transition-base);
             position: relative;
         }
 
@@ -710,7 +698,7 @@
         .style-preview.braille {
             color: var(--cyan);
             white-space: pre;
-            font-size: var(--fs-2xs);
+            font-size: 10px;
         }
 
         /* Geometric style preview */
@@ -744,13 +732,13 @@
 
         .style-name {
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             font-weight: 500;
             margin-bottom: 2px;
         }
 
         .style-desc {
-            font-size: var(--fs-xs);
+            font-size: 11px;
             color: var(--text-dim);
         }
 
@@ -759,7 +747,7 @@
             grid-column: 1 / -1;
             margin: 0;
             font-family: var(--font-mono);
-            font-size: var(--fs-xs);
+            font-size: 11px;
             color: var(--text-dim);
         }
 
@@ -821,7 +809,7 @@
             justify-content: center;
             overflow: hidden;
             padding: var(--space-5);
-            font-size: var(--fs-2xs);  /* fallback, JS overrides via fitTerminalFontSize() */
+            font-size: 10px;  /* fallback, JS overrides via fitTerminalFontSize() */
             line-height: 1.3;
             white-space: pre;
             color: var(--green);
@@ -872,7 +860,7 @@
 
         /* ── 背景音乐（T25）── */
         .music-note {
-            font-size: var(--fs-xs);
+            font-size: 11px;
             font-weight: 400;
             color: var(--text-dim);
             margin-left: 8px;
@@ -891,7 +879,7 @@
             border-radius: 8px;
             padding: 10px 12px;
             font: inherit;
-            font-size: var(--fs-md);
+            font-size: 13px;
             cursor: pointer;
             transition: border-color .15s ease, background .15s ease;
         }
@@ -902,7 +890,7 @@
         }
 
         .music-hint {
-            font-size: var(--fs-xs);
+            font-size: 11px;
             line-height: 1.5;
             color: var(--text-dim);
         }
@@ -917,7 +905,7 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            font-size: var(--fs-sm);
+            font-size: 12px;
             color: var(--green);
             background: rgba(0, 255, 65, 0.08);
             border: 1px solid var(--border-dim);
@@ -933,7 +921,7 @@
             background: transparent;
             border: none;
             color: var(--text-dim);
-            font-size: var(--fs-xl);
+            font-size: 18px;
             line-height: 1;
             cursor: pointer;
             padding: 4px 8px;
@@ -963,7 +951,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: border-color var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+            transition: all var(--transition-fast);
         }
 
         .control-btn:hover {
@@ -997,7 +985,7 @@
 
         .frame-counter {
             font-family: var(--font-mono);
-            font-size: var(--fs-xs);
+            font-size: 11px;
             color: var(--text-dim);
             min-width: 60px;
             text-align: right;
@@ -1021,7 +1009,7 @@
 
         .output-card-title {
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             color: var(--text-dim);
             letter-spacing: 1px;
             text-transform: uppercase;
@@ -1043,7 +1031,7 @@
             border: 1px solid var(--border-dim);
             border-radius: var(--radius-md);
             cursor: pointer;
-            transition: border-color var(--transition-fast), background-color var(--transition-fast);
+            transition: all var(--transition-fast);
         }
 
         .format-option:hover {
@@ -1086,19 +1074,19 @@
 
         .format-label-name {
             font-family: var(--font-mono);
-            font-size: var(--fs-md);
+            font-size: 13px;
             font-weight: 500;
         }
 
         .format-label-desc {
-            font-size: var(--fs-xs);
+            font-size: 11px;
             color: var(--text-dim);
             margin-top: 1px;
         }
 
         .format-icon {
             font-family: var(--font-mono);
-            font-size: var(--fs-xs);
+            font-size: 11px;
             padding: 2px 6px;
             background: var(--bg-base);
             border-radius: var(--radius-sm);
@@ -1112,7 +1100,7 @@
             gap: var(--space-2);
         }
         .size-btn small {
-            font-size: var(--fs-2xs);
+            font-size: 9px;
             opacity: 0.7;
             margin-left: 2px;
         }
@@ -1123,10 +1111,10 @@
             border-radius: var(--radius-sm);
             background: transparent;
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             color: var(--text-secondary);
             cursor: pointer;
-            transition: border-color var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+            transition: all var(--transition-fast);
             text-align: center;
         }
 
@@ -1154,6 +1142,7 @@
             -webkit-appearance: none;
             background: var(--border-dim);
             border-radius: 2px;
+            outline: none;
             cursor: pointer;
         }
         .size-slider-row input[type="range"]::-webkit-slider-thumb {
@@ -1177,7 +1166,7 @@
         }
         .size-slider-val {
             font-family: var(--font-mono);
-            font-size: var(--fs-xs);
+            font-size: 11px;
             color: var(--text-secondary);
             white-space: nowrap;
             min-width: 58px;
@@ -1187,14 +1176,14 @@
         .size-meta {
             margin-top: var(--space-2);
             font-family: var(--font-mono);
-            font-size: var(--fs-2xs);
+            font-size: 10px;
             color: var(--text-secondary);
             opacity: 0.8;
         }
         .size-warn {
             margin-top: var(--space-2);
             font-family: var(--font-mono);
-            font-size: var(--fs-2xs);
+            font-size: 10px;
             color: var(--amber, #ffb000);
         }
         .size-warn[hidden] { display: none; }
@@ -1211,10 +1200,10 @@
             border-radius: var(--radius-sm);
             background: transparent;
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             color: var(--text-secondary);
             cursor: pointer;
-            transition: border-color var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+            transition: all var(--transition-fast);
             text-align: center;
             white-space: nowrap;
         }
@@ -1230,7 +1219,7 @@
             gap: var(--space-2);
             margin-top: var(--space-2);
             font-family: var(--font-mono);
-            font-size: var(--fs-xs);
+            font-size: 11px;
             color: var(--text-secondary);
             cursor: pointer;
         }
@@ -1246,11 +1235,11 @@
             border: none;
             border-radius: var(--radius-md);
             font-family: var(--font-mono);
-            font-size: var(--fs-base);
+            font-size: 14px;
             font-weight: 600;
             color: var(--text-inverse);
             cursor: pointer;
-            transition: background-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+            transition: all var(--transition-fast);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1289,8 +1278,9 @@
             background: transparent;
             border: none;
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             color: var(--text-dim);
+            outline: none;
         }
 
         .share-link button {
@@ -1299,7 +1289,7 @@
             color: var(--text-dim);
             cursor: pointer;
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             transition: color var(--transition-fast);
         }
 
@@ -1327,7 +1317,7 @@
             background: var(--bg-surface);
             border: 1px solid var(--border-dim);
             border-radius: var(--radius-md);
-            transition: border-color var(--transition-base), transform var(--transition-base);
+            transition: all var(--transition-base);
         }
 
         .feature-card:hover {
@@ -1345,7 +1335,7 @@
             justify-content: center;
             margin-bottom: var(--space-5);
             font-family: var(--font-mono);
-            font-size: var(--fs-lg);
+            font-size: 16px;
         }
 
         .feature-card:nth-child(1) .feature-icon-box { color: var(--green); border-color: rgba(0,255,65,0.3); }
@@ -1354,13 +1344,13 @@
 
         .feature-title {
             font-family: var(--font-mono);
-            font-size: var(--fs-lg);
+            font-size: 15px;
             font-weight: 600;
             margin-bottom: var(--space-3);
         }
 
         .feature-desc {
-            font-size: var(--fs-base);
+            font-size: 14px;
             color: var(--text-secondary);
             line-height: 1.6;
         }
@@ -1376,7 +1366,7 @@
 
         .footer-text {
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             color: var(--text-dim);
         }
 
@@ -1393,7 +1383,7 @@
         .footer-cta {
             margin-top: var(--space-4);
             font-family: var(--font-mono);
-            font-size: var(--fs-md);
+            font-size: 13px;
             color: var(--text-dim);
         }
 
@@ -1423,8 +1413,8 @@
             align-items: center;
             justify-content: center;
             color: var(--text-secondary);
-            transition: border-color var(--transition-fast), color var(--transition-fast);
-            z-index: var(--z-tweaks);
+            transition: all var(--transition-fast);
+            z-index: 200;
         }
 
         .tweaks-toggle:hover {
@@ -1441,7 +1431,7 @@
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-lg);
             padding: var(--space-5);
-            z-index: var(--z-tweaks);
+            z-index: 200;
             display: none;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
         }
@@ -1459,7 +1449,7 @@
 
         .tweaks-title {
             font-family: var(--font-mono);
-            font-size: var(--fs-md);
+            font-size: 13px;
             font-weight: 600;
             color: var(--text-primary);
         }
@@ -1469,7 +1459,7 @@
             border: none;
             color: var(--text-dim);
             cursor: pointer;
-            font-size: var(--fs-xl);
+            font-size: 18px;
         }
 
         .tweak-group {
@@ -1478,7 +1468,7 @@
 
         .tweak-label {
             font-family: var(--font-mono);
-            font-size: var(--fs-xs);
+            font-size: 11px;
             color: var(--text-dim);
             letter-spacing: 0.5px;
             text-transform: uppercase;
@@ -1497,11 +1487,11 @@
             border-radius: var(--radius-sm);
             background: transparent;
             font-family: var(--font-mono);
-            font-size: var(--fs-xs);
+            font-size: 11px;
             color: var(--text-secondary);
             cursor: pointer;
             text-align: center;
-            transition: border-color var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+            transition: all var(--transition-fast);
         }
 
         .tweak-opt:hover {
@@ -1523,7 +1513,7 @@
         }
         .color-picker-label {
             font-family: var(--font-mono);
-            font-size: var(--fs-2xs);
+            font-size: 10px;
             color: var(--text-dim);
             display: flex;
             align-items: center;
@@ -1546,7 +1536,7 @@
             background: transparent;
             color: var(--text-dim);
             cursor: pointer;
-            font-size: var(--fs-sm);
+            font-size: 12px;
             line-height: 1;
         }
         .color-reset-btn:hover {
@@ -1566,8 +1556,9 @@
             border-radius: var(--radius-sm);
             background: var(--bg-surface);
             font-family: var(--font-mono);
-            font-size: var(--fs-sm);
+            font-size: 12px;
             color: var(--text-primary);
+            outline: none;
             transition: border-color var(--transition-fast);
         }
         .custom-ramp-input:focus {
@@ -1580,7 +1571,7 @@
             text-align: left;
         }
         .custom-charset-hint {
-            font-family: var(--font-mono); font-size: var(--fs-xs);
+            font-family: var(--font-mono); font-size: 11px;
             color: var(--text-secondary); line-height: 1.7;
             margin-bottom: var(--space-3);
         }
@@ -1590,7 +1581,7 @@
             margin: var(--space-3) 0;
         }
         .cc-preview-label {
-            font-family: var(--font-mono); font-size: var(--fs-2xs);
+            font-family: var(--font-mono); font-size: 10px;
             color: var(--text-dim); letter-spacing: 0.5px;
         }
         .cc-preview-strip {
@@ -1598,7 +1589,7 @@
             background: var(--bg-base);
             border: 1px solid var(--border-dim);
             border-radius: var(--radius-sm);
-            font-family: var(--font-mono); font-size: var(--fs-lg);
+            font-family: var(--font-mono); font-size: 16px;
             color: var(--green);
             letter-spacing: 2px; word-break: break-all;
             min-height: 20px;
@@ -1612,7 +1603,7 @@
             display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
         }
         .cc-palette-name {
-            font-family: var(--font-mono); font-size: var(--fs-2xs);
+            font-family: var(--font-mono); font-size: 10px;
             color: var(--text-dim);
             min-width: 56px;
         }
@@ -1622,7 +1613,7 @@
             border-radius: 4px;
             background: var(--bg-surface);
             color: var(--text-primary);
-            font-family: var(--font-mono); font-size: var(--fs-md);
+            font-family: var(--font-mono); font-size: 13px;
             cursor: pointer;
         }
         .cc-chip:hover {
@@ -1635,7 +1626,7 @@
 
         .tweak-hint {
             font-family: var(--font-mono);
-            font-size: var(--fs-2xs);
+            font-size: 9px;
             color: var(--text-dim);
             opacity: 0.7;
             margin-top: var(--space-2);
@@ -1662,7 +1653,7 @@
             .nav-links {
                 display: flex;
                 gap: var(--space-4);
-                font-size: var(--fs-sm);
+                font-size: 12px;
             }
             .nav-github {
                 display: none;
@@ -1684,6 +1675,7 @@
         }
 
         .hero { animation: fadeInUp 0.6s ease-out; }
+        .upload-section { animation: fadeInUp 0.6s ease-out 0.1s both; }
         .preview-section { animation: fadeInUp 0.6s ease-out 0.2s both; }
         .animation-section { animation: fadeInUp 0.6s ease-out 0.3s both; }
 
@@ -1691,8 +1683,8 @@
             position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%) translateY(20px);
             background: var(--bg-elevated); border: 1px solid var(--border-subtle);
             color: var(--text-primary); padding: 10px 18px; border-radius: 8px;
-            font-family: var(--font-mono); font-size: var(--fs-md); opacity: 0;
-            transition: opacity .25s, transform .25s; pointer-events: none; z-index: var(--z-toast);
+            font-family: var(--font-mono); font-size: 13px; opacity: 0;
+            transition: opacity .25s, transform .25s; pointer-events: none; z-index: 300;
         }
         #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
@@ -1700,7 +1692,7 @@
            TERMIFY MODAL（替代浏览器原生弹窗）
            ═══════════════════════════════════════════ */
         .termify-modal {
-            position: fixed; inset: 0; z-index: var(--z-modal);
+            position: fixed; inset: 0; z-index: 400;
             display: flex; align-items: center; justify-content: center;
         }
         .termify-modal[hidden] { display: none; }
@@ -1722,7 +1714,7 @@
         .termify-modal-close {
             position: absolute; top: 8px; right: 10px;
             border: none; background: transparent;
-            color: var(--text-dim); font-size: var(--fs-2xl); line-height: 1;
+            color: var(--text-dim); font-size: 20px; line-height: 1;
             cursor: pointer;
         }
         .termify-modal-close:hover { color: var(--text-primary); }
@@ -1736,17 +1728,17 @@
         .termify-modal.error .termify-modal-spinner { display: none; }
         @keyframes termifySpin { to { transform: rotate(360deg); } }
         .termify-modal-title {
-            font-family: var(--font-mono); font-size: var(--fs-base);
+            font-family: var(--font-mono); font-size: 14px;
             color: var(--text-primary); margin-bottom: var(--space-2);
         }
         .termify-modal-text {
-            font-family: var(--font-mono); font-size: var(--fs-sm);
+            font-family: var(--font-mono); font-size: 12px;
             color: var(--text-secondary); line-height: 1.6;
             word-break: break-all;
         }
         .termify-modal-hint {
             margin-top: var(--space-3);
-            font-family: var(--font-mono); font-size: var(--fs-2xs);
+            font-family: var(--font-mono); font-size: 10px;
             color: var(--text-dim); opacity: 0.7;
         }
         .termify-modal-progress {
@@ -1776,14 +1768,14 @@
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
             font-family: var(--font-mono);
-            font-size: var(--fs-md);
+            font-size: 13px;
             color: var(--green);
             background: rgba(4, 6, 10, 0.75);
             border: 1px solid var(--border-subtle);
             border-radius: 8px;
             padding: 8px 18px;
             pointer-events: none;
-            z-index: var(--z-terminal-overlay);
+            z-index: 5;
         }
 
         /* ═══════════════════════════════════════════
@@ -1793,8 +1785,8 @@
             width: 100%; margin-top: var(--space-3); padding: var(--space-4) var(--space-6);
             background: transparent; border: 1px solid var(--green-dim);
             border-radius: var(--radius-md); font-family: var(--font-mono);
-            font-size: var(--fs-base); font-weight: 600; color: var(--green);
-            cursor: pointer; transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+            font-size: 14px; font-weight: 600; color: var(--green);
+            cursor: pointer; transition: all var(--transition-fast);
             display: flex; align-items: center; justify-content: center;
             gap: var(--space-3); letter-spacing: 0.5px;
         }
@@ -1821,7 +1813,7 @@
             color: var(--green); text-shadow: 0 0 30px var(--green-glow);
         }
         .gallery-hero-subtitle {
-            font-size: var(--fs-lg); color: var(--text-secondary);
+            font-size: 16px; color: var(--text-secondary);
         }
         .gallery-filters { padding: var(--space-6) 0; }
         .gallery-sort-tabs {
@@ -1832,8 +1824,8 @@
             padding: var(--space-2) var(--space-5);
             background: transparent; border: 1px solid var(--border-subtle);
             border-radius: 100px; font-family: var(--font-mono);
-            font-size: var(--fs-md); color: var(--text-secondary); cursor: pointer;
-            transition: border-color var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+            font-size: 13px; color: var(--text-secondary); cursor: pointer;
+            transition: all var(--transition-fast);
         }
         .sort-tab:hover { border-color: var(--border-active); color: var(--text-primary); }
         .sort-tab.active {
@@ -1846,15 +1838,15 @@
             padding: var(--space-1) var(--space-4);
             background: var(--bg-surface); border: 1px solid var(--border-dim);
             border-radius: 100px; font-family: var(--font-mono);
-            font-size: var(--fs-sm); color: var(--text-secondary); cursor: pointer;
-            transition: border-color var(--transition-fast), color var(--transition-fast);
+            font-size: 12px; color: var(--text-secondary); cursor: pointer;
+            transition: all var(--transition-fast);
         }
         .custom-tags-toggle:hover { border-color: var(--border-active); color: var(--text-primary); }
         .custom-tags-toggle.filtering {
             border-color: var(--green); color: var(--green);
             background: var(--green-glow);
         }
-        .custom-tags-caret { font-size: var(--fs-2xs); }
+        .custom-tags-caret { font-size: 10px; }
         .custom-tags-panel {
             background: var(--bg-surface);
             border: 1px solid var(--border-subtle);
@@ -1867,7 +1859,7 @@
             text-align: left;
             top: 100%;
             width: max-content;
-            z-index: var(--z-popover);
+            z-index: 30;
         }
         .custom-tags-loading, .custom-tags-empty {
             color: var(--text-dim); font-size: 0.84rem; margin: 0;
@@ -1876,8 +1868,8 @@
         .custom-tag-item {
             background: var(--bg-base); border: 1px solid var(--border-dim);
             border-radius: 100px; color: var(--text-secondary);
-            cursor: pointer; font-family: var(--font-mono); font-size: var(--fs-sm);
-            padding: 4px 12px; transition: border-color var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+            cursor: pointer; font-family: var(--font-mono); font-size: 12px;
+            padding: 4px 12px; transition: all var(--transition-fast);
         }
         .custom-tag-item:hover { border-color: var(--border-active); color: var(--text-primary); }
         .custom-tag-item.active {
@@ -1915,16 +1907,15 @@
         .gallery-skeleton-line {
             animation: gallery-skeleton-shimmer 1.4s ease-in-out infinite;
             background: var(--bg-hover); border-radius: var(--radius-sm);
-            font-size: var(--fs-base); height: 1.6em;
+            font-size: 14px; height: 1.6em;
             margin-bottom: var(--space-2);
         }
         .gallery-skeleton-line.short {
-            font-size: var(--fs-sm); margin-bottom: 0; width: 45%;
+            font-size: 12px; margin-bottom: 0; width: 45%;
         }
         @keyframes gallery-skeleton-shimmer {
             0%, 100% { opacity: 0.5; } 50% { opacity: 1; }
         }
-        /* 全覆盖：每条 animation 声明都在同文件内有守卫（DESIGN 6.4） */
         @media (prefers-reduced-motion: reduce) {
             .gallery-skeleton-img, .gallery-skeleton-line { animation: none; }
             .preview-skeleton { animation: none; }
@@ -1939,12 +1930,12 @@
             background: var(--bg-surface); border: 1px solid var(--border-dim);
             border-radius: var(--radius-md); overflow: hidden;
             cursor: pointer; text-decoration: none; color: inherit;
-            transition: border-color var(--transition-base), transform var(--transition-base), box-shadow var(--transition-base);
+            transition: all var(--transition-base);
             display: block;
         }
         .gallery-card:hover {
             border-color: var(--green-dim);
-            transform: translateY(-2px);
+            transform: translateY(-3px);
             box-shadow: 0 8px 32px rgba(0,0,0,0.4);
         }
         .gallery-card-img {
@@ -1962,66 +1953,29 @@
         .gallery-card:hover .gallery-card-img img { transform: scale(1.05); }
         /* 作品类型角标：字符艺术作品（含图片艺术化）与动画作品区分 */
         .gallery-card-badge {
-            position: absolute; top: 8px; right: 8px; z-index: var(--z-badge);
+            position: absolute; top: 8px; right: 8px; z-index: 2;
             background: rgba(10, 14, 20, 0.82); border: 1px solid var(--green);
             border-radius: 999px; color: var(--green);
-            font-family: var(--font-mono); font-size: var(--fs-xs);
+            font-family: var(--font-mono); font-size: 11px;
             padding: 2px 10px; pointer-events: none;
         }
         .gallery-card-info { padding: var(--space-4); }
         .gallery-card-title {
-            font-family: var(--font-mono); font-size: var(--fs-base);
+            font-family: var(--font-mono); font-size: 14px;
             font-weight: 500; margin-bottom: var(--space-2);
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .gallery-card-meta {
             display: flex; align-items: center; justify-content: space-between;
-            font-size: var(--fs-sm); color: var(--text-dim);
+            font-size: 12px; color: var(--text-dim);
         }
         .gallery-card-stats { display: flex; gap: var(--space-3); }
-
-        /* ═══ 卡片三态：loading / error / disabled（DESIGN §8.3 配方） ═══
-           default / hover / selected 之外补的三态，全部由 JS 状态机切换
-           （static/js/app.js setCardLoading / cardRenderOk / cardRenderFailed /
-           setCardsDisabled），不是装饰。
-           · loading 沿用骨架屏语言的 .6，并停掉指针（真在算，别叠请求）
-           · disabled 沿用 .ta-select:disabled 的 .55（text_art.css:93）
-           · error 走 --red 边框、不加 glow（DESIGN §10 #1）
-           位置在三类卡片各自的 hover 规则之后：同特异性下 error 覆盖 hover 描边。 */
-        .style-card.loading,
-        .feature-card.loading,
-        .gallery-card.loading {
-            opacity: 0.6;
-            pointer-events: none;
-        }
-        .style-card.error,
-        .feature-card.error,
-        .gallery-card.error {
-            border-color: var(--red);
-        }
-        .style-card.disabled,
-        .style-card[aria-disabled="true"],
-        .feature-card.disabled,
-        .feature-card[aria-disabled="true"],
-        .gallery-card.disabled,
-        .gallery-card[aria-disabled="true"] {
-            opacity: 0.55;
-            cursor: not-allowed;
-        }
         .gallery-empty {
             text-align: center; padding: var(--space-16) 0;
-            color: var(--text-dim); font-family: var(--font-mono); font-size: var(--fs-base);
+            color: var(--text-dim); font-family: var(--font-mono); font-size: 14px;
         }
         .gallery-empty a { color: var(--green); text-decoration: none; }
         .gallery-empty a:hover { text-decoration: underline; }
-        /* 作品列表请求失败：可见的错误行 + 重试按钮（不许只在 console /
-           3 秒 toast 里报，DESIGN 状态语言） */
-        .gallery-error {
-            text-align: center; padding: var(--space-16) 0;
-            color: var(--text-dim); font-family: var(--font-mono); font-size: var(--fs-base);
-        }
-        .gallery-error[hidden] { display: none; }
-        .gallery-error p + p { margin-top: var(--space-4); }
         .gallery-pagination {
             display: flex; align-items: center; justify-content: center;
             gap: var(--space-4); margin-top: var(--space-10);
@@ -2030,12 +1984,12 @@
             padding: var(--space-2) var(--space-5);
             background: var(--bg-surface); border: 1px solid var(--border-subtle);
             border-radius: var(--radius-md); font-family: var(--font-mono);
-            font-size: var(--fs-md); color: var(--text-secondary); cursor: pointer;
-            transition: border-color var(--transition-fast), color var(--transition-fast);
+            font-size: 13px; color: var(--text-secondary); cursor: pointer;
+            transition: all var(--transition-fast);
         }
         .gallery-page-btn:hover { border-color: var(--green); color: var(--green); }
         .gallery-page-info {
-            font-family: var(--font-mono); font-size: var(--fs-md); color: var(--text-dim);
+            font-family: var(--font-mono); font-size: 13px; color: var(--text-dim);
         }
 
         /* ═══════════════════════════════════════════
@@ -2050,21 +2004,21 @@
             position: absolute; top: var(--space-4); right: var(--space-4);
             width: 32px; height: 32px; border: 1px solid var(--border-subtle);
             border-radius: 50%; background: transparent; color: var(--text-dim);
-            font-size: var(--fs-xl); cursor: pointer; display: flex;
+            font-size: 18px; cursor: pointer; display: flex;
             align-items: center; justify-content: center;
-            transition: border-color var(--transition-fast), color var(--transition-fast);
+            transition: all var(--transition-fast);
         }
         .view-banner-close:hover { border-color: var(--green); color: var(--green); }
         .view-banner-head { display: flex; align-items: baseline; gap: var(--space-4); flex-wrap: wrap; }
         .view-banner-title {
-            font-family: var(--font-mono); font-size: var(--fs-2xl); font-weight: 600;
+            font-family: var(--font-mono); font-size: 24px; font-weight: 600;
         }
         .view-banner-author {
-            font-family: var(--font-mono); font-size: var(--fs-md); color: var(--text-dim);
+            font-family: var(--font-mono); font-size: 13px; color: var(--text-dim);
         }
         .view-banner-desc {
             margin-top: var(--space-3); color: var(--text-secondary);
-            font-size: var(--fs-base); line-height: 1.6;
+            font-size: 14px; line-height: 1.6;
         }
         .view-banner-tags {
             display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-4);
@@ -2073,11 +2027,11 @@
             padding: var(--space-1) var(--space-3);
             background: var(--bg-base); border: 1px solid var(--border-subtle);
             border-radius: 100px; font-family: var(--font-mono);
-            font-size: var(--fs-xs); color: var(--text-secondary);
+            font-size: 11px; color: var(--text-secondary);
         }
         .view-banner-stats {
             display: flex; gap: var(--space-6); margin-top: var(--space-5);
-            font-family: var(--font-mono); font-size: var(--fs-md); color: var(--text-secondary);
+            font-family: var(--font-mono); font-size: 13px; color: var(--text-secondary);
         }
         .view-banner-stats strong { color: var(--text-primary); }
         .view-banner-actions {
@@ -2087,8 +2041,8 @@
             padding: var(--space-2) var(--space-5);
             background: var(--bg-base); border: 1px solid var(--border-subtle);
             border-radius: var(--radius-md); font-family: var(--font-mono);
-            font-size: var(--fs-md); color: var(--text-secondary); cursor: pointer;
-            transition: border-color var(--transition-fast), color var(--transition-fast);
+            font-size: 13px; color: var(--text-secondary); cursor: pointer;
+            transition: all var(--transition-fast);
         }
         .view-action-btn:hover { border-color: var(--green); color: var(--green); }
         .view-action-like.liked {
@@ -2102,7 +2056,7 @@
             ═══════════════════════════════════════════ */
         .gallery-modal-backdrop {
             position: fixed; inset: 0; background: rgba(0,0,0,0.7);
-            backdrop-filter: blur(4px); z-index: var(--z-modal-gallery);
+            backdrop-filter: blur(4px); z-index: 500;
             display: none; align-items: center; justify-content: center;
             padding: var(--space-6);
         }
@@ -2118,35 +2072,35 @@
         .gallery-modal-close {
             position: absolute; top: var(--space-4); right: var(--space-4);
             width: 32px; height: 32px; border: none; background: transparent;
-            color: var(--text-dim); font-size: var(--fs-2xl); cursor: pointer;
+            color: var(--text-dim); font-size: 22px; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
             transition: color var(--transition-fast);
         }
         .gallery-modal-close:hover { color: var(--green); }
         .gallery-modal-title {
-            font-family: var(--font-mono); font-size: var(--fs-xl); font-weight: 600;
+            font-family: var(--font-mono); font-size: 18px; font-weight: 600;
             margin-bottom: var(--space-6);
         }
         .gallery-form-row { margin-bottom: var(--space-5); }
         .gallery-form-label {
             display: block; font-family: var(--font-mono);
-            font-size: var(--fs-xs); color: var(--text-dim); letter-spacing: 0.5px;
+            font-size: 11px; color: var(--text-dim); letter-spacing: 0.5px;
             text-transform: uppercase; margin-bottom: var(--space-2);
         }
         .gallery-form-count {
-            float: right; font-size: var(--fs-2xs); color: var(--text-dim);
+            float: right; font-size: 10px; color: var(--text-dim);
             text-transform: none; letter-spacing: 0;
         }
         .gallery-form-hint {
-            float: right; font-size: var(--fs-2xs); color: var(--text-dim);
+            float: right; font-size: 10px; color: var(--text-dim);
             text-transform: none; letter-spacing: 0;
         }
         .gallery-form-input, .gallery-form-textarea {
             width: 100%; padding: var(--space-3) var(--space-4);
             background: var(--bg-base); border: 1px solid var(--border-dim);
             border-radius: var(--radius-sm); font-family: var(--font-mono);
-            font-size: var(--fs-md); color: var(--text-primary);
-            transition: border-color var(--transition-fast);
+            font-size: 13px; color: var(--text-primary);
+            outline: none; transition: border-color var(--transition-fast);
         }
         .gallery-form-input:focus, .gallery-form-textarea:focus { border-color: var(--green); }
         .gallery-form-textarea { min-height: 80px; resize: vertical; }
@@ -2158,8 +2112,8 @@
             padding: var(--space-1) var(--space-3);
             background: var(--bg-base); border: 1px solid var(--border-dim);
             border-radius: var(--radius-sm); font-family: var(--font-mono);
-            font-size: var(--fs-sm); color: var(--text-secondary); cursor: pointer;
-            transition: border-color var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+            font-size: 12px; color: var(--text-secondary); cursor: pointer;
+            transition: all var(--transition-fast);
             user-select: none;
         }
         .gallery-tag-checkbox:hover { border-color: var(--border-active); }
@@ -2177,7 +2131,7 @@
             display: flex; gap: var(--space-4);
         }
         .gallery-vis-radio {
-            font-family: var(--font-mono); font-size: var(--fs-md);
+            font-family: var(--font-mono); font-size: 13px;
             color: var(--text-secondary); cursor: pointer;
             display: flex; align-items: center; gap: var(--space-2);
         }
@@ -2186,8 +2140,8 @@
             width: 100%; padding: var(--space-4);
             background: var(--green); border: none;
             border-radius: var(--radius-md); font-family: var(--font-mono);
-            font-size: var(--fs-base); font-weight: 600; color: var(--text-inverse);
-            cursor: pointer; transition: background-color var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
+            font-size: 14px; font-weight: 600; color: var(--text-inverse);
+            cursor: pointer; transition: all var(--transition-fast);
         }
         .gallery-submit-btn:hover { background: var(--green-dim); box-shadow: 0 0 24px var(--green-glow); }
         .gallery-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -2196,7 +2150,7 @@
         .report-modal { max-width: 400px; }
         .gallery-report-reason {
             display: inline-flex; align-items: center; gap: var(--space-1);
-            font-family: var(--font-mono); font-size: var(--fs-md);
+            font-family: var(--font-mono); font-size: 13px;
             color: var(--text-secondary); cursor: pointer; margin-right: var(--space-4);
         }
         .gallery-report-reason input { accent-color: var(--green); }
@@ -2209,18 +2163,18 @@
             max-width: 360px; margin: 0 auto; text-align: center;
         }
         .admin-login-box h1 {
-            font-family: var(--font-mono); font-size: var(--fs-3xl); font-weight: 700;
+            font-family: var(--font-mono); font-size: 28px; font-weight: 700;
             margin-bottom: var(--space-4);
         }
         .admin-login-hint {
-            font-size: var(--fs-base); color: var(--text-dim); margin-bottom: var(--space-6);
+            font-size: 14px; color: var(--text-dim); margin-bottom: var(--space-6);
         }
         .admin-login-input {
             width: 100%; padding: var(--space-3) var(--space-4);
             background: var(--bg-base); border: 1px solid var(--border-dim);
             border-radius: var(--radius-sm); font-family: var(--font-mono);
-            font-size: var(--fs-base); color: var(--text-primary); text-align: center;
-            margin-bottom: var(--space-4);
+            font-size: 14px; color: var(--text-primary); text-align: center;
+            outline: none; margin-bottom: var(--space-4);
             transition: border-color var(--transition-fast);
         }
         .admin-login-input:focus { border-color: var(--green); }
@@ -2228,8 +2182,8 @@
             width: 100%; padding: var(--space-3);
             background: var(--green); border: none;
             border-radius: var(--radius-md); font-family: var(--font-mono);
-            font-size: var(--fs-base); font-weight: 600; color: var(--text-inverse);
-            cursor: pointer; transition: background-color var(--transition-fast);
+            font-size: 14px; font-weight: 600; color: var(--text-inverse);
+            cursor: pointer; transition: all var(--transition-fast);
         }
         .admin-login-btn:hover { background: var(--green-dim); }
         .admin-panel { padding: var(--space-10) 0; }
@@ -2240,8 +2194,8 @@
             padding: var(--space-2) var(--space-5);
             background: transparent; border: 1px solid var(--border-subtle);
             border-radius: 100px; font-family: var(--font-mono);
-            font-size: var(--fs-md); color: var(--text-secondary); cursor: pointer;
-            transition: border-color var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+            font-size: 13px; color: var(--text-secondary); cursor: pointer;
+            transition: all var(--transition-fast);
         }
         .admin-tab:hover { border-color: var(--border-active); }
         .admin-tab.active { border-color: var(--green); color: var(--green); background: var(--green-glow); }
@@ -2249,7 +2203,7 @@
         .admin-tab-content.active { display: block; }
         .admin-table {
             width: 100%; border-collapse: collapse;
-            font-family: var(--font-mono); font-size: var(--fs-md);
+            font-family: var(--font-mono); font-size: 13px;
         }
         .admin-table th, .admin-table td {
             padding: var(--space-3) var(--space-4);
@@ -2257,7 +2211,7 @@
         }
         .admin-table th {
             color: var(--text-dim); font-weight: 500;
-            text-transform: uppercase; font-size: var(--fs-xs);
+            text-transform: uppercase; font-size: 11px;
             letter-spacing: 0.5px;
         }
         .admin-table td { color: var(--text-secondary); }
@@ -2268,15 +2222,15 @@
             padding: var(--space-1) var(--space-3);
             background: transparent; border: 1px solid var(--border-subtle);
             border-radius: var(--radius-sm); font-family: var(--font-mono);
-            font-size: var(--fs-xs); color: var(--text-secondary); cursor: pointer;
-            transition: border-color var(--transition-fast), color var(--transition-fast);
+            font-size: 11px; color: var(--text-secondary); cursor: pointer;
+            transition: all var(--transition-fast);
         }
         .admin-del-btn:hover { border-color: var(--red); color: var(--red); }
         .admin-resolve-btn:hover { border-color: var(--green); color: var(--green); }
         .admin-dismiss-btn:hover { border-color: var(--text-dim); color: var(--text-primary); }
         .admin-empty {
             text-align: center; padding: var(--space-12) 0;
-            color: var(--text-dim); font-family: var(--font-mono); font-size: var(--fs-base);
+            color: var(--text-dim); font-family: var(--font-mono); font-size: 14px;
         }
 
         /* ═══════════════════════════════════════════
@@ -2303,7 +2257,7 @@
             margin-bottom: var(--space-5); flex-wrap: wrap;
         }
         .view-size-label {
-            font-family: var(--font-mono); font-size: var(--fs-md);
+            font-family: var(--font-mono); font-size: 13px;
             color: var(--text-dim); font-weight: 500;
             text-transform: uppercase; letter-spacing: 0.5px;
         }
@@ -2311,8 +2265,8 @@
             padding: var(--space-2) var(--space-4);
             background: var(--bg-card); border: 1px solid var(--border-subtle);
             border-radius: var(--radius-sm); font-family: var(--font-mono);
-            font-size: var(--fs-md); color: var(--text-secondary); cursor: pointer;
-            transition: border-color var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+            font-size: 13px; color: var(--text-secondary); cursor: pointer;
+            transition: all var(--transition-fast);
         }
         .view-size-btn:hover { border-color: var(--green); color: var(--green); }
         .view-size-btn.active {
@@ -2322,7 +2276,7 @@
         .view-loading {
             display: flex; align-items: center; gap: var(--space-3);
             justify-content: center; padding: var(--space-12) 0;
-            color: var(--text-dim); font-family: var(--font-mono); font-size: var(--fs-base);
+            color: var(--text-dim); font-family: var(--font-mono); font-size: 14px;
         }
         .view-spinner {
             width: 18px; height: 18px;
@@ -2339,7 +2293,7 @@
         .export-backdrop {
             position: fixed;
             inset: 0;
-            z-index: var(--z-export);
+            z-index: 90;
             background: rgba(4, 8, 6, 0.72);
             display: flex;
             align-items: center;
@@ -2374,7 +2328,7 @@
         }
         .export-modal-title {
             font-family: var(--font-mono);
-            font-size: var(--fs-lg);
+            font-size: 15px;
             font-weight: 600;
             color: var(--green, #00ff41);
             margin-bottom: var(--space-5);
@@ -2405,13 +2359,13 @@
             background: var(--green-glow, rgba(0, 255, 65, 0.08));
         }
         .export-icon {
-            font-size: var(--fs-sm);
+            font-size: 12px;
             min-width: 44px;
             opacity: 0.9;
         }
         .export-label { display: flex; flex-direction: column; gap: 2px; }
-        .export-label b { font-size: var(--fs-md); font-weight: 600; }
-        .export-label i { font-style: normal; font-size: var(--fs-xs); opacity: 0.72; }
+        .export-label b { font-size: 13px; font-weight: 600; }
+        .export-label i { font-style: normal; font-size: 11px; opacity: 0.72; }
         .export-modal-actions {
             display: flex;
             justify-content: flex-end;
@@ -2422,9 +2376,9 @@
             padding: var(--space-2) var(--space-5);
             border-radius: var(--radius-sm, 6px);
             font-family: var(--font-mono);
-            font-size: var(--fs-md);
+            font-size: 13px;
             cursor: pointer;
-            transition: border-color var(--transition-fast, 0.15s), filter var(--transition-fast, 0.15s);
+            transition: all var(--transition-fast, 0.15s);
         }
         .export-cancel {
             background: transparent;
@@ -2468,7 +2422,7 @@
         /* ── 一行嵌入片段浮层（复用 .export-backdrop/.export-modal 骨架）── */
         .embed-snippet-hint {
             font-family: var(--font-mono);
-            font-size: var(--fs-xs);
+            font-size: 11px;
             opacity: 0.78;
             color: var(--text-secondary, #9aa4b2);
             margin-bottom: var(--space-3);
@@ -2487,7 +2441,7 @@
             border-radius: var(--radius-sm, 6px);
             color: var(--text-secondary, #9aa4b2);
             font-family: var(--font-mono);
-            font-size: var(--fs-xs);
+            font-size: 11px;
             line-height: 1.5;
             white-space: pre-wrap;
             word-break: break-all;
@@ -2510,6 +2464,7 @@
             -webkit-appearance: none;
             background: var(--border-dim);
             border-radius: 2px;
+            outline: none;
             cursor: pointer;
         }
         .view-size-row input[type="range"]::-webkit-slider-thumb {
@@ -2573,7 +2528,7 @@
     resize: vertical;
     min-height: 64px;
 }
-.text-art-input:focus { border-color: var(--green); box-shadow: 0 0 12px var(--green-glow); }
+.text-art-input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 12px var(--green-glow); }
 .text-art-input::placeholder { color: var(--text-dim); opacity: 0.6; }
 .text-art-controls {
     display: flex;
@@ -2599,7 +2554,7 @@
     min-width: 210px;
     padding: 8px 10px;
 }
-.text-art-select:focus { border-color: var(--green); }
+.text-art-select:focus { outline: none; border-color: var(--green); }
 .text-art-ai-modes { display: flex; gap: var(--space-4); align-items: center; padding-bottom: 6px; }
 .text-art-radio {
     display: inline-flex;
@@ -2656,7 +2611,7 @@
     font-size: 0.85rem;
     padding: 8px 10px;
 }
-.ai-settings-field input:focus { border-color: var(--green); }
+.ai-settings-field input:focus { outline: none; border-color: var(--green); }
 .ai-settings-actions { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-3); }
 .ai-settings-status { color: var(--text-secondary); font-size: 0.85rem; }
 .ai-settings-status.err { color: var(--red); }
@@ -2687,7 +2642,7 @@
     padding: var(--space-4);
     white-space: pre;
 }
-@media (max-width: 768px) {
+@media (max-width: 720px) {
     .text-art-actions { margin-left: 0; width: 100%; }
     .text-art-select { min-width: 0; width: 100%; }
     .text-art-controls { align-items: stretch; flex-direction: column; }
@@ -2705,9 +2660,9 @@
             margin-top: var(--space-5);
         }
         .export-theme-label {
-            color: var(--text-dim, #8494a6);
+            color: var(--text-dim, #8b949e);
             font-family: var(--font-mono);
-            font-size: var(--fs-xs);
+            font-size: 11px;
             letter-spacing: 1px;
             margin-right: 2px;
             text-transform: uppercase;
@@ -2738,13 +2693,13 @@
             color: var(--green, #00ff41);
             display: inline-flex;
             font-family: var(--font-mono);
-            font-size: var(--fs-xs);
+            font-size: 11px;
             padding: 4px 12px;
             pointer-events: none;
             position: absolute;
             right: 16px;
             top: 52px;
-            z-index: var(--z-chip);
+            z-index: 6;
         }
         .render-chip[hidden] { display: none; }
 
@@ -2781,87 +2736,35 @@
             min-width: 0; padding: 7px 10px;
         }
         .view-ramp-input:focus {
-            border-color: var(--green);
+            border-color: var(--green); outline: none;
         }
         .view-ramp-apply {
             background: var(--bg-hover); border: 1px solid var(--border-active);
             border-radius: var(--radius-sm); color: var(--green);
             cursor: pointer; font-family: var(--font-mono); font-size: 0.78rem;
-            padding: 7px 14px; transition: border-color var(--transition-fast);
+            padding: 7px 14px; transition: all var(--transition-fast);
         }
         .view-ramp-apply:hover { border-color: var(--green); }
 
         /* ── 动画工坊区块（主页与字符艺术页共用，原在 text_art.css 导致主页缺失间距） ── */
 .studio-section { padding: var(--space-12) 0 var(--space-16); }
-
-/* DESIGN §5.4：桌面双栏 —— 左栏 上传 / 风格 / 导出 正常滚动，右栏终端预览 sticky 常驻。
-   区块间距一律交给 grid 的 row-gap，不再靠相邻兄弟的 border-top 硬切。 */
-#studio > .container {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 480px);
-        column-gap: var(--space-8);
-        row-gap: var(--space-10);
-        align-items: start;
+.studio-block { padding-top: var(--space-10); }
+.studio-block + .studio-block {
+        border-top: 1px solid var(--border-dim);
+        margin-top: var(--space-10);
 }
-#studio .section-title { grid-column: 1 / -1; margin-bottom: 0; }
-/* 网格项默认 min-width:auto，终端里的占位字符画会把栏宽顶开，这里统一放开 */
-#studio .studio-block { min-width: 0; }
-#studio #upload { grid-column: 1; grid-row: 2; }
-#studio #styles { grid-column: 1; grid-row: 3; }
-#studio #output { grid-column: 1; grid-row: 4; }
-/* 右栏：top 取「导航实际高度(~80px) + 呼吸间距」，压不到导航底下；
-   grid-row 跨满左栏三行，才有可供 sticky 滑动的余量。 */
-#studio #preview {
-        grid-column: 2;
-        grid-row: 2 / span 3;
-        position: sticky;
-        top: calc(var(--space-20) + var(--space-8));
-        align-self: start;
-}
-/* 输出面板已搬出 .animation-layout：终端独占整栏，否则原来留给侧栏的 320px 会把画布压到 ~130px */
-#studio .animation-layout { grid-template-columns: minmax(0, 1fr); }
-/* 风格卡在 ~640px 的左栏里排 3 列；沿用 5 列会挤成细条 */
-#studio .style-grid { grid-template-columns: repeat(3, 1fr); }
-
-/* 平板及以下：转单列，DOM 顺序即 上传 → 风格 → 预览 → 导出（§5.4 要求风格网格在预览上方），并解除 sticky */
-@media (max-width: 1024px) {
-        #studio > .container { grid-template-columns: minmax(0, 1fr); }
-        #studio #upload, #studio #preview, #studio #styles, #studio #output {
-                grid-column: 1;
-                grid-row: auto;
-        }
-        #studio #preview { position: static; }
-}
-
-@media (max-width: 768px) {
-        #studio .style-grid { grid-template-columns: repeat(2, 1fr); }
-}
-
-/* 风格切换后的「已更新」脉冲（JS 切 .is-flash）：桌面预览常驻屏内，闪一下边框比把页面滚走安静。
-   只动 border-color —— 纯绘制、不触发重排；reduced-motion 下退化成静态描边（不闪）。 */
-@keyframes studio-flash {
-        0% { border-color: var(--green); }
-        100% { border-color: var(--border-subtle); }
-}
-#studio #preview .terminal.is-flash { animation: studio-flash 400ms ease-out; }
-
-@media (prefers-reduced-motion: reduce) {
-        #studio #preview .terminal.is-flash {
-                animation: none;
-                border-color: var(--green);
-        }
-}
+.studio-block:first-of-type { padding-top: 0; }
 .studio-sub {
         color: var(--text-secondary);
         font-family: var(--font-mono);
-        font-size: var(--fs-lg);
+        font-size: 15px;
         font-weight: 500;
         letter-spacing: 1px;
         margin-bottom: var(--space-5);
 }
 .section-title-en {
         color: var(--text-dim);
-        font-size: var(--fs-lg);
+        font-size: 15px;
         font-weight: 400;
         letter-spacing: 0;
         margin-left: var(--space-2);
@@ -2879,9 +2782,9 @@
 
         /* ── /v/ 配色面板提示行（palette-row/palette-btn 复用主页样式） ── */
         .palette-hint {
-            color: var(--text-dim, #8494a6);
+            color: var(--text-dim, #8b949e);
             font-family: var(--font-mono);
-            font-size: var(--fs-2xs);
+            font-size: 10px;
             letter-spacing: 0.5px;
             margin-top: var(--space-2);
         }

@@ -7,8 +7,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>{{ work.title }} · Termify</title>
-        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261026a">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261026a">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261027a">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261027a">
 </head>
 <body>
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -336,7 +336,7 @@
         <div class="tweak-group"><div class="tweak-label">主题色</div><div class="tweak-options"><button class="tweak-opt active" data-tweak="theme-green" style="color: var(--green)">Green</button><button class="tweak-opt" data-tweak="theme-amber" style="color: var(--amber)">Amber</button><button class="tweak-opt" data-tweak="theme-cyan" style="color: var(--cyan)">Cyan</button></div></div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20261026a"></script>
+    <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20261027a"></script>
     <!-- 作品数据：不可执行的 JSON 块（script-src 不管辖此类型），tojson
          把 < 与引号转义成 \uXXXX，故数据无法提前闭合本块或逃逸字符串。-->
     <script type="application/json" id="termifyWorkData">
@@ -347,6 +347,6 @@
             "tags": {{ (work.tags or '[]') | tojson }}
         }
     </script>
-    <script src="{{ url_for('static', filename='js/view_work_page.js') }}?v=20261026a" defer></script>
+    <script src="{{ url_for('static', filename='js/view_work_page.js') }}?v=20261027a" defer></script>
 </body>
 </html>
