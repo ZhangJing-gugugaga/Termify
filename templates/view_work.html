@@ -7,6 +7,11 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>{{ work.title }} · Termify</title>
+{% set seo_title = work.title ~ " · Termify" %}
+{% set seo_description = (work.description or (work.title ~ "：由 " ~ (work.author or "匿名创作者") ~ " 创作的终端字符动画作品，可在 Termify 在线预览、切换风格并二次创作。"))|truncate(150, true, "…") %}
+{% set seo_type = "article" %}
+{% set seo_image_path = url_for("gallery_og", work_id=work.id) %}
+{% include "_seo_meta.html" %}
         <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261030a">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261030a">
 </head>

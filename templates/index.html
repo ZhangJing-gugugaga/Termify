@@ -7,6 +7,9 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <title>动画工坊 · Termify</title>
+{% set seo_title = "动画工坊 · Termify" %}
+{% set seo_description = "把图片和 GIF 变成字符动画：80+ 字符风格、参数可调、浏览器内本地实时渲染，可导出 PNG / TXT / 视频。" %}
+{% include "_seo_meta.html" %}
         <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}?v=20261030a">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=20261030a">
 </head>

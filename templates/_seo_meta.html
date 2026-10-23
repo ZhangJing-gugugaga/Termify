@@ -1,0 +1,18 @@
+{# D-1 站点级 SEO 元信息（description + Open Graph）。
+   调用方在 include 前 set 四个变量：seo_title / seo_description / seo_type /
+   seo_image_path。作品页的 seo_image_path 传 gallery_og 路由（复用
+   termify/gallery.py:197 make_og_image 上传时按 1200x630 烘好的真实 OG 图）；
+   三个站点页没有 work_id、仓库也没有站点级 OG 资产，退而用 static/img 下现成的
+   风格预览图（312x234，满足 og:image 的最低尺寸要求）。
+   只用 <meta>：CSP 是 script-src 'self'，这里不得出现内联脚本。 #}
+{%- set _xpf = request.headers.get('X-Forwarded-Proto', '').split(',')[0].strip().lower() %}
+{%- set _scheme = _xpf if _xpf in ('http', 'https') else request.scheme %}
+{%- set _origin = _scheme ~ '://' ~ request.host %}
+{%- set _image = _origin ~ (seo_image_path or url_for('static', filename='img/style-preview-ascii-lite.gif')) %}
+    <meta name="description" content="{{ seo_description }}">
+    <meta property="og:type" content="{{ seo_type or 'website' }}">
+    <meta property="og:title" content="{{ seo_title }}">
+    <meta property="og:description" content="{{ seo_description }}">
+    <meta property="og:url" content="{{ _origin ~ request.path }}">
+    <meta property="og:image" content="{{ _image }}">
+    <meta property="og:site_name" content="Termify">
