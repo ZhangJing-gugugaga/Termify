@@ -29,7 +29,7 @@ from urllib.parse import urlsplit
 from termify.video import VALID_VIDEO_EXTS
 from termify import paths
 
-from flask import (Flask, abort, jsonify, make_response, redirect,
+from flask import (Flask, Response, abort, jsonify, make_response, redirect,
                    render_template, request, send_file, url_for)
 from flask_compress import Compress
 
@@ -3218,6 +3218,114 @@ def gallery_source_frames(work_id):
         "count": len(frames),
         "frames": frames,
     })
+
+
+# --- PF-1 分帧下发：首帧不再等 12.1MB 整包 ---
+# 整包端点 /source-frames/<id> 是 514 帧 base64 塞一块 JSON（12,133,260B），
+# 首帧被末帧的到达绑死（实测 13.8s 白屏）。这里补一条"清单 + 单帧"链路：
+# 清单只描述元数据（几百字节），单帧返回 image/jpeg 原始字节。
+# 帧目录在作品生成后不再变化，故单帧响应可长期缓存；版本串由首/末帧的
+# size+mtime 与帧数算出，帧被重生成时自动变化，客户端缓存随之失效。
+# 整包端点保持原样（既有测试与 embed/导出链路依赖它的响应形状）。
+
+_SRC_FRAME_CACHE: "collections.OrderedDict[tuple, bytes]" = collections.OrderedDict()
+_SRC_FRAME_CACHE_BYTES = 0
+_SRC_FRAME_CACHE_MAX_BYTES = 24 * 1024 * 1024
+# threaded=True 下一个作品的帧可能被多条线程同时请求；只锁缓存读写，
+# JPEG 编码留在锁外（几十 KB 的编码没必要串行化）。
+_SRC_FRAME_LOCK = threading.Lock()
+
+
+def _source_frames_context(work_id):
+    """(work, (paths, original)) 或 (None, error_response)。"""
+    work = GALLERY_DB.get_work(work_id)
+    if not work:
+        return None, (jsonify({"error": "Work not found"}), 404)
+    if not _work_raw_file_authorized(work):
+        return None, (jsonify({"error": "Unauthorized"}), 403)
+    original = json.loads(work["params_json"]) if work["params_json"] else {}
+    if original.get("kind") != "video":
+        return None, (jsonify({"error": "Not a video work"}), 400)
+    fd = original.get("frames_dir") or ""
+    if not fd or not os.path.isdir(fd):
+        return None, (jsonify({"error": "Video frames missing"}), 410)
+    from termify.video import frames_dir_to_images
+    paths = frames_dir_to_images(fd)
+    if not paths:
+        return None, (jsonify({"error": "Video frames missing"}), 410)
+    return work, (paths, original)
+
+
+def _source_frames_version(paths):
+    """帧集版本串：只取首/末帧的 size+mtime + 帧数（514 次 stat 没必要）。"""
+    st0 = os.stat(paths[0])
+    stn = os.stat(paths[-1])
+    sig = "%s|%d|%d|%d|%s|%d|%d" % (
+        paths[0], len(paths), st0.st_size, int(st0.st_mtime),
+        paths[-1], stn.st_size, int(stn.st_mtime))
+    return hashlib.sha1(sig.encode("utf-8")).hexdigest()[:12]
+
+
+def _source_frame_jpeg(work_id, paths, index):
+    """单帧 JPEG 字节（q80，与整包端点同一编码参数）；进程内 LRU 缓存。"""
+    global _SRC_FRAME_CACHE_BYTES
+    key = (work_id, index)
+    with _SRC_FRAME_LOCK:
+        hit = _SRC_FRAME_CACHE.get(key)
+        if hit is not None:
+            _SRC_FRAME_CACHE.move_to_end(key)
+            return hit
+    from PIL import Image
+    import io as _io
+    with Image.open(paths[index]) as im:
+        buf = _io.BytesIO()
+        im.convert("RGB").save(buf, format="JPEG", quality=80)
+    data = buf.getvalue()
+    with _SRC_FRAME_LOCK:
+        _SRC_FRAME_CACHE[key] = data
+        _SRC_FRAME_CACHE_BYTES += len(data)
+        while _SRC_FRAME_CACHE_BYTES > _SRC_FRAME_CACHE_MAX_BYTES and _SRC_FRAME_CACHE:
+            _old_key, old_data = _SRC_FRAME_CACHE.popitem(last=False)
+            _SRC_FRAME_CACHE_BYTES -= len(old_data)
+    return data
+
+
+@gallery_route("/api/gallery/source-frames/<work_id>/manifest", methods=["GET"])
+def gallery_source_frames_manifest(work_id):
+    """分帧下发的清单：{ok, w, h, interval, count, version}（几百字节）。"""
+    work, ctx = _source_frames_context(work_id)
+    if work is None:
+        return ctx
+    paths, original = ctx
+    from PIL import Image
+    with Image.open(paths[0]) as im:
+        w, h = im.size
+    return jsonify({
+        "ok": True,
+        "w": w,
+        "h": h,
+        "interval": original.get("interval") or 0.1,
+        "count": len(paths),
+        "version": _source_frames_version(paths),
+    })
+
+
+@gallery_route("/api/gallery/source-frames/<work_id>/frame/<int:index>", methods=["GET"])
+def gallery_source_frame(work_id, index):
+    """单帧 JPEG 原始字节，可长期缓存（ETag 由帧集版本 + 索引构成）。"""
+    work, ctx = _source_frames_context(work_id)
+    if work is None:
+        return ctx
+    paths, _original = ctx
+    if index >= len(paths):
+        return jsonify({"error": "Frame index out of range"}), 404
+    etag = "%s-%d" % (_source_frames_version(paths), index)
+    resp = Response(_source_frame_jpeg(work_id, paths, index), mimetype="image/jpeg")
+    resp.headers["Cache-Control"] = (
+        "private, max-age=3600" if work.get("is_private")
+        else "public, max-age=31536000, immutable")
+    resp.set_etag(etag)
+    return resp.make_conditional(request)
 
 
 @gallery_route("/api/gallery/preview/<work_id>", methods=["GET"])

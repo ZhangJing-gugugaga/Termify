@@ -677,75 +677,96 @@
             })();
 
             // ── load preview ──
-            // 方案B：视频作品一次性取回源帧（base64 JPEG），此后全部切换本地渲染
+            // 方案B：视频作品取回源帧（服务端逐帧下发的 JPEG），此后全部切换本地渲染
             var IS_VIDEO = params.kind === "video";
             var srcFrames = null, srcLoading = false, srcLoadFailed = false;
-            /* 带字节进度的 JSON 读取：源帧动辄 12MB+，慢链路上几十秒，
-               期间只有一个"加载中…"转圈，用户无从判断是加载还是卡死。
-               不支持流式读取的浏览器直接退化为 r.json()。 */
-            function fetchJsonWithProgress(url, onProgress) {
-                return fetch(url).then(function (r) {
-                    var total = parseInt(r.headers.get("Content-Length") || "0", 10);
-                    if (!r.body || !r.body.getReader || !total) return r.json();
-                    var reader = r.body.getReader();
-                    var chunks = [], got = 0;
-                    return new Promise(function (resolve, reject) {
-                        function pump() {
-                            reader.read().then(function (res) {
-                                if (res.done) {
-                                    new Blob(chunks).text().then(function (txt) {
-                                        try { resolve(JSON.parse(txt)); }
-                                        catch (e) { reject(e); }
-                                    }, reject);
-                                    return;
-                                }
-                                chunks.push(res.value);
-                                got += res.value.length;
-                                if (onProgress) {
-                                    onProgress(Math.min(99, Math.round(got / total * 100)));
-                                }
-                                pump();
-                            }, reject);
+            /* PF-1 分帧下发：整包 /source-frames/<id> 是 514 帧 base64 拼的单个
+               12.1MB JSON，首帧要等最后一帧到齐（实测 13.8s 白屏）。改成三段：
+               清单（几百字节）→ 第 0 帧（≈20KB）先出画面 → 其余帧受限并发补齐，
+               到齐后再进入播放。单帧 URL 带 immutable 长缓存，二访/回退零成本。 */
+            var SRC_FRAME_CONCURRENCY = 3;
+            var SRC_FRAMES_URL = "/api/gallery/source-frames/" + WORK_ID;
+
+            // 单帧 URL → canvas；尺寸用清单给的源像素尺寸（与整包路径同源）。
+            function loadSourceFrame(index, w, h) {
+                return new Promise(function (resolve) {
+                    var img = new Image();
+                    img.onload = function () {
+                        var c = document.createElement("canvas");
+                        c.width = w; c.height = h;
+                        c.getContext("2d").drawImage(img, 0, 0);
+                        resolve(c);
+                    };
+                    img.onerror = function () { resolve(null); };
+                    img.src = SRC_FRAMES_URL + "/frame/" + index;
+                });
+            }
+
+            /* 受限并发补齐第 1..count-1 帧：并发 3 把其余连接留给音频/样式，
+               不让 514 个请求同时压满连接池；按索引回填，顺序不乱。 */
+            function fillSourceFrames(meta, first) {
+                var total = meta.count;
+                var byIndex = new Array(total);
+                byIndex[0] = first;
+                if (total <= 1) return Promise.resolve(byIndex);
+                var next = 1, active = 0, done = 0;
+                return new Promise(function (resolve) {
+                    function startOne(i) {
+                        active++;
+                        loadSourceFrame(i, meta.w, meta.h).then(function (bmp) {
+                            active--;
+                            done++;
+                            byIndex[i] = bmp;
+                            setRenderChip("补齐源帧 " +
+                                Math.min(99, Math.round(done / (total - 1) * 100)) + "%");
+                            launch();
+                        });
+                    }
+                    function launch() {
+                        while (active < SRC_FRAME_CONCURRENCY && next < total) {
+                            startOne(next);
+                            next++;
                         }
-                        pump();
-                    });
+                        if (next >= total && active === 0) resolve(byIndex);
+                    }
+                    launch();
                 });
             }
 
             function ensureSourceFrames() {
                 if (srcFrames || srcLoading || !IS_VIDEO) return;
                 srcLoading = true;
-                fetchJsonWithProgress("/api/gallery/source-frames/" + WORK_ID,
-                    function (pct) { setRenderChip("加载源帧 " + pct + "%"); })
-                .then(function (d) {
-                    if (!d || !d.ok) { srcLoading = false; srcLoadFailed = true; loadPreview(); return; }
-                    // 解码 514 张 base64 JPEG 也要几秒，按真实完成数给进度
-                    var decoded = 0, total = d.frames.length;
-                    function bump() {
-                        decoded++;
-                        setRenderChip("解码源帧 " + Math.min(99, Math.round(
-                            decoded / Math.max(1, total) * 100)) + "%");
-                    }
-                    var jobs = d.frames.map(function (b64) {
-                        return new Promise(function (res) {
-                            var img = new Image();
-                            img.onload = function () {
-                                var c = document.createElement("canvas");
-                                c.width = d.w; c.height = d.h;
-                                c.getContext("2d").drawImage(img, 0, 0);
-                                bump();
-                                res(c);
-                            };
-                            img.onerror = function () { bump(); res(null); };
-                            img.src = "data:image/jpeg;base64," + b64;
+                fetch(SRC_FRAMES_URL + "/manifest").then(function (r) { return r.json(); })
+                    .then(function (m) {
+                        if (!m || !m.ok || !m.count) throw new Error("manifest unavailable");
+                        return loadSourceFrame(0, m.w, m.h).then(function (bmp) {
+                            if (!bmp) throw new Error("first frame failed");
+                            firstFrameReady(m, bmp);
                         });
-                    });
-                    Promise.all(jobs).then(function (bitmaps) {
-                        srcFrames = { bitmaps: bitmaps.filter(Boolean), interval: d.interval };
+                    })
+                    .catch(function () {
+                        // 清单/首帧都取不到才回退服务端整包预览
                         srcLoading = false;
-                        loadPreview();  // 源帧就绪 → 之后的切换全部本地渲染
+                        srcFrames = null;
+                        srcLoadFailed = true;
+                        loadPreview();
                     });
-                }).catch(function () { srcLoading = false; srcLoadFailed = true; loadPreview(); });
+            }
+
+            function firstFrameReady(meta, first) {
+                srcLoading = false;
+                srcFrames = { bitmaps: [first], interval: meta.interval };
+                loadPreview();  // 首帧先出画，不再等整包
+                fillSourceFrames(meta, first).then(function (byIndex) {
+                    var bitmaps = [];
+                    for (var i = 0; i < byIndex.length; i++) if (byIndex[i]) bitmaps.push(byIndex[i]);
+                    if (!bitmaps.length) { srcFrames = null; srcLoadFailed = true; loadPreview(); return; }
+                    // 帧集齐 → 完整本地渲染，渲染完开播
+                    srcFrames = { bitmaps: bitmaps, interval: meta.interval };
+                    loadPreview();
+                }, function () {
+                    setRenderChip(null);  // 补齐中断：保留已到手帧照常播放
+                });
             }
             function fitViewFontSize() {
                 // 窗口贴合内容（与主页同算法）：高度按网格像素比宽定高，
@@ -1281,9 +1302,10 @@
             }
 
             // ── kick off first preview ──
-            loadPreview();
-            // 视频作品：后台拉源帧，就绪后所有切换本地渲染（瞬时）
+            // 顺序即优先级：视频作品先发清单+首帧请求，loadPreview 在上面的
+            // IS_VIDEO 分支直接返回，不会同时再打一笔 6.2MB 的整包预览。
             ensureSourceFrames();
+            loadPreview();
             window.addEventListener("resize", function () {
                 if (IS_TEXT) { fitTextFontSize(); return; }
                 fitViewFontSize();
