@@ -872,6 +872,37 @@
             image-rendering: pixelated;
         }
 
+        /* A-1 演示图加载失败的回落占位（app.js showStyleDemo 的 onerror 分支建它）。
+           绝对定位 + 四边贴合终端体内边距：盒子永远不超过 #animPreview 的
+           padding box，对容器的 scrollWidth/scrollHeight 零贡献，所以
+           fitTerminalFontSize() / fitStaticPreviewFont() 的实测宽度量尺看不到它；
+           自身 overflow:hidden 再兜一层，长文案最多被裁，不会撑出滚动区。 */
+        .preview-fallback {
+            position: absolute;
+            top: 0; right: 0; bottom: 0; left: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 0 var(--space-5);
+            overflow: hidden;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.6;
+            text-align: center;
+            white-space: normal;   /* 终端体是 white-space:pre，这里必须回到换行 */
+            pointer-events: none;
+        }
+
+        /* A-1：终端下方那行常驻说明。位置上就在 .terminal 之外（见 index.html），
+           不参与终端体的任何测量，只占终端块下方的一行。 */
+        .preview-hint {
+            margin: var(--space-2) 0 0;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
         /* Force block-element chars (▀ etc.) to single-width on CJK Windows */
         .animation-terminal .terminal-body span.hb {
             display: inline-block;

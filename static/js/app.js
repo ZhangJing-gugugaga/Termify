@@ -1724,7 +1724,22 @@
       art.className = "preview-demo-art";
       art.src = demo.img;
       art.alt = demo.alt || (style + " 风格演示 / style demo");
-      art.onload = art.onerror = function () { previewSkeleton(false); };
+      art.onload = function () { previewSkeleton(false); };
+      /* 图拉不回来时不能只摘骨架：1721 已经把静态字画清空了，再摘掉骨架，
+         终端就只剩一块全黑 + 一个裸 alt 框，用户看不出发生了什么。
+         换成一句占位说明，并把破图节点摘掉 —— 别让 alt 框继续占着位置。
+         占位节点绝对定位、四边贴合终端体内边距（CSS .preview-fallback），
+         盒子永远不超过 #animPreview 的 padding box，不进 fitTerminalFontSize()
+         的 scrollWidth 量尺。 */
+      art.onerror = function () {
+        previewSkeleton(false);
+        if (art.parentNode) art.parentNode.removeChild(art);
+        var miss = document.createElement("p");
+        miss.className = "preview-fallback";
+        miss.setAttribute("data-preview-fallback", "");
+        miss.textContent = "演示动图没能加载出来 —— 检查网络后再点一次这张卡，或上传素材预览你自己的作品。";
+        preview.appendChild(miss);
+      };
       preview.appendChild(art);
     } else if (style === "custom") {
       preview.textContent = customDemoArt();  // 跟着 S.ramp 变，优先于卡内文本
