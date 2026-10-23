@@ -744,6 +744,17 @@ def text_art_page():
     return render_template("text_art.html")
 
 
+@app.route("/text-art/")
+def text_art_trailing_slash():
+    """尾斜杠归一（D-3）：/text-art/ 不是页面，301 到 /text-art。
+
+    用 301 不用 308：这两个都是纯 GET 的页面 URL，没有需要保留的请求体
+    语义。目标 /text-art 是显式规则、不会再被要求补斜杠，不存在重定向循环；
+    HEAD 由 Flask 按 GET 规则自动应答。
+    """
+    return redirect("/text-art", 301)
+
+
 # --- 站点级 SEO 端点（robots / sitemap） ------------------------------------
 
 _SITEMAP_STATIC_PATHS = ("/", "/gallery", "/text-art")
@@ -4077,6 +4088,12 @@ def gallery_audio(work_id):
 @gallery_route("/gallery")
 def gallery_page():
     return render_template("gallery.html")
+
+
+@gallery_route("/gallery/")
+def gallery_page_trailing_slash():
+    """尾斜杠归一（D-3）：301 到 /gallery，理由同 /text-art/。"""
+    return redirect("/gallery", 301)
 
 
 @gallery_route("/v/<work_id>")

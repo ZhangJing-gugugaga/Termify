@@ -197,3 +197,33 @@ def test_sitemap_only_reads_the_gallery_db(isolated_gallery):
     _sitemap_locs()
     _after, total_after = isolated_gallery.list_works(page=1, limit=1000)
     assert (total_before, total_after) == (1, 1)
+
+# --- 3. D-3 尾斜杠归一 ------------------------------------------------------
+
+@pytest.mark.parametrize("path,target", [
+    ("/gallery/", "/gallery"),
+    ("/text-art/", "/text-art"),
+])
+def test_trailing_slash_redirects_301(path, target):
+    r = _client().get(path)
+    assert r.status_code == 301
+    assert r.headers["Location"] == target
+    h = _client().head(path)
+    assert h.status_code == 301
+    assert h.headers["Location"] == target
+
+
+def test_trailing_slash_targets_serve_200_without_redirect():
+    """目标路径本身 200 且不再 301 —— 尾斜杠规则不会反噬正常路由。"""
+    c = _client()
+    for path in ("/gallery", "/text-art"):
+        r = c.get(path)
+        assert r.status_code == 200
+        assert "Location" not in r.headers
+
+
+def test_trailing_slash_redirect_is_not_a_loop():
+    """跟随一次跳转后必须落到 200，且终态路径已去掉尾斜杠。"""
+    r = _client().get("/gallery/", follow_redirects=True)
+    assert r.status_code == 200
+    assert r.request.path == "/gallery"
