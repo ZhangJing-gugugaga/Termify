@@ -1083,13 +1083,19 @@ def upload_video():
 
 
 def _safe_uploads_path(name: str) -> str:
-    """Resolve a server-generated file name inside uploads/, refusing traversal."""
+    """Resolve a server-generated file name inside uploads/, refusing traversal.
+
+    首次写入时自愈 uploads/ 目录（与 _tmp_out_path 同一手法）：目录被清理或
+    部署时漏建曾让 /api/upload 直接抛 FileNotFoundError 落 500（server.log 里 9
+    条 traceback）。校验之后才建目录——非法文件名不会留下副作用。
+    """
     base = paths.uploads_dir()
     resolved = os.path.abspath(os.path.join(base, name or ""))
     if os.path.dirname(resolved) != base or not resolved.startswith(base + os.sep):
         raise ValueError("path escapes the uploads dir")
     if not name or ".." in name or "/" in name or os.sep in name:
         raise ValueError("unsafe uploads filename")
+    os.makedirs(base, exist_ok=True)
     return resolved
 
 
