@@ -630,7 +630,7 @@
                     pending = cols;
                 });
                 slider.addEventListener("change", function () {
-                    if (pending !== null) { renderCache = {}; loadPreview(); pending = null; }
+                    if (pending !== null) { renderCache = { map: {}, used: 0 }; loadPreview(); pending = null; }
                 });
                 // 初始值 = 作品保存的列数
                 slider.value = String(curWidth);
