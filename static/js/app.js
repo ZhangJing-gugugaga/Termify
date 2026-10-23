@@ -393,8 +393,16 @@
   /* 按钮外观只从 playing 这一个真相派生——别处不再各写一份 add/remove("active")，
      否则「翻了 class 但其实没播」就是这么长出来的。 */
   function syncPlayerControls() {
-    if (playBtn) playBtn.classList.toggle("active", playing);
-    if (pauseBtn) pauseBtn.classList.toggle("active", !playing);
+    // 两个按钮是一组切换（同一时刻恰好一个"按下"）：class 给眼睛看，
+    // aria-pressed 给读屏器听，两者从同一个 playing 派生，不会各说一套。
+    if (playBtn) {
+      playBtn.classList.toggle("active", playing);
+      playBtn.setAttribute("aria-pressed", playing ? "true" : "false");
+    }
+    if (pauseBtn) {
+      pauseBtn.classList.toggle("active", !playing);
+      pauseBtn.setAttribute("aria-pressed", playing ? "false" : "true");
+    }
   }
 
   function startPlayer() {

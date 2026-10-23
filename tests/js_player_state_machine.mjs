@@ -92,7 +92,17 @@ function snapshot(rt) {
     playing: rt.api.state().playing,
     playActive: rt.playBtn.classList.contains("active"),
     pauseActive: rt.pauseBtn.classList.contains("active"),
+    playAria: rt.playBtn.getAttribute("aria-pressed"),
+    pauseAria: rt.pauseBtn.getAttribute("aria-pressed"),
   };
+}
+
+// F3：class 给眼睛、aria-pressed 给读屏器，两者必须是同一句话
+function spokenAndSeenAgree(s) {
+  return s.playActive === (s.playAria === "true")
+    && s.pauseActive === (s.pauseAria === "true")
+    && s.playAria !== s.pauseAria
+    && s.playing === (s.playAria === "true");
 }
 
 // ── 无素材（0 帧）：按钮外观必须说"暂停"，两个入口都不许动状态 ────────────
@@ -102,6 +112,10 @@ function snapshot(rt) {
   const afterInit = snapshot(rt);
   check("no-material init 显示暂停态", afterInit.playing === false &&
         afterInit.playActive === false && afterInit.pauseActive === true, afterInit);
+  check("no-material init aria-pressed 说暂停",
+        afterInit.playAria === "false" && afterInit.pauseAria === "true", afterInit);
+  check("no-material init class 与 aria-pressed 一致",
+        spokenAndSeenAgree(afterInit), afterInit);
 
   const before = snapshot(rt);
   rt.api.pause();                       // 点暂停：死控件的现场
@@ -113,6 +127,12 @@ function snapshot(rt) {
         { before, after: afterPause });
   check("no-material 点暂停不安排/取消 rAF",
         rt.raf.scheduled === 0 && rt.raf.cancelled === 0, rt.raf);
+  check("no-material 点暂停 aria-pressed 一字不动",
+        afterPause.playAria === before.playAria && afterPause.pauseAria === before.pauseAria,
+        { before: before.playAria + "/" + before.pauseAria,
+          after: afterPause.playAria + "/" + afterPause.pauseAria });
+  check("no-material 点暂停后 class 与 aria-pressed 仍一致",
+        spokenAndSeenAgree(afterPause), afterPause);
 
   rt.api.start();                       // 点播放：同样不许"看起来在播"
   const afterPlay = snapshot(rt);
@@ -143,6 +163,10 @@ function snapshot(rt) {
   check("2 帧点播放：Play.active / Pause 不再 active",
         playing.playActive === true && playing.pauseActive === false, playing);
   check("2 帧点播放：安排了一次 rAF", rt.raf.scheduled === 1, rt.raf);
+  check("2 帧点播放：aria-pressed 说在播",
+        playing.playAria === "true" && playing.pauseAria === "false", playing);
+  check("2 帧点播放：class 与 aria-pressed 一致",
+        spokenAndSeenAgree(playing), playing);
 
   rt.api.start();                       // 再点一次播放不应叠加
   check("播放中再点播放是幂等的", rt.raf.scheduled === 1, rt.raf);
@@ -153,6 +177,10 @@ function snapshot(rt) {
   check("2 帧点暂停：Play 不再 active、Pause active",
         paused.playActive === false && paused.pauseActive === true, paused);
   check("2 帧点暂停：取消了 rAF", rt.raf.cancelled === 1, rt.raf);
+  check("2 帧点暂停：aria-pressed 说暂停",
+        paused.playAria === "false" && paused.pauseAria === "true", paused);
+  check("2 帧点暂停：class 与 aria-pressed 一致",
+        spokenAndSeenAgree(paused), paused);
 
   rt.api.pause();                       // 已经暂停了再点
   check("暂停后再点暂停是幂等的", rt.raf.cancelled === 1, rt.raf);
