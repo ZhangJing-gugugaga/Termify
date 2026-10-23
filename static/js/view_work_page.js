@@ -278,12 +278,30 @@
                 if (idx !== currentFrame) renderFrame(idx);
                 rafId = requestAnimationFrame(rafLoop);
             }
+            /* 播放/暂停共用的唯一前置条件：没有第二帧就没得播（与 app.js 同一把尺）。 */
+            function canPlay() {
+                return frames.length >= 2;
+            }
+
+            /* 按钮外观只从 playing 这一个真相派生：class 给眼睛，aria-pressed 给读屏器，
+               两者同源。别处不再各写一份 add/remove("active")，否则「翻了 class 但没播」
+               就是这么长出来的。 */
+            function syncPlayerControls() {
+                if (playBtn) {
+                    playBtn.classList.toggle("active", playing);
+                    playBtn.setAttribute("aria-pressed", playing ? "true" : "false");
+                }
+                if (pauseBtn) {
+                    pauseBtn.classList.toggle("active", !playing);
+                    pauseBtn.setAttribute("aria-pressed", playing ? "false" : "true");
+                }
+            }
+
             function startPlayer() {
-                if (playing || frames.length < 2) return;
+                if (playing || !canPlay()) return;
                 playing = true;
                 if (IS_PIECE) setRenderChip(null);  // 作品库循环播放中不再留渲染提示
-                if (playBtn) playBtn.classList.add("active");
-                if (pauseBtn) pauseBtn.classList.remove("active");
+                syncPlayerControls();
                 playStartTs = performance.now() - currentFrame * interval * 1000;
                 // T25 音频同步：从当前帧对应的时间点继续播
                 if (AUDIO_URL) {
@@ -299,9 +317,10 @@
                 rafId = requestAnimationFrame(rafLoop);
             }
             function pausePlayer() {
+                // 与 startPlayer 对称：同一个前置条件不成立就直接早返回，不再空翻一遍 class
+                if (!playing || !canPlay()) return;
                 playing = false;
-                if (playBtn) playBtn.classList.remove("active");
-                if (pauseBtn) pauseBtn.classList.add("active");
+                syncPlayerControls();
                 if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
                 if (workAudio && !workAudio.paused) workAudio.pause();
             }
@@ -566,6 +585,7 @@
                 totalFrames = 0;
                 if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
                 playing = false;
+                syncPlayerControls();
                 preview.innerHTML = '<div class="view-fallback">' +
                     '<img src="/gallery/file/' + WORK_ID + '/thumb" alt="作品缩略图" loading="lazy">' +
                     '<p>' + String(msg).replace(/[<>&]/g, function (c) {
@@ -861,6 +881,8 @@
             // ── play / pause ──
             if (playBtn) playBtn.addEventListener("click", startPlayer);
             if (pauseBtn) pauseBtn.addEventListener("click", pausePlayer);
+            // 首屏模板把 Play 标成 active，但真正开播要等第一帧到手：按实际状态先对齐一次
+            syncPlayerControls();
 
             // ── banner ──
             document.getElementById("viewBannerClose").addEventListener("click", function () {
