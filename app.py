@@ -2103,10 +2103,10 @@ def gallery_upload_text():
         "ip": ip,
     })
     work = GALLERY_DB.get_work(work_id)
+    # admin_token 只经 httponly cookie 下发，绝不进响应体（XSS 可读 → 长期接管）
     resp = make_response(jsonify({
         "ok": True,
         "id": work_id,
-        "admin_token": admin_token,
         "url": url_for("gallery_view", work_id=work_id, _external=False),
         "work": _gallery_public_dict(work),
     }))
@@ -2903,7 +2903,8 @@ def _gallery_remove_file(base: str, name: str) -> None:
 def gallery_upload():
     """Accept multipart upload (source image + JSON params + form fields).
 
-    Returns {ok, id, admin_token, url, work}.
+    Returns {ok, id, url, work}; the per-work admin token is only set as an
+    httponly cookie (never echoed in the body).
     Rate limit: 3/min, 10/day per IP.
     """
     if "source" not in request.files:
@@ -3091,10 +3092,10 @@ def gallery_upload():
     })
 
     work = GALLERY_DB.get_work(work_id)
+    # admin_token 只经 httponly cookie 下发，绝不进响应体（XSS 可读 → 长期接管）
     resp = make_response(jsonify({
         "ok": True,
         "id": work_id,
-        "admin_token": admin_token,
         "url": url_for("gallery_view", work_id=work_id, _external=False),
         "work": _gallery_public_dict(work),
     }))
