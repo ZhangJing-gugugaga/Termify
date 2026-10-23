@@ -291,7 +291,27 @@ from termify.taskstore import (
     cache_put as _cache_put,
 )
 
-VALID_EXT = {".gif", ".png", ".jpg", ".jpeg"}
+# .webp 自 2026-10-23 重测起收进白名单：text_art.html 早已向用户声明支持
+# webp（那条文案不改），服务端却不认，用户照着提示传就被 400。
+VALID_EXT = {".gif", ".png", ".jpg", ".jpeg", ".webp"}
+
+
+def _webp_supported() -> bool:
+    """PIL 是否带 WebP 解码（自建 Pillow 常被裁掉 libwebp）。
+
+    白名单照收 .webp、能力缺失时给明确 400 而不是让 convert 抛异常落
+    500——用户看到的应是"这个部署不支持 webp"，不是一个内部错误。
+    """
+    try:
+        from PIL import features
+        return bool(features.check("webp"))
+    except Exception:  # noqa: BLE001 — 老版本 Pillow 没有 features 模块
+        return False
+
+
+_WEBP_UNAVAILABLE = ("当前部署未启用 WebP 解码，请改用 PNG / JPG / GIF / "
+                     "WebP decoding is not available in this build, use PNG / JPG / GIF")
+
 VALID_FORMATS = {"python", "html", "mp4", "embed"}
 
 # Video import/export: cap concurrent ffmpeg work so public-demo CPU stays
@@ -873,6 +893,8 @@ def upload():
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in VALID_EXT:
         return jsonify({"error": "Unsupported format"}), 400
+    if ext == ".webp" and not _webp_supported():
+        return jsonify({"error": _WEBP_UNAVAILABLE}), 400
 
     ip = _client_ip()
     allowed, _reason = _rate_check(ip, "image-upload", per_minute=10, per_day=100)
@@ -937,6 +959,9 @@ def upload_batch():
         ext = os.path.splitext(file.filename)[1].lower()
         if ext not in VALID_EXT:
             errors.append({"filename": file.filename, "error": "Unsupported format"})
+            continue
+        if ext == ".webp" and not _webp_supported():
+            errors.append({"filename": file.filename, "error": _WEBP_UNAVAILABLE})
             continue
 
         task_id = uuid.uuid4().hex[:12]
