@@ -613,7 +613,10 @@
             color: var(--green);
         }
         .file-list-item.active {
-            background: var(--green-dim, rgba(88,166,255,0.15));
+            /* B-3 原来是 --green-dim 实心绿底 + 绿字，实测对比度只有 1.59:1。
+               改成与 .palette-btn.active / .sort-tab.active 同一套语汇：
+               半透明绿光底 + 绿字 + 绿边（不改 DOM，只动颜色）。 */
+            background: var(--green-glow);
             border-color: var(--green);
             color: var(--green);
             font-weight: 600;
