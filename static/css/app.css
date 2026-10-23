@@ -2316,6 +2316,10 @@
            别让 UA 的 ::backdrop 再叠一层灰 */
         dialog.export-backdrop::backdrop,
         dialog.termify-modal::backdrop { background: transparent; }
+        /* 内层 .termify-modal-backdrop 只画遮罩，不参与命中测试：遮罩区的点击
+           落到 <dialog> 自己身上，关窗只有 app.js 里 e.target === dialog 一条路
+           （否则 div 与 dialog 是两条行为可能分叉的关闭路径）。 */
+        dialog.termify-modal > .termify-modal-backdrop { pointer-events: none; }
         /* <dialog> 不会自己锁背景滚动：弹层开着时锁掉整页 */
         html.is-layer-open, html.is-layer-open body { overflow: hidden; }
         .export-modal {
@@ -3057,7 +3061,7 @@
         }
 
 /* ═══════════════════════════════════════════════════════════
-   UI-STATES 修复块（?v=20261029a）
+   UI-STATES 修复块（?v=20261030a）
    把"状态语言"贴回线上排版：字号、间距、断点一律沿用上面已定的
    绝对值与现有 token，不复用设计版的字阶体系。
    1) 风格卡三段态 .is-loading / .is-error / [aria-disabled="true"]

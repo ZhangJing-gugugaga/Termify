@@ -739,7 +739,7 @@
      只有「字符生成成功」「切到图片模式」时才注入脚本；本文件只留 4 个薄壳。
      桥：本文件暴露 __TA_LAZY_CTX（渲染/状态句柄），懒包回传 __TA_LAZY（4 入口），
      两边都不复制渲染逻辑。 */
-  var LAZY_SRC = "/static/js/text_art_lazy.js?v=20261029a";
+  var LAZY_SRC = "/static/js/text_art_lazy.js?v=20261030a";
   var lazyApi = null, lazyLoading = false, lazyQueue = [];
 
   function lazyReady(fn) {

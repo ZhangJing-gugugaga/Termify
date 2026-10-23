@@ -2233,11 +2233,16 @@
   var ccApplyBtn = byId("ccApplyBtn");
   var ccCancelBtn = byId("ccCancelBtn");
   var ccClose = byId("customCharsetClose");
-  var ccBackdrop = byId("customCharsetBackdrop");
   if (ccApplyBtn) ccApplyBtn.addEventListener("click", applyCustomCharset);
   if (ccCancelBtn) ccCancelBtn.addEventListener("click", closeCustomCharsetModal);
   if (ccClose) ccClose.addEventListener("click", closeCustomCharsetModal);
-  if (ccBackdrop) ccBackdrop.addEventListener("click", closeCustomCharsetModal);
+  /* A-2 点遮罩关闭：命中判定挂在 <dialog> 自己身上。内层 #customCharsetBackdrop
+     只负责画遮罩（CSS: dialog.termify-modal > .termify-modal-backdrop 设了
+     pointer-events:none），所以遮罩区的 e.target 就是 dialog——不再指望那个 div
+     去接点击。Esc 与焦点还原仍由上面的 layers/closeLayer 栈统一管。 */
+  if (ccModal) ccModal.addEventListener("click", function (e) {
+    if (e.target === ccModal) closeCustomCharsetModal();
+  });
   if (ccInput) ccInput.addEventListener("keydown", function (e) {
     if (e.key === "Enter") applyCustomCharset();
   });
