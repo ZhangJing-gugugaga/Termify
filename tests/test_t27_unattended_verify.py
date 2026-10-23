@@ -544,6 +544,9 @@ _XSS_USER_FIELDS = (
     "thumbnail_url", "og_url", "source_url",
 )
 _INNERHTML_FILES = [
+    # S-3：页面脚本已外置到 static/js/*_page.js，innerHTML 插值点随之迁移
+    "static/js/admin_page.js", "static/js/gallery_page.js",
+    "static/js/index_page.js", "static/js/view_work_page.js",
     "templates/gallery.html", "templates/admin.html",
     "templates/view_work.html", "templates/index.html",
     "static/js/app.js", "static/js/termify-render.js",
@@ -576,8 +579,8 @@ def test_xss_user_fields_escaped_at_innerhtml():
 
 def test_xss_escapehtml_impl_escapes_quotes():
     """三处 escapeHtml 实现必须连引号一起转义（属性上下文不可逃逸）。"""
-    for rel in ("templates/gallery.html", "templates/admin.html",
-                "templates/view_work.html"):
+    for rel in ("static/js/gallery_page.js", "static/js/admin_page.js",
+                "static/js/view_work_page.js"):
         src = _read_repo(rel)
         assert "function escapeHtml" in src, f"{rel} 缺 escapeHtml"
         assert 'replace(/"/g, "&quot;")' in src, f"{rel} 未转义双引号"

@@ -3111,15 +3111,22 @@ def gallery_delete(work_id):
 
 @app.after_request
 def _security_headers(resp):
-    """防御纵深响应头（CSP 允许内联脚本：页面模板使用内联 <script>）。"""
+    """防御纵深响应头。
+
+    CSP 不含 script-src 'unsafe-inline'：页面可执行脚本全部是 static/js 下的
+    外置文件，服务端数据经 <script type="application/json"> 过河（不可执行
+    类型不受 script-src 管辖）。style-src 仍留 'unsafe-inline'——模板里有大量
+    style="--c:#00ff41" 这类内联样式属性，收紧需先迁移样式属性。
+    """
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("X-Frame-Options", "DENY")
     resp.headers.setdefault("Referrer-Policy", "no-referrer")
     resp.headers.setdefault(
         "Content-Security-Policy",
         "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-        "script-src 'self' 'unsafe-inline'; media-src 'self' data: blob:; "
-        "connect-src 'self'")
+        "script-src 'self'; media-src 'self' data: blob:; connect-src 'self'; "
+        "object-src 'none'; base-uri 'self'; form-action 'self'; "
+        "frame-ancestors 'none'")
     # HTML 页面禁缓存：HTML 引用带版本号的静态资源，HTML 本身一旦被浏览器
     # 启发式缓存，改版后用户会一直拿到旧页面（无版本号变化的旧 JS/CSS），
     # 表现为"修了没生效"。静态资源带 ?v= 版本号，可长缓存。

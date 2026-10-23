@@ -130,24 +130,19 @@ def test_view_page_data_script_block_intact(client):
     assert client.get(f"/v/{wid}").status_code == 200
     assert body.count("</script>") == 3
 
-    # 第一个内联（非 src 引用）<script> … 其 </script> 之间必须包含完整赋值
-    inline_start = body.find("<script>", body.find("</script>") + 1)
-    assert inline_start != -1
-    inline_close = body.find("</script>", inline_start)
-    seg = body[inline_start:inline_close]
-    assert "window.TERMIFY_GALLERY_WORK" in seg
-    assert "JSON.parse" in seg
-    # 赋值之前的注释区不得再含 </script / Jinja 花括号残留
-    head = seg.split("window.TERMIFY_GALLERY_WORK", 1)[0]
-    assert "</script" not in head
-    assert "{{" not in head and "}}" not in head
-
-    # 第二个（查看器）脚本块同样不得含字面 </script 或裸 Jinja 花括号
-    rest = body[inline_close + len("</script>"):]
-    viewer_close = rest.find("</script>")
-    viewer = rest[:viewer_close]
-    assert "{{" not in viewer and "}}" not in viewer
-    assert "</script" not in viewer
+    # S-3：数据不再走内联可执行 <script>，改由 type="application/json" 数据块
+    # 过河（不可执行类型，不受 CSP script-src 管辖）；赋值已外置到
+    # static/js/view_work_page.js，块内必须是纯 JSON（可无损 json.loads）。
+    assert "window.TERMIFY_GALLERY_WORK" not in body
+    m = re.search(
+        r'<script type="application/json" id="termifyWorkData">(.*?)</script>',
+        body, re.S)
+    assert m, "数据块缺失"
+    seg = m.group(1)
+    data = json.loads(seg)
+    assert data["id"] == wid
+    assert "{{" not in seg and "}}" not in seg
+    assert "</script" not in seg
 
 
 # ═══ [major-3] params_json / tags_json tojson + JSON.parse 防线 ════════════
@@ -172,10 +167,12 @@ def test_view_page_params_json_injection_neutralized(client):
     assert "\\u003c/script\\u003e" not in body
     assert body.count("</script>") == 3
 
-    # JSON.parse 字面量须还原白名单内的渲染参数（前端数据语义不回归）
-    m = re.search(r"params: JSON\.parse\((\".*?\")\),", body)
-    assert m, "params 字面量缺失"
-    params = json.loads(json.loads(m.group(1)))
+    # 数据块须还原白名单内的渲染参数（前端数据语义不回归）
+    m = re.search(
+        r'<script type="application/json" id="termifyWorkData">(.*?)</script>',
+        body, re.S)
+    assert m, "数据块缺失"
+    params = json.loads(json.loads(m.group(1))["params"])
     assert "inj" not in params
     assert params["charset"] == "ascii"
 
@@ -190,9 +187,11 @@ def test_view_page_tags_tojson_and_whitelist(client):
     body = resp.data.decode("utf-8")
     assert "<script>alert(1)</script>" not in body
 
-    m = re.search(r"tags: JSON\.parse\((\".*?\")\)", body)
-    assert m, "tags 字面量缺失"
-    tags = json.loads(json.loads(m.group(1)))
+    m = re.search(
+        r'<script type="application/json" id="termifyWorkData">(.*?)</script>',
+        body, re.S)
+    assert m, "数据块缺失"
+    tags = json.loads(json.loads(m.group(1))["tags"])
     assert tags == ["动画"]
 
 

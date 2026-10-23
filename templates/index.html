@@ -497,75 +497,7 @@
         </div>
     </dialog>
 
-    <script>
-        // ═══════════ Style card selection ═══════════
-        document.querySelectorAll('.style-card').forEach(card => {
-            card.addEventListener('click', () => {
-                document.querySelectorAll('.style-card').forEach(c => c.classList.remove('selected'));
-                card.classList.add('selected');
-            });
-        });
-
-        // ═══════════ Format option selection ═══════════
-        const terminalSizeCard = document.getElementById('terminalSizeCard');
-        const downloadBtn = document.querySelector('.download-btn');
-        // 输出格式已移入「导出动画」弹窗（app.js 两步确认）；尺寸仅滑杆，无快捷按钮
-        // ═══════════ Upload zone drag effects ═══════════
-        const uploadZone = document.getElementById('uploadZone');
-        uploadZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadZone.classList.add('drag-over');
-        });
-        uploadZone.addEventListener('dragleave', () => {
-            uploadZone.classList.remove('drag-over');
-        });
-        uploadZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadZone.classList.remove('drag-over');
-        });
-
-        // ═══════════ Tweaks panel ═══════════
-        // 开关绑定只在 static/js/app.js 里保留一份（ES5 那份，带 close 处理）；
-        // 这里原先还重复绑了一份等价监听，一次点击 toggle 两次互相抵消 → 面板永远打不开。
-
-        // Tweaks: grid toggle
-        document.querySelectorAll('[data-tweak="grid-on"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.body.style.setProperty('--grid-opacity', '0.3');
-                document.querySelectorAll('[data-tweak^="grid"]').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-            });
-        });
-        document.querySelectorAll('[data-tweak="grid-off"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.body.style.setProperty('--grid-opacity', '0');
-                document.querySelectorAll('[data-tweak^="grid"]').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-            });
-        });
-
-        // Tweaks: scanline toggle
-        document.querySelectorAll('[data-tweak="scan-on"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.body.style.setProperty('--scanline-opacity', '1');
-                document.querySelectorAll('[data-tweak^="scan"]').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-            });
-        });
-        document.querySelectorAll('[data-tweak="scan-off"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.body.style.setProperty('--scanline-opacity', '0');
-                document.querySelectorAll('[data-tweak^="scan"]').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-            });
-        });
-
-        // 主题色选择已迁移至输出面板「配色 / Color scheme」（app.js applyPalette）
-
-        // 进度条 / 帧计数由 app.js 的真实播放时钟驱动（updateProgressClock：
-        // cycleSec / S.frames.length × S.interval）。原来这里那段 2.4 秒
-        // DEMO_TOTAL 假循环已删除——没有帧时如实显示 0.0s / 0.0s。
-    </script>
+    <script src="{{ url_for('static', filename='js/index_page.js') }}?v=20261026a" defer></script>
     <script src="{{ url_for('static', filename='js/termify-render.js') }}?v=20261026a"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}?v=20261026a" defer></script>
 

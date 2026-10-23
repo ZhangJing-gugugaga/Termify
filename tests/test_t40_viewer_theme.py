@@ -1,6 +1,6 @@
 """T40 — /v/ 作品页配色切换对服务端预览 / 下载 / 嵌入生效（强制单色）。
 
-前端契约（templates/view_work.html 内联脚本，纯静态断言）：
+前端契约（static/js/view_work_page.js，纯静态断言）：
 - viewerQueryColors()：curTheme 非 "saved" 时改发 color=mono + 主题 fg/bg，
   不再沿用作品保存的 params.color/fg/bg；"saved" 分支逐字保持原行为
 - exportColorsQuery()：主题分支补上 color=mono（缺它时服务端
@@ -12,7 +12,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "view_work.html"
+# S-3：viewer 脚本已外置到 static/js/view_work_page.js
+TEMPLATE = (Path(__file__).resolve().parent.parent
+            / "static" / "js" / "view_work_page.js")
 
 
 def _source() -> str:
