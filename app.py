@@ -33,6 +33,7 @@ from termify import paths
 from flask import (Flask, Response, abort, jsonify, make_response, redirect,
                    render_template, request, send_file, url_for)
 from flask_compress import Compress
+from werkzeug.exceptions import InternalServerError
 
 app = Flask(__name__)
 
@@ -171,6 +172,24 @@ def _method_not_allowed(e):
 def _request_entity_too_large(_e):
     """请求体超过 MAX_CONTENT_LENGTH 时返回 JSON（而非 Flask 默认 HTML 页）。"""
     return jsonify({"error": "文件过大（上限 20MB） / File too large (max 20MB)"}), 413
+
+
+@app.errorhandler(500)
+def _internal_server_error(_e):
+    """未捕获异常统一收口：/api/ 下回 JSON，其余路径维持默认 HTML 页。
+
+    此前没有 500 handler，/api/* 的 5xx 会回 Flask 默认 HTML（265 字节），
+    前端 r.json() 直接抛错。异常原文仍由 Flask 的 handle_exception 先写日志
+    （非 debug 下 app.logger 的 StreamHandler 落到 server.log），本 handler 只
+    挑响应形态——不吞异常，也不回显 traceback / 路径 / 栈。
+    """
+    if request.path == "/api" or request.path.startswith("/api/"):
+        return jsonify({
+            "error": "服务器内部错误 / Internal server error",
+            "status": 500,
+        }), 500
+    # 非 API 路径维持改动前的行为：werkzeug 的默认 HTML 错误页。
+    return InternalServerError().get_response(request.environ)
 
 
 # --- S-2 写接口同源校验（CSRF）---------------------------------------------
