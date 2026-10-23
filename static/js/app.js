@@ -1627,6 +1627,30 @@
     return row + "\n" + row + "\n " + row + "\n " + row + "\n  " + row + "\n  " + row +
            "\n " + row + "\n " + row;
   }
+  /* 演示图骨架：卡内 GIF 是同源静态图，但"有缓存"不等于"已解码"。
+     解码前 <img> 高度为 0，终端体会先塌到 min-height 再长回去 —— 这段
+     用等尺寸骨架盖住（绝对定位，不进文档流），并临时锁住容器高度，
+     onload/onerror 一起撤掉。不留假进度条，也不改图片自身尺寸策略。 */
+  var previewSkeletonEl = null;
+  function previewSkeleton(on, holdH) {
+    if (!preview) return;
+    if (!on) {
+      if (previewSkeletonEl && previewSkeletonEl.parentNode) {
+        previewSkeletonEl.parentNode.removeChild(previewSkeletonEl);
+      }
+      previewSkeletonEl = null;
+      preview.style.minHeight = "";
+      return;
+    }
+    if (holdH > 0) preview.style.minHeight = Math.round(holdH) + "px";
+    if (previewSkeletonEl) return;
+    previewSkeletonEl = document.createElement("div");
+    previewSkeletonEl.className = "preview-skeleton";
+    previewSkeletonEl.setAttribute("data-skeleton", "");
+    previewSkeletonEl.setAttribute("aria-hidden", "true");
+    preview.appendChild(previewSkeletonEl);
+  }
+
   // 无素材时的占位演示：卡里有成品 GIF 就直接放进终端（同源静态图，不发请求）
   function showStyleDemo(style, preferText) {
     if (!preview) return;
@@ -1634,11 +1658,14 @@
     preview.style.display = "";
     var demo = styleDemos[style];
     if (!preferText && demo && demo.img) {
+      var holdH = preview.getBoundingClientRect().height;
       preview.textContent = "";  // 先清掉上一张演示，避免叠图
+      previewSkeleton(true, holdH);
       var art = document.createElement("img");
       art.className = "preview-demo-art";
       art.src = demo.img;
       art.alt = demo.alt || (style + " 风格演示 / style demo");
+      art.onload = art.onerror = function () { previewSkeleton(false); };
       preview.appendChild(art);
     } else if (style === "custom") {
       preview.textContent = customDemoArt();  // 跟着 S.ramp 变，优先于卡内文本

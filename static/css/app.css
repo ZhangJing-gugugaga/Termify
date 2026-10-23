@@ -812,6 +812,7 @@
                此处 height:auto 仅为 JS 关闭时的回退值。 */
             height: auto;
             min-height: 300px;
+            position: relative;      /* 演示图骨架（.preview-skeleton）的定位基准 */
             display: flex;
             flex-direction: column;   /* 彩色 ANSI 帧的逐行 span 必须纵向堆叠：
                                          横排(默认row)会把每行当 flex item 水平拼接，
@@ -837,6 +838,17 @@
         /* 无素材时点风格卡：卡内成品 GIF 直接当终端演示，等比内缩不溢出窗口。
            水平居中：终端是 flex 列 + align-items:center（见 :710-715），本来就居中；
            margin:0 auto 让它在块流容器里也居中，别退化成左贴边预留。 */
+        /* 演示图骨架：覆盖整个终端体（绝对定位，不参与文档流，所以不会顶布局）。
+           JS 在 img.onload / onerror 里摘掉，见 app.js previewSkeleton()。 */
+        .preview-skeleton {
+            position: absolute;
+            top: 0; right: 0; bottom: 0; left: 0;
+            background: var(--bg-hover);
+            border-radius: inherit;
+            animation: gallery-skeleton-shimmer 1.4s ease-in-out infinite;
+            pointer-events: none;
+        }
+
         .animation-terminal .terminal-body .preview-demo-art {
             display: block;
             width: auto;
@@ -1896,18 +1908,26 @@
             animation: gallery-skeleton-shimmer 1.4s ease-in-out infinite;
             aspect-ratio: 4/3; background: var(--bg-hover);
         }
+        /* 骨架的文字区按真实卡片的行盒量：padding 16px + 标题 1.6em/14px +
+           8px 间距 + 元信息 1.6em/12px，整卡高与 .gallery-card 一致（差 1px
+           都会在替换瞬间把整页顶一下，实测 375/1440 各掉 0.23 CLS） */
+        .gallery-skeleton-info { padding: var(--space-4); }
         .gallery-skeleton-line {
             animation: gallery-skeleton-shimmer 1.4s ease-in-out infinite;
             background: var(--bg-hover); border-radius: var(--radius-sm);
-            height: 12px; margin: var(--space-3) var(--space-4);
+            font-size: var(--fs-base); height: 1.6em;
+            margin-bottom: var(--space-2);
         }
-        .gallery-skeleton-line.short { width: 45%; }
+        .gallery-skeleton-line.short {
+            font-size: var(--fs-sm); margin-bottom: 0; width: 45%;
+        }
         @keyframes gallery-skeleton-shimmer {
             0%, 100% { opacity: 0.5; } 50% { opacity: 1; }
         }
         /* 全覆盖：每条 animation 声明都在同文件内有守卫（DESIGN 6.4） */
         @media (prefers-reduced-motion: reduce) {
             .gallery-skeleton-img, .gallery-skeleton-line { animation: none; }
+            .preview-skeleton { animation: none; }
             .terminal-cursor { animation: none; }
             .hero-badge::before { animation: none; }
             .hero, .preview-section, .animation-section,
