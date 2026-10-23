@@ -854,7 +854,9 @@ def robots_txt():
         f"Sitemap: {_public_base_url()}/sitemap.xml",
         "",
     ])
-    return Response(body, mimetype="text/plain")
+    resp = Response(body, mimetype="text/plain")
+    resp.headers["Cache-Control"] = CRAWLER_CACHE_CONTROL
+    return resp
 
 
 @app.route("/sitemap.xml")
@@ -881,7 +883,9 @@ def sitemap_xml():
             parts.append(f"    <lastmod>{_xml_escape(lastmod)}</lastmod>")
         parts.append("  </url>")
     parts.append("</urlset>")
-    return Response("\n".join(parts) + "\n", mimetype="application/xml")
+    resp = Response("\n".join(parts) + "\n", mimetype="application/xml")
+    resp.headers["Cache-Control"] = CRAWLER_CACHE_CONTROL
+    return resp
 
 
 @app.route("/api/upload", methods=["POST"])
@@ -3296,6 +3300,10 @@ def _security_headers(resp):
 STATIC_VERSIONED_MAX_AGE = 31536000  # 1 年：URL 自带 ?v= 指纹，内容变了 URL 就变
 STATIC_PLAIN_MAX_AGE = 86400  # 1 天：裸 static URL 没有指纹，给短值留失效出口
 
+# robots.txt / sitemap.xml：爬虫重取频率低（同站通常数小时到数天一次），一小时
+# 既能让新发布的作品在下一轮抓取里出现，也挡掉每次抓取都全量查一次作品库。
+CRAWLER_CACHE_CONTROL = "public, max-age=3600"
+
 
 @app.after_request
 def _static_cache_policy(resp):
@@ -3320,6 +3328,20 @@ def _static_cache_policy(resp):
     # 无关；留着就是自相矛盾的过期时间（老客户端与中间缓存会按它判断）。
     if "Expires" in resp.headers:
         del resp.headers["Expires"]
+    return resp
+
+
+# /api/* 一律 no-store：这些响应里是任务状态、用户作品、管理数据，任何中间
+# 缓存留存都是错误答案（旧版浏览器按启发式缓存把一次 5xx/旧列表记住过）。只加在
+# /api/ 前缀上，静态资源的 max-age 策略见上面的 _static_cache_policy。
+# 用 setdefault：显式给出 Cache-Control 的动态路由（source-frames 的 60s 清单、
+# 单帧的 immutable）是刻意设计，不能被这条兜底覆盖。
+@app.after_request
+def _api_cache_no_store(resp):
+    """兜底策略：/api/ 下没有明确缓存头的响应一律 no-store。"""
+    path = request.path
+    if path == "/api" or path.startswith("/api/"):
+        resp.headers.setdefault("Cache-Control", "no-store")
     return resp
 
 

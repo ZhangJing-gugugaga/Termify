@@ -142,11 +142,12 @@ def test_frame_endpoint_keeps_immutable_cache(video_work):
 
 
 def test_legacy_blob_endpoint_headers_unchanged(video_work):
-    """旧的整包端点保持原样：没有任何缓存头，字节长度跨请求稳定。"""
+    """旧的整包端点不自带缓存头，由 /api/ 兜底策略统一给 no-store；
+    字节长度跨请求稳定。"""
     c = _client()
     r = c.get("/api/gallery/source-frames/%s" % video_work)
     assert r.status_code == 200
-    assert "Cache-Control" not in r.headers
+    assert r.headers["Cache-Control"] == "no-store"
     assert "ETag" not in r.headers
     assert r.mimetype == "application/json"
     n1 = len(r.get_data())
