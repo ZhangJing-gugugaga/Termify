@@ -848,14 +848,13 @@
 
 
   /* ── G-2 fork 落地 ──────────────────────────────────────────────
-     /v/<id> 的「用它做一版」带 ?fork=<id>&text=<整幅正文>&font=<字体>：
-     以前是裸跳转 /text-art，落地即空白编辑器。文字作品入库只存整幅字符画
-     （params.frames[0]），没有可编辑的源文本，所以分两条路：
-       · 正文在输入上限内（英文 64 字符 / 汉字 8 个）→ 预填 + 选字体 + 生成一次；
-       · 整幅字符画必然超限 —— 填进输入框只会得到点不动的生成按钮，改为把作品
-         画进结果区，用户改输入框就能做一版；
-     正文没随 URL 来（> 6000 字符被跳转侧省掉）时回落 /api/gallery/work/<id>。 */
-  var FORK_TEXT_MAX = 6000;
+     /v/<id> 的「用它做一版」只带 ?fork=<id>&font=<字体>：URL 恒定几十字节，
+     正文一律由这里 GET /api/gallery/work/<id> 取同一个作品。以前正文也拼进
+     查询串，单件可达十几 KB，超约 4096 的请求行上限被前置代理回裸 400
+     （线上 /v/CWhZ2QHX 实测 12298 字节），所以 URL 里不再带正文。
+     可见性沿用该接口既有判定（不存在/已删除 → 404），前端不另开销路。
+     文字作品入库只存整幅字符画（params.frames[0]），没有可编辑的源文本，
+     所以拿到 art 就直接画进结果区，用户改输入框就能做一版。 */
 
   function pickFont(slug) {
     if (!taFont || !slug) return false;
@@ -881,8 +880,27 @@
     var braille = /[\u2800-\u28ff]/.test(art);
     showArt({ art: art, cols: d.cols, rows: d.rows, font: font || "custom",
               text: "", mode: braille ? "braille" : "figlet" });
+    pickFont(font);   // 下拉跟着作品字体走：用户改输入框生成的还是同一款字
     hideFontWall();   // 字体墙是"当前输入"的样张，与载入的作品无关
     toast("已载入原作品：原文本未随作品保存，改输入框文字即可做一版");
+  }
+
+  function loadForkedWork(fork, font) {
+    fetch("/api/gallery/work/" + encodeURIComponent(fork))
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);   // 404/已删除/私有被拒都走降级
+        return r.json();
+      })
+      .then(function (d) {
+        var p = (d && d.params) || {};
+        var art = (p.frames && p.frames[0]) ? String(p.frames[0]) : "";
+        if (!art) { toast("已载入作品 " + fork + "，输入文字即可做一版"); return; }
+        showForkedArt(art, font || p.font || "");
+      })
+      .catch(function () {
+        showEmpty();   // 回空态：不把一片空结果区当成功
+        toast("原作品读取失败（可能已删除或未公开） / Failed to load work");
+      });
   }
 
   function applyForkParams(fontsReady) {
@@ -892,32 +910,7 @@
     var fork = q.get("fork");
     if (!fork) return;
     var font = q.get("font") || "";
-    var text = q.get("text") || "";
-    if (text.length > FORK_TEXT_MAX) text = "";   // 与跳转侧同口径
-    fontsReady.then(function () {
-      if (text) {
-        if (taInput) taInput.value = text;
-        syncInputHint();   // 定字体源（figlet/cjk）+ 生成按钮可点性
-        pickFont(font);    // syncInputHint 可能重建下拉，字体在它之后落
-        if (!inputOverflow()) {
-          if (convertBtn) convertBtn.click();
-          return;
-        }
-        if (taInput) taInput.value = "";   // 超限：不拿点不动的按钮糊弄用户
-        syncInputHint();
-        showForkedArt(text, font);
-        return;
-      }
-      fetch("/api/gallery/work/" + encodeURIComponent(fork))
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          var p = (d && d.params) || {};
-          var art = (p.frames && p.frames[0]) ? String(p.frames[0]) : "";
-          if (!art) { toast("已载入作品 " + fork + "，输入文字即可做一版"); return; }
-          showForkedArt(art, font || p.font || "");
-        })
-        .catch(function () { toast("作品数据读取失败 / Failed to load work"); });
-    });
+    fontsReady.then(function () { loadForkedWork(fork, font); });
   }
 
   /* ── init ── */

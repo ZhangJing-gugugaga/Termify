@@ -849,20 +849,17 @@
 
             // ── fork：带着当前风格/尺寸/配色回到编辑器，用户换自己的素材再渲染 ──
             /* G-2：文字作品原来是裸跳转 "/text-art"，落地即空白编辑器。库里存的是
-               整幅字符画（params.frames[0]），这里把作品 id / 字体 / 正文一起过 URL，
-               由 text_art.js 预填。正文单件可达十几 KB，超过 6000 字符就不带，
-               接收侧回落 /api/gallery/work/<id> 取同一份数据。 */
-            var FORK_TEXT_MAX = 6000;
+               整幅字符画（params.frames[0]），这里只把作品 id / 字体过 URL，
+               正文一律由接收侧 GET /api/gallery/work/<id> 取同一份数据。
+               正文单件可达十几 KB，整段塞进查询串会把 URL 顶到十几 KB，
+               超过约 4096 的请求行上限被前置代理回裸 400（线上 /v/CWhZ2QHX
+               实测 12298 字节），所以 URL 里一个字都不带。 */
             var _forkBtn = document.getElementById("forkBtn");
             if (_forkBtn) _forkBtn.addEventListener("click", function () {
                 if (IS_TEXT || params.font) {
                     var tq = "?fork=" + encodeURIComponent(WORK_ID);
                     if (params.font) {
                         tq += "&font=" + encodeURIComponent(String(params.font));
-                    }
-                    var _body = textArtString();
-                    if (_body && _body.length <= FORK_TEXT_MAX) {
-                        tq += "&text=" + encodeURIComponent(_body);
                     }
                     window.location.href = "/text-art" + tq;
                     return;

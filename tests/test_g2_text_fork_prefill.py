@@ -4,12 +4,13 @@
 不带任何参数；而 static/js/text_art.js 里 fork / URLSearchParams / location.search
 全部 0 命中——接收侧根本没有预填逻辑。
 
-修法（两侧）：
-1. 跳转侧带 ?fork=<作品 id>&font=<字体>&text=<整幅字符画正文>
-   （params.frames[0] 就是作品正文；单件可达十几 KB，超 6000 字符不带正文）；
-2. 接收侧 text_art.js 新增 applyForkParams()：正文在输入上限内 → 预填 + 选中
-   字体 + 生成一次；整幅字符画必然超限 → 把作品画进结果区（而不是留一个点不动
-   的生成按钮）；正文没随 URL 来 → 回落已有的 /api/gallery/work/<id>。
+修法（两侧，2026-11 修正版）：
+1. 跳转侧只带 ?fork=<作品 id>&font=<字体>——正文一个字都不进 URL：整幅字符画
+   可达十几 KB，拼进查询串会把 URL 顶到 12298 字节，超约 4096 的请求行上限被
+   前置代理回裸 400（见 tests/test_g2_fork_short_url.py）；
+2. 接收侧 text_art.js 的 applyForkParams() 一律 GET /api/gallery/work/<id> 取
+   params.frames[0]，拿到就画进结果区（而不是留一个点不动的生成按钮）；
+   可见性只认接口既有判定，接口失败 → 空态 + 提示。
 
 约束：CSP 线上是 script-src 'self'（无 unsafe-inline），所以新逻辑只能写在外置
 JS 里，不许内联事件 / eval。
@@ -82,23 +83,23 @@ def _text_id(client, art=ART, font="standard"):
     return json.loads(resp.data)["id"]
 
 
-# ── 1. 跳转侧：文字作品的 fork 不再裸跳转 ──────────────────────────
-def test_view_js_text_fork_carries_id_font_and_body():
+# ── 1. 跳转侧：文字作品的 fork 不再裸跳转，也不再把正文塞进 URL ────
+def test_view_js_text_fork_carries_id_and_font_only():
     src = VIEW_JS.read_text(encoding="utf-8")
     assert 'window.location.href = "/text-art";' not in src, "裸跳转必须删掉"
     assert 'window.location.href = "/text-art" + tq;' in src
     assert '"?fork=" + encodeURIComponent(WORK_ID)' in src
     assert '"&font=" + encodeURIComponent(String(params.font))' in src
-    assert '"&text=" + encodeURIComponent(_body)' in src
-    # 正文取自作品数据本身（params.frames[0]），不是别处
-    assert "var _body = textArtString();" in src
+    # 正文不进 URL：接收侧一律 GET /api/gallery/work/<id>
+    assert '"&text="' not in src
+    assert "_body" not in src, "拼 URL 时读正文的那套变量应已删净"
 
 
-def test_view_js_text_fork_has_url_budget():
-    """几 KB 的正文不能整段塞 URL：超 6000 字符只带 fork&font。"""
+def test_view_js_text_fork_has_no_body_budget_anymore():
+    """正文过 URL 的那套预算（FORK_TEXT_MAX）随改动一起成了死代码。"""
     src = VIEW_JS.read_text(encoding="utf-8")
-    assert "var FORK_TEXT_MAX = 6000;" in src
-    assert "_body.length <= FORK_TEXT_MAX" in src
+    assert "FORK_TEXT_MAX" not in src
+    assert "var _body = textArtString();" not in src
 
 
 # ── 2. 接收侧：text_art.js 读 URL 参数并预填/生成 ──────────────────
@@ -107,23 +108,24 @@ def test_text_art_js_reads_fork_params():
     assert "new URLSearchParams(window.location.search)" in src
     assert 'q.get("fork")' in src
     assert 'q.get("font")' in src
-    assert 'q.get("text")' in src
+    assert 'q.get("text")' not in src, "URL 自带正文的第二来源已删除（可见性只认接口）"
     assert "applyForkParams(fontsReady);" in src, "初始化里必须真的调用"
 
 
-def test_text_art_js_prefills_font_and_generates_once():
+def test_text_art_js_draws_artwork_and_syncs_font():
+    """没有可编辑的源文本：拿到作品就直接画进结果区，字体下拉跟着对齐。"""
     src = TA_JS.read_text(encoding="utf-8")
-    assert "taInput.value = text;" in src          # 输入框预填
-    assert "pickFont(font);" in src                # 字体选中
-    assert "convertBtn.click();" in src            # 触发生成一次
+    assert 'showForkedArt(art, font || p.font || "");' in src
+    assert "pickFont(font);" in src
+    assert "taInput.value = text;" not in src, "URL 不再带正文，输入框预填分支已删"
 
 
-def test_text_art_js_falls_back_to_work_api():
-    """只有 fork 没有 text（正文超 6000 被省掉）时取已有作品接口，不新增后端。"""
+def test_text_art_js_takes_body_from_work_api():
+    """正文的唯一来源是作品接口（fork 只带 id），不新增后端。"""
     src = TA_JS.read_text(encoding="utf-8")
     assert '"/api/gallery/work/" + encodeURIComponent(fork)' in src
     assert "p.frames && p.frames[0]" in src
-    assert "var FORK_TEXT_MAX = 6000;" in src
+    assert "FORK_TEXT_MAX" not in src
 
 
 def test_fork_font_waits_for_font_tables():
@@ -179,20 +181,20 @@ def test_view_page_fork_button_survives(client):
 
 
 def test_fork_url_contract_roundtrip(client):
-    """跳转侧拼出的 URL 形状，接收侧页面照单全收（服务端不做任何预处理）。"""
+    """跳转侧拼出的短 URL，接收侧页面照单全收（服务端不做任何预处理）。"""
     wid = _text_id(client)
     from urllib.parse import quote
 
-    url = ("/text-art?fork=" + quote(wid) +
-           "&font=" + quote("standard") +
-           "&text=" + quote(ART, safe=""))
+    url = "/text-art?fork=" + quote(wid) + "&font=" + quote("standard")
     resp = client.get(url)
     assert resp.status_code == 200
-    assert len(url) < 6000
+    assert "text=" not in url
+    assert len(url) < 512
 
 
-def test_long_art_is_omitted_from_url_mirror():
-    """跳转侧的长度判据：> 6000 字符的正文不带（与 text_art.js 同口径）。"""
-    long_art = "x" * 6001
-    assert not (len(long_art) <= 6000)
-    assert len(ART) <= 6000
+def test_long_art_never_reaches_the_url():
+    """正文长度不再影响 URL 长度：URL 只由作品 id + 字体组成。"""
+    url = "/text-art?fork=abc123&font=standard"
+    assert len(url) < 512
+    assert "text=" not in url
+    assert "x" * 6001 not in url
