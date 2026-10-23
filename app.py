@@ -33,7 +33,7 @@ from termify import paths
 from flask import (Flask, Response, abort, jsonify, make_response, redirect,
                    render_template, request, send_file, url_for)
 from flask_compress import Compress
-from werkzeug.exceptions import InternalServerError
+from werkzeug.exceptions import BadRequest, HTTPException, InternalServerError
 
 app = Flask(__name__)
 
@@ -134,14 +134,29 @@ def _skip_compress_large(resp):
     return resp
 
 
+# 资源直链（source/thumb/og/audio）404 也回 JSON：这些 URL 是 <img src> 与
+# 播放器直接消费的，拿到的整页 404.html（约 2.3KB HTML）既解析不出错误，
+# 又让"资源不存在"和"页面不存在"在前端长得一模一样。
+_GALLERY_FILE_PREFIX = "/gallery/file/"
+
+
 @app.errorhandler(404)
 def _not_found(_e):
     """404 落到站点风格页面（此前是 Flask 默认英文页：无导航、无中文、无返回入口）。
 
-    API 路径保持 JSON —— 前端拿 HTML 会解析失败，比报错信息更糟。
+    API 路径与画廊资源直链保持 JSON —— 前端拿 HTML 会解析失败，比报错信息更糟。
     """
     if request.path == "/api" or request.path.startswith("/api/"):
         return jsonify({"error": "接口不存在 / Not found"}), 404
+    if request.path.startswith(_GALLERY_FILE_PREFIX):
+        resp = jsonify({
+            "error": "资源不存在 / Not found",
+            "status": 404,
+        })
+        # 这些 URL 是 <img src>/播放器直链：补 no-store，免得"当年 404"被浏览器
+        # 缓存住，作品补生成成功后图片位置还是破的。
+        resp.headers.setdefault("Cache-Control", "no-store")
+        return resp, 404
     return render_template("404.html"), 404
 
 
@@ -190,6 +205,56 @@ def _internal_server_error(_e):
         }), 500
     # 非 API 路径维持改动前的行为：werkzeug 的默认 HTML 错误页。
     return InternalServerError().get_response(request.environ)
+
+# --- T51 请求体解析 ---------------------------------------------------------
+# 此前 13 个端点都写 `request.get_json(silent=True) or {}`：坏 JSON、错
+# Content-Type（表单/纯文本）全被当成空对象继续跑，最终报一个与真实原因无关的
+# "缺字段"，或者干脆 200。统一收口到这里，语义只有三档：
+#   无 body / 纯空白            → {}   老客户端不带 body 的调用行为不变
+#   Content-Type 不是 JSON      → 400 + JSON 错误体
+#   JSON 解析失败 / 不是对象    → 400 + JSON 错误体
+#   合法 JSON 对象              → 原样返回
+# 调用点一律写成 `data = _json_body()`，错误路径直接抛 HTTPException。
+_MULTI_JSON_CT = "Content-Type: application/json"
+
+
+def _json_body_failure(message: str):
+    """把 400 打包成自带 JSON 响应的 HTTPException。
+
+    Flask 对 HTTPException 直接取 `e.get_response()`，不经过 app.errorhandler(400)；
+    因此不需要、也不该再注册一个全局 400 handler——注册了要么与这里的 JSON 体
+    打架（模板类响应覆盖 JSON），要么被 Werkzeug 的子类匹配顺序绕过。
+    /api/* 的 no-store 由 after_request 统一补，这里不用管。
+
+    状态码必须写进 Response 对象本身：werkzeug 3.1 的 get_response() 在带了
+    response 时直接 `return self.response`，不会把状态码改回 self.code——只传
+    jsonify(...) 会得到一个 body 写着 400 而状态行是 200 的响应。
+    """
+    return BadRequest(
+        response=make_response(jsonify({"error": message, "status": 400}), 400))
+
+
+def _json_body():
+    """统一的 JSON 请求体解析（T51）。返回 dict，失败时抛 400。"""
+    raw = request.get_data(cache=True)
+    if not raw.strip():
+        return {}
+    if not request.is_json:
+        raise _json_body_failure(
+            "请求体必须是 JSON（" + _MULTI_JSON_CT + "） / "
+            "Request body must be JSON (" + _MULTI_JSON_CT + ")")
+    try:
+        data = request.get_json(silent=False)
+    except BadRequest:
+        raise _json_body_failure(
+            "请求体 JSON 解析失败 / Malformed JSON body") from None
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise _json_body_failure(
+            "请求体必须是 JSON 对象 / JSON body must be an object")
+    return data
+
 
 
 # --- S-2 写接口同源校验（CSRF）---------------------------------------------
@@ -252,6 +317,49 @@ def _write_origin_guard():
     if site and site not in _SEC_FETCH_ALLOWED:
         return _cross_site_reject(
             "Sec-Fetch-Site 指示跨站 / Sec-Fetch-Site not same-origin")
+    return None
+
+
+# --- D-3 补充：重复斜杠一次跳到位 -------------------------------------------
+_MULTI_SLASH_RE = re.compile(r"/{2,}")
+
+
+def _is_routable(path: str) -> bool:
+    """目标路径是否命中一条真实路由（method 也参与判定）。
+
+    只用于重定向前确认目标存在：不猜、不把 404 变成"先跳再 404"。
+    """
+    try:
+        app.url_map.bind_to_environ(request.environ).match(
+            path, method=request.method)
+        return True
+    except HTTPException:
+        return False
+
+
+@app.before_request
+def _collapse_duplicate_slashes():
+    """把 /text-art// 这类重复斜杠一次跳到规范地址，而不是让浏览器跑两跳。
+
+    此前两次跳转都是 werkzeug/我们的规则各自为政：MAP 的 merge_slashes 先 308
+    把 /text-art// 合成 /text-art/，再由显式规则 301 去掉尾斜杠。这里在路由
+    匹配之前（before_request 早于 dispatch_request 抛 routing_exception）直接
+    给出终点，跳法与 D-3 既有尾斜杠策略一致：纯 GET 页面 URL、301、无请求体
+    语义。
+
+    /api/* 不碰：那条前缀的跳转与错误形态属于 API 契约，不归页面 URL 归一管。
+    """
+    path = request.path
+    if "//" not in path or path == "/":
+        return None
+    if path == "/api" or path.startswith("/api/"):
+        return None
+    collapsed = _MULTI_SLASH_RE.sub("/", path)
+    for candidate in (collapsed.rstrip("/") or "/", collapsed):
+        if candidate == path or not _is_routable(candidate):
+            continue
+        query = request.query_string.decode("latin-1")
+        return redirect(candidate + ("?" + query if query else ""), 301)
     return None
 
 
@@ -1263,7 +1371,7 @@ def upload_music():
 @app.route("/api/remove-music", methods=["POST"])
 def remove_music():
     """Detach the uploaded background music from a task."""
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     task_id = (data.get("task_id") or "").strip()
     if not _valid_task_id(task_id):
         return jsonify({"error": "No task_id"}), 400
@@ -1295,7 +1403,7 @@ def fetch_video_url():
     small MP4 server-side, then the same adaptive-fps extraction pipeline
     runs as for direct uploads.
     """
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     url = (data.get("url") or "").strip()
     if not url:
         return jsonify({"error": "No url provided"}), 400
@@ -1372,7 +1480,7 @@ def fetch_url():
     SSRF protection: private IP blocked, Content-Type/Size validation,
     download timeout 15s, size cap 20MB, PIL verify.
     """
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     url = (data.get("url") or "").strip()
     if not url:
         return jsonify({"error": "No URL provided"}), 400
@@ -1442,7 +1550,7 @@ def text_convert():
     服务端自动分流：含 CJK 字符走 TTF 点阵路径（font 解释为中文字体
     slug），纯 ASCII 走 FIGlet（font 为 FIGlet slug）。
     """
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     ip = _client_ip()
     ok, reason = _rate_check(ip, "text-convert", per_minute=120)
     if not ok:
@@ -1491,7 +1599,7 @@ def text_convert():
 @app.route("/api/text/fontwall", methods=["POST"])
 def text_fontwall():
     """字体墙：{text} → 全部精选字体的预览渲染（点击即换即看的数据源）。"""
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     ip = _client_ip()
     ok, reason = _rate_check(ip, "text-fontwall", per_minute=60)
     if not ok:
@@ -1558,7 +1666,7 @@ def text_export_png():
 @app.route("/api/text/export-ansi", methods=["POST"])
 def text_export_ansi():
     """ANSI 彩色文本：art 套 truecolor 转义序列，粘贴到终端即显色。"""
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON body"}), 400
     ip = _client_ip()
@@ -1617,7 +1725,7 @@ def cjk_ttf_fontwall():
     （2026-09-29 产品调整：原"中文字体墙"下线，墙位改为字符集预览——
     字块/明暗/圆点/几何/盲文/经典，点卡片换"点亮"字符。）
     """
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     ip = _client_ip()
     ok, reason = _rate_check(ip, "text-fontwall", per_minute=60)
     if not ok:
@@ -1633,7 +1741,7 @@ def cjk_ttf_fontwall():
 @app.route("/api/cjk/ttf/render", methods=["POST"])
 def cjk_ttf_render():
     """中文点阵：{text, font?, height?, charset?} → 字符画。纯本地。"""
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON body"}), 400
     ip = _client_ip()
@@ -1950,7 +2058,7 @@ def text_terminal_command():
     {art, theme} → {cmd}。theme 给定时无色 art 按主题着色；原色 art
     已含 TrueColor 转义则原样嵌入，终端直接显原色。
     """
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON body"}), 400
     ip = _client_ip()
@@ -2015,7 +2123,7 @@ def gallery_upload_text():
 
     艺术字文本存 params_json.frames（单帧），/v/ 页直接回放。
     """
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON body"}), 400
     ip = _client_ip()
@@ -2654,7 +2762,7 @@ def task_frames(task_id):
 
 @app.route("/api/generate", methods=["POST"])
 def generate():
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     task_id = data.get("task_id")
     charset = (data.get("charset") or "ascii").lower().strip()
     fmt = data.get("format")
@@ -3218,7 +3326,7 @@ def gallery_report(work_id):
     work = GALLERY_DB.get_work(work_id)
     if not work:
         return jsonify({"error": "Work not found"}), 404
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     reason_str = data.get("reason", "")
     if reason_str not in _gallery_mod.VALID_REPORT_REASONS:
         return jsonify({"error": f"Invalid reason; expected one of {_gallery_mod.VALID_REPORT_REASONS}"}), 400
@@ -3396,7 +3504,7 @@ def gallery_admin_resolve_report(report_id):
     ok, deny = _admin_check()
     if not ok:
         return deny
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     status = data.get("status", "resolved")
     if status not in ("resolved", "dismissed"):
         return jsonify({"error": "Invalid status"}), 400
