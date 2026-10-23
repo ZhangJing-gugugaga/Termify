@@ -310,9 +310,14 @@
   }
 
   /* ── Title / meta ── */
-  function setTitleMeta() {
-    if (terminalTitle && S.charset)
-      terminalTitle.textContent = "动画预览 - " + S.charset + " 风格 / animation preview - " + S.charset + " style";
+  /* D1：演示卡只换了预览里的字画，没有写 S.charset，而这里原本只认 S.charset
+     —— 于是「点一张风格卡看演示」时标题永远停留在上一次真实生成的字符集上
+     （首次进页面就是初始值 ascii）。改成接受调用方传入实际展示的字符集，
+     不传时退回 S.charset，真实生成态的行为和文案一个字都不变。 */
+  function setTitleMeta(charset) {
+    var cs = charset || S.charset;
+    if (terminalTitle && cs)
+      terminalTitle.textContent = "动画预览 - " + cs + " 风格 / animation preview - " + cs + " style";
   }
 
   /* ── Progress clock（rAF 匀速秒制，像视频播放器） ── */
@@ -430,6 +435,7 @@
     S.htmlFrames = [];
     S.canvasFrames = [];
     window.__termifyHasTask = S.frames.length > 0;
+    syncSizeSliderAvailability();
 
     // Pre-compute HTML frames for all styles
     for (var i = 0; i < S.frames.length; i++) {
@@ -1767,7 +1773,7 @@
     } else if (demo && demo.text) {
       preview.textContent = demo.text;
     }
-    setTitleMeta();
+    setTitleMeta(style);  // D1：标题跟着这张卡实际展示的字符集走
   }
   /* ── UX-2 风格卡 = 单选组（WAI-ARIA APG radio group）──
      div 没有原生 radio 的键盘行为，roving tabindex 得自己维护：
@@ -1888,6 +1894,21 @@
     if (rerender && S.taskId) requestPreview(S.charset);
   }
 
+  /* D3：帧还没到手时滑杆改尺寸什么都不会发生，而原来的唯一反馈是松手后
+     一句 toast——用户（尤其手机）在拖动过程中完全看不出自己拖的是个空控件。
+     改成没有素材时真禁用 + 一行说明；有素材（applyPreview 拿到帧）自动解开。 */
+  function syncSizeSliderAvailability() {
+    var slider = byId("sizeSlider");
+    var hint = byId("sizeHint");
+    var idle = !S.frames.length;
+    if (slider) {
+      slider.disabled = idle;
+      if (idle) slider.setAttribute("aria-disabled", "true");
+      else slider.removeAttribute("aria-disabled");
+    }
+    if (hint) hint.hidden = !idle;
+  }
+
   (function initSizeSlider() {
     var slider = byId("sizeSlider");
     if (!slider) return;
@@ -1917,6 +1938,7 @@
     if (saved && saved >= 20 && saved <= 400 && saved !== 80) {
       applyColumns(saved, false);
     }
+    syncSizeSliderAvailability();  // 开局还没有帧 → 滑杆置灰 + 说明
   })();
 
   // Play / Pause
@@ -1967,6 +1989,12 @@
       uploadZone.classList.remove("drag-over");
     });
   }
+
+  // 手机首屏 CTA：不复制上传逻辑，直接点一次 #uploadZone（同一事件路径 → fileInput.click()）
+  (function () {
+    var cta = byId("heroUploadCta");
+    if (cta && uploadZone) cta.addEventListener("click", function () { uploadZone.click(); });
+  })();
 
   // URL fetch
   (function () {

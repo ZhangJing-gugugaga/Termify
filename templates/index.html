@@ -43,6 +43,8 @@
             <p class="hero-subtitle">
                 上传任何 GIF、图片或视频，选择渲染风格，下载能在任何终端播放的动画文件。
             </p>
+            <!-- 手机首屏主操作（≤640px 才显示，桌面完全不参与布局）：点击走 #uploadZone 同一条路径 -->
+            <button class="hero-upload-cta url-fetch-btn" id="heroUploadCta" type="button">上传素材，开始创作 / Upload to start</button>
             <div class="hero-terminal">
                 <div class="terminal">
                     <div class="terminal-header">
@@ -347,6 +349,7 @@
                         </div>
                         <div class="size-meta" id="sizeMeta">80 × 24 · 行数按素材比例自动 / rows auto-fit to source</div>
                         <div class="size-warn" id="sizeWarn" hidden>&gt; 列数 &gt; 320：预览渲染变慢、导出文件增大 / Above 320 columns: slower preview rendering, larger export files</div>
+                        <div class="size-meta" id="sizeHint" hidden>先上传素材，才能调整输出尺寸 / Upload material first to change the size</div>
                     </div>
 
                     <div class="output-card" id="musicCard" style="display:none;">

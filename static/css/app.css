@@ -1253,6 +1253,12 @@
             color: var(--amber, #ffb000);
         }
         .size-warn[hidden] { display: none; }
+        /* D3：没有素材时滑杆是真 disabled（而不是拖了毫无反应），给一个
+           看得出来的弱化观感；指针形状跟着变，别让用户以为还能拖。 */
+        .size-slider-row input[type="range"]:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
 
         /* ── 一级配色面板（预览 + py/HTML/MP4 导出同源） ── */
         .palette-row {
@@ -1326,6 +1332,25 @@
         .download-btn svg {
             width: 18px;
             height: 18px;
+        }
+
+        /* ── 手机首屏主操作（复用 .url-fetch-btn 的按钮外观，不新造样式）──
+           375×812 实测首屏里 #uploadZone 在 890px 处、完全在屏幕外，第一眼
+           没有任何可做的事。默认 display: none —— ≥641px 连盒子都不生成，
+           桌面版式的逐像素结果不受影响；只在 ≤640px 露出来。 */
+        .hero-upload-cta {
+            display: none;
+        }
+        @media (max-width: 640px) {
+            .hero-upload-cta {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 100%;
+                max-width: 360px;
+                margin: 0 auto var(--space-10);
+                padding: var(--space-3) var(--space-6);
+            }
         }
 
         .share-link {
